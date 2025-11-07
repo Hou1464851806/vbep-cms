@@ -1,10 +1,13 @@
-FROM node:25-alpine as build-stage
+FROM node:25-alpine AS build-stage
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+RUN npm cache clean --force && \
+    rm -rf node_modules package-lock.json
+
+RUN npm install
 
 COPY . .
 
@@ -14,7 +17,7 @@ COPY . .
 # 例如：base: '/你的应用路径/'，如果部署在子路径下
 RUN npm run build
 
-FROM nginx:alpine as production-stage
+FROM nginx:alpine AS production-stage
 
 # 删除 Nginx 默认的配置文件
 RUN rm /etc/nginx/conf.d/default.conf

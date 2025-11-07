@@ -10,7 +10,6 @@ import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base:"/vbep-cms/",
   plugins: [
     vue(),
     vueDevTools(),
