@@ -6,18 +6,23 @@
   background-color: #fff;
 }
 
-@media (min-width: 1400px) { /* 当屏幕宽度大于 1400px 时 */
+@media (min-width: 1400px) {
   #app {
-    max-width: 1400px; /* 增加一点宽度 */
+    max-width: 1400px;
   }
 }
-@media (min-width: 1600px) { /* 当屏幕宽度大于 1600px 时 */
+@media (min-width: 1600px) {
   #app {
-    max-width: 1600px; /* 再增加一点宽度 */
+    max-width: 1600px;
   }
 }
 @media (min-width: 1920px) {
   #app {
     max-width: 1920px;
+  }
+}
+@media (min-width: 2560px) {
+  #app {
+    max-width: 2560px;
   }
 }
