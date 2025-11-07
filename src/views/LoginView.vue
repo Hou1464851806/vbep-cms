@@ -2,11 +2,11 @@
 import { Lock, User } from '@element-plus/icons-vue'
 import { ref } from 'vue'
 
-import logoSrc from "../assets/img/logo.png";
-const qrCodeSrc = '';
+import logoSrc from '../assets/img/logo.png'
+const qrCodeSrc = ''
 
-import thirdPartyQrSrc from "../assets/img/qr-code.svg";
-import thirdPartyChatSrc from "../assets/img/wechat.png";
+import thirdPartyQrSrc from '../assets/img/qr-code.svg'
+import thirdPartyChatSrc from '../assets/img/wechat.png'
 
 const username = ref('')
 const password = ref('')
@@ -20,7 +20,7 @@ const password = ref('')
       </div>
       <div class="sso-banner">
         <div class="sso-logo">
-          <img :src=logoSrc alt="Logo" class="sso-logo-img" />
+          <img :src="logoSrc" alt="Logo" class="sso-logo-img" />
         </div>
       </div>
       <div class="sso-header">
@@ -36,19 +36,31 @@ const password = ref('')
         <div class="login-panel">
           <el-form class="login-form">
             <el-form-item class="login-group">
-              <el-input class="login-info" size="large" v-model="username" placeholder="邮箱或电话或登录名">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="username"
+                placeholder="邮箱或电话或登录名"
+              >
                 <template #prefix>
                   <el-icon><User /></el-icon>
                 </template>
               </el-input>
             </el-form-item>
             <el-form-item class="login-group">
-              <el-input class="login-info" size="large" v-model="password" placeholder="密码" type="password" show-password>
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="password"
+                placeholder="密码"
+                type="password"
+                show-password
+              >
                 <template #prefix>
                   <el-icon><Lock /></el-icon>
                 </template>
               </el-input>
-              </el-form-item>
+            </el-form-item>
             <el-form-item class="login-group login-button-item">
               <el-button class="login-btn">立刻登录</el-button>
             </el-form-item>
@@ -111,7 +123,7 @@ const password = ref('')
   color: #181818;
 }
 .register-button:hover {
-  color: #4292C3;
+  color: #4292c3;
   text-decoration: underline;
 }
 /* SSO Banner - 包含 Logo */
@@ -199,7 +211,7 @@ const password = ref('')
 }
 /* 聚焦时的样式调整：使用 Element Plus 的主色强调聚焦，阴影更深 */
 :deep(.login-info.el-input.is-focused .el-input__wrapper) {
-  border-color: #409EFF; /* 聚焦时边框变为 Element Plus 的主蓝色 */
+  border-color: #409eff; /* 聚焦时边框变为 Element Plus 的主蓝色 */
 }
 /* 针对输入框内部的文字区域 */
 :deep(.login-info.el-input .el-input__inner) {
@@ -259,7 +271,7 @@ const password = ref('')
   text-decoration: none;
 }
 .forgot-password:hover {
-  color: #4292C3;
+  color: #4292c3;
   text-decoration: underline;
 }
 /* 其他方式分隔线 */
