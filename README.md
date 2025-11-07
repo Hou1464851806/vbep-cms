@@ -17,6 +17,6 @@ npm run dev
 ```
 
 ## 部署
-1. 安装docker (docker-copose)
+1. 安装docker (docker-compose)
 2. 执行`deploy.sh`一键部署
 3. 网站暴露在8080端口上
