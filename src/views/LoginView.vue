@@ -3,7 +3,7 @@ import { Lock, User } from '@element-plus/icons-vue'
 import { ref } from 'vue'
 
 import logoSrc from '../assets/img/logo.png'
-const qrCodeSrc = ''
+import qrCodeSrc from '../assets/img/QRcode.jpg'
 
 import thirdPartyQrSrc from '../assets/img/qr-code.svg'
 import thirdPartyChatSrc from '../assets/img/wechat.png'
