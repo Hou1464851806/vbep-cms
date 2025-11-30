@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 
 const router = createRouter({
@@ -8,6 +8,7 @@ const router = createRouter({
       path: '/',
       name: 'login',
       component: LoginView,
+      alias: '/login',
     },
   ],
 })
