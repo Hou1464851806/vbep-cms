@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/viper"
 	"log"
 	"server/global"
+	"server/logger"
 )
 
 func NewViper() *viper.Viper {
@@ -17,6 +18,6 @@ func NewViper() *viper.Viper {
 	if err := v.Unmarshal(&global.CFG); err != nil {
 		log.Fatalf("Unmarshal config error: %v\n", err)
 	}
-	log.Printf("Config: %+v\n", global.CFG)
+	logger.Infof("Config: %#v\n", global.CFG)
 	return v
 }

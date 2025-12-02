@@ -1,5 +1,4 @@
 app_name = "vbep-cms"
-log_level = "DEBUG"
 
 [server]
 ip = "0.0.0.0"

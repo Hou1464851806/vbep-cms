@@ -14,6 +14,7 @@ func main() {
 }
 
 func Initialize() {
+	global.LOG, global.SLOG = initialize.NewLogger()
 	global.VP = initialize.NewViper()
 }
 
