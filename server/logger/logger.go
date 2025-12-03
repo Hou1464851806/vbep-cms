@@ -2,6 +2,10 @@ package logger
 
 import "server/global"
 
+func Successf(template string, args ...interface{}) {
+	global.SLOG.Infof("[Success] "+template, args...)
+}
+
 func Infof(template string, args ...interface{}) {
 	global.SLOG.Infof(template, args...)
 }
