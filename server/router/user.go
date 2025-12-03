@@ -5,12 +5,11 @@ import (
 	"server/api/v1"
 )
 
-var userApi = new(v1.UserApi)
-
 type UserRouter struct {
 }
 
 func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
+	var userApi = new(v1.UserApi)
 	userRouter := router.Group("/users")
 	{
 		userRouter.POST("/", userApi.CreateUser)
