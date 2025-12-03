@@ -5,5 +5,10 @@ ip = "0.0.0.0"
 port = 8080
 
 [database]
-ip = "127.0.0.1"
-port = 4176
+host = "127.0.0.1"
+port = 5432
+user = "nonbeing"
+password = "hou812712"
+db_name = "vbep_cms"
+ssl_mode = "disable"
+time_zone = "Asia/Shanghai"

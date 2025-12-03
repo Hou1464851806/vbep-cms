@@ -18,6 +18,6 @@ func NewViper() *viper.Viper {
 	if err := v.Unmarshal(&global.CFG); err != nil {
 		log.Fatalf("Unmarshal config error: %v\n", err)
 	}
-	logger.Infof("Config: %#v\n", global.CFG)
+	logger.Infof("Config: %#v", global.CFG)
 	return v
 }
