@@ -25,19 +25,6 @@ func NewDB() *gorm.DB {
 
 	logger.Successf("Auto migrate schema")
 
-	//// test database
-	//ctx := context.Background()
-	//err = gorm.G[model.User](db).Create(ctx, &model.User{
-	//	Role:     model.RoleAdmin,
-	//	NickName: "Nonbeing",
-	//	Phone:    "114514",
-	//	Email:    "114514@qq.com",
-	//	PWDHash:  "abcdedfg114514",
-	//})
-	//if err != nil {
-	//	logger.Errorf("Failed to create a new user record: %v", err)
-	//}
-
 	return db
 }
 

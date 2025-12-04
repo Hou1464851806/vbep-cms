@@ -17,6 +17,7 @@ func NewRouter() *gin.Engine {
 		})
 	})
 
+	// user
 	userRouter := new(router.UserRouter)
 	userRouter.InitUserRouter(v1)
 
