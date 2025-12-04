@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"server/logger"
@@ -46,7 +45,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	// 返回user id
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
-		"user_id": fmt.Sprintf("%d", newUser.ID),
+		"user_id": newUser.ID,
 	})
 }
 

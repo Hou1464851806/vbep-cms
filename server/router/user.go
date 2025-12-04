@@ -10,7 +10,7 @@ type UserRouter struct {
 
 func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 	var userApi = v1.NewUserApi()
-	var authApi = new(v1.AuthApi)
+	var authApi = v1.NewAuthApi()
 
 	userRouter := router.Group("/users")
 	{
