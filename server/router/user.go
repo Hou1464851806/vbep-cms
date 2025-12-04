@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	"server/api/v1"
+	"server/middleware"
 )
 
 type UserRouter struct {
@@ -23,6 +24,6 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 
 		// auth
 		userRouter.POST("/login", authApi.Login)
-		userRouter.POST("/logout", authApi.Logout)
+		userRouter.GET("/logout", middleware.JWTAuth(), authApi.Logout)
 	}
 }
