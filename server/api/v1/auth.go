@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"server/logger"
+	"server/middleware"
 	"server/pkg/jwt"
 	"server/service"
 )
@@ -45,8 +46,9 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	token, err := jwt.GenerateToken(user.ID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": fmt.Errorf("failed to generate token: %w", err),
+			"message": fmt.Sprintf("failed to generate token: %v", err),
 		})
+		return
 	}
 	// 返回Cookie
 	ctx.JSON(http.StatusOK, gin.H{
@@ -56,5 +58,25 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 }
 
 func (a *AuthApi) Logout(ctx *gin.Context) {
+	uid, ok := ctx.Get(middleware.CTXUserID)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "failed to get jwt context",
+		})
+		return
+	}
+	userID, ok := uid.(uint)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "invalid jwt context type",
+		})
+		return
+	}
 
+	// Todo 主动注销JWT
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"user_id": userID,
+	})
 }
