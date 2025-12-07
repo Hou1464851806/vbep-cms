@@ -8,7 +8,7 @@ import qrCodeSrc from '../assets/img/QRcode.jpg'
 import thirdPartyQrSrc from '../assets/img/qr-code.svg'
 import thirdPartyChatSrc from '../assets/img/wechat.png'
 
-const username = ref('')
+const userInfo = ref('')
 const password = ref('')
 </script>
 
@@ -16,7 +16,7 @@ const password = ref('')
   <body class="main-container">
     <div class="login-card-wrapper">
       <div class="register-button-wrapper">
-        <a href="#" class="register-button">注册</a>
+        <a href="/register" class="register-button">注册</a>
       </div>
       <div class="sso-banner">
         <div class="sso-logo">
@@ -39,7 +39,7 @@ const password = ref('')
               <el-input
                 class="login-info"
                 size="large"
-                v-model="username"
+                v-model="userInfo"
                 placeholder="邮箱或电话或登录名"
               >
                 <template #prefix>
