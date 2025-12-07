@@ -1,73 +1,136 @@
 <script setup>
 import { Lock, User } from '@element-plus/icons-vue'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import logoSrc from '../assets/img/logo.png'
 
+const registerFormRef = ref()
 const registerForm = reactive({
   userInfo: '',
   password: '',
 })
+const isFormValid = ref(false)
 
-const submitRegisterForm = () => {
-  console.log(registerForm)
+const validatePassword = (rule, value, callback) => {
+  // if (!value) {
+  //   return callback(new Error('密码不能为空'));
+  // }
+  if (value.length < 6 || value.length > 20) {
+    return callback(new Error('密码长度不符合要求'))
+  }
+  let complexity = 0
+  // 小写字母
+  if (/[a-z]/.test(value)) {
+    complexity++
+  }
+  // 大写字母
+  if (/[A-Z]/.test(value)) {
+    complexity++
+  }
+  // 数字
+  if (/\d/.test(value)) {
+    complexity++
+  }
+  // 特殊字符
+  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
+    complexity++
+  }
+
+  if (complexity < 3) {
+    return callback(new Error('密码未包含大写字母、小写字母、数字、特殊字符中的至少3项'))
+  }
+
+  callback()
 }
 
+const registerFormRules = reactive({
+  userInfo: [
+    { required: true, message: '邮箱不能为空', trigger: 'change' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'change' },
+  ],
+  password: [
+    { required: true, message: '密码不能为空', trigger: 'change' },
+    { validator: validatePassword, trigger: 'change' },
+  ],
+})
+
+const submitRegisterForm = async (formEl) => {
+  if (!formEl) return
+  await registerFormRef.value.validate((valid) => {
+    if (valid) {
+      console.log('验证通过', registerForm)
+    } else {
+      console.log('验证失败')
+      isFormValid.value = false
+    }
+  })
+}
 </script>
 <template>
-    <body class="main-container">
-      <div class="login-card-wrapper">
-        <div class="register-button-wrapper">
-          <a href="/login" class="register-button">登录</a>
-        </div>
-        <div class="sso-banner">
-          <div class="sso-logo">
-            <img :src="logoSrc" alt="Logo" class="sso-logo-img" />
-          </div>
-        </div>
-        <div class="sso-header">
-          <span class="heading">VBEP注册</span>
-        </div>
-        <div class="login-container">
-          <div class="login-panel">
-            <!-- 对齐label -->
-            <el-form class="login-form" :model="registerForm" label-width="auto">
-              <el-form-item class="login-group" label="邮箱名">
-                <el-input
-                  class="login-info"
-                  size="large"
-                  v-model="registerForm.userInfo"
-                  placeholder="请输入邮箱"
-                >
-                  <template #prefix>
-                    <el-icon><User /></el-icon>
-                  </template>
-                </el-input>
-              </el-form-item>
-              <el-form-item class="login-group" label="密码">
-                <el-input
-                  class="login-info"
-                  size="large"
-                  v-model="registerForm.password"
-                  placeholder="请输入密码"
-                  type="password"
-                  show-password
-                >
-                  <template #prefix>
-                    <el-icon><Lock /></el-icon>
-                  </template>
-                </el-input>
-              </el-form-item>
-              <el-form-item class="login-group login-button-item">
-                <el-button class="login-btn" type="primary" @click="submitRegisterForm">立刻注册</el-button>
-              </el-form-item>
-            </el-form>
-            <!-- <div class="login-group footer-links">
-              <a href="#" class="forgot-password">找回账号密码</a>
-            </div> -->
-          </div>
+  <body class="main-container">
+    <div class="login-card-wrapper">
+      <div class="register-button-wrapper">
+        <a href="/login" class="register-button">登录</a>
+      </div>
+      <div class="sso-banner">
+        <div class="sso-logo">
+          <img :src="logoSrc" alt="Logo" class="sso-logo-img" />
         </div>
       </div>
-    </body>
+      <div class="sso-header">
+        <span class="heading">VBEP注册</span>
+      </div>
+      <div class="login-container">
+        <div class="login-panel">
+          <!-- 对齐label -->
+          <el-form
+            ref="registerFormRef"
+            class="login-form"
+            :model="registerForm"
+            :rules="registerFormRules"
+            label-width="auto"
+          >
+            <el-form-item class="login-group" label="邮箱名" prop="userInfo">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.userInfo"
+                placeholder="请输入邮箱"
+              >
+                <template #prefix>
+                  <el-icon><User /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+            <el-form-item class="login-group" label="密码" prop="password">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.password"
+                placeholder="请输入密码"
+                type="password"
+                show-password
+              >
+                <template #prefix>
+                  <el-icon><Lock /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+            <div class="footer-links">
+              <p class="forgot-password">密码长度应该为6到20个字符，且需包含大写字母、小写字母、数字、特殊字符中的至少3项</p>
+            </div>
+            <el-form-item class="login-group login-button-item">
+              <el-button
+                class="login-btn"
+                type="primary"
+                @click="submitRegisterForm(registerFormRef)"
+                >立刻注册</el-button
+              >
+            </el-form-item>
+          </el-form>
+        </div>
+      </div>
+    </div>
+  </body>
 </template>
 <style>
 /* 全局背景和居中 */
@@ -245,20 +308,13 @@ const submitRegisterForm = () => {
   background-color: #d1181f;
 }
 
-/* 找回账号密码 */
 .footer-links {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 40px;
 }
 .forgot-password {
-  font-size: 14px;
-  color: #181818;
-  text-decoration: none;
-}
-.forgot-password:hover {
-  color: #4292c3;
-  text-decoration: underline;
+  font-size: 12px;
+  color: #f32b2b;
 }
 /* 其他方式分隔线 */
 .other-methods {

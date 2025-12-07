@@ -1,6 +1,6 @@
 <script setup>
 import { Lock, User } from '@element-plus/icons-vue'
-import { ref } from 'vue'
+import { reactive } from 'vue'
 
 import logoSrc from '../assets/img/logo.png'
 import qrCodeSrc from '../assets/img/QRcode.jpg'
@@ -8,8 +8,14 @@ import qrCodeSrc from '../assets/img/QRcode.jpg'
 import thirdPartyQrSrc from '../assets/img/qr-code.svg'
 import thirdPartyChatSrc from '../assets/img/wechat.png'
 
-const userInfo = ref('')
-const password = ref('')
+const loginForm = reactive({
+  userInfo: '',
+  password: '',
+})
+
+const submitLoginFrom = () => {
+  console.log('login: ', loginForm)
+}
 </script>
 
 <template>
@@ -39,7 +45,7 @@ const password = ref('')
               <el-input
                 class="login-info"
                 size="large"
-                v-model="userInfo"
+                v-model="loginForm.userInfo"
                 placeholder="邮箱或电话或登录名"
               >
                 <template #prefix>
@@ -51,7 +57,7 @@ const password = ref('')
               <el-input
                 class="login-info"
                 size="large"
-                v-model="password"
+                v-model="loginForm.password"
                 placeholder="密码"
                 type="password"
                 show-password
@@ -62,7 +68,9 @@ const password = ref('')
               </el-input>
             </el-form-item>
             <el-form-item class="login-group login-button-item">
-              <el-button class="login-btn">立刻登录</el-button>
+              <el-button class="login-btn" type="primary" @click="submitLoginFrom"
+                >立刻登录</el-button
+              >
             </el-form-item>
           </el-form>
           <div class="login-group footer-links">
