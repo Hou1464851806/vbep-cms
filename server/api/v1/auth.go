@@ -20,7 +20,7 @@ func NewAuthApi() *AuthApi {
 
 type LoginParam struct {
 	//UserID   uint   `json:"user_id" binding:"required"`
-	UserInfo string `json:"info" binding:"required"`
+	UserInfo string `json:"user_info" binding:"required"`
 	PWDHash  string `json:"password" binding:"required"`
 }
 
@@ -50,7 +50,15 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 		})
 		return
 	}
-	// 返回Cookie
+
+	// 设置Cookie
+	maxAge := 3600 * 24 * 7 // 7 天的秒数
+	path := "/"
+	domain := "localhost" // 开发时可以是 localhost，生产环境要换成你的域名
+	secure := false       // 开发时用 http，所以是 false；部署到线上用 https 时必须是 true
+	httpOnly := true
+	ctx.SetCookie("token", token, maxAge, path, domain, secure, httpOnly)
+	// 返回
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"token":   token,
