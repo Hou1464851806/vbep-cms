@@ -1,14 +1,18 @@
 <script setup>
 import { Lock, User } from '@element-plus/icons-vue'
 import { reactive, ref } from 'vue'
+import axios from 'axios'
 import logoSrc from '../assets/img/logo.png'
+import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const registerFormRef = ref()
 const registerForm = reactive({
   userInfo: '',
   password: '',
 })
-const isFormValid = ref(false)
 
 const validatePassword = (rule, value, callback) => {
   // if (!value) {
@@ -31,7 +35,7 @@ const validatePassword = (rule, value, callback) => {
     complexity++
   }
   // 特殊字符
-  if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
+  if (/[~!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
     complexity++
   }
 
@@ -53,16 +57,44 @@ const registerFormRules = reactive({
   ],
 })
 
-const submitRegisterForm = async (formEl) => {
-  if (!formEl) return
-  await registerFormRef.value.validate((valid) => {
-    if (valid) {
-      console.log('验证通过', registerForm)
-    } else {
-      console.log('验证失败')
-      isFormValid.value = false
+const isLoading = ref(false)
+
+const submitRegisterForm = async () => {
+  if (!registerFormRef.value) return
+  if (isLoading.value) return
+  try {
+    await registerFormRef.value.validate()
+    console.log('表单校验通过，发送请求')
+    isLoading.value = true
+    const requestData = {
+      email: registerForm.userInfo,
+      password: registerForm.password,
     }
-  })
+    const response = await axios.post('/api/v1/users/', requestData)
+    console.log('注册成功: ', response.data)
+    ElMessage({
+      message: '注册成功',
+      type: 'success',
+      duration: 2000,
+    })
+    registerFormRef.value.resetFields()
+    setTimeout(() => {
+      router.replace({ name: 'login' })
+    }, 2000)
+  } catch (e) {
+    if (e && e.response) {
+      console.error('API请求失败:', e.response.data)
+      ElMessage.error(e.response.data.message || '注册失败，请稍后重试')
+    } else if (e instanceof Error) {
+      console.error('网络或代码错误:', e.message)
+      ElMessage.error('网络连接失败，请检查您的网络')
+    } else {
+      console.log('表单验证失败:', e)
+      ElMessage.error('请检查您填写的信息是否正确')
+    }
+  } finally {
+    isLoading.value = false
+  }
 }
 </script>
 <template>
@@ -88,6 +120,7 @@ const submitRegisterForm = async (formEl) => {
             :model="registerForm"
             :rules="registerFormRules"
             label-width="auto"
+            status-icon
           >
             <el-form-item class="login-group" label="邮箱名" prop="userInfo">
               <el-input
@@ -116,13 +149,12 @@ const submitRegisterForm = async (formEl) => {
               </el-input>
             </el-form-item>
             <div class="footer-links">
-              <p class="forgot-password">密码长度应该为6到20个字符，且需包含大写字母、小写字母、数字、特殊字符中的至少3项</p>
+              <p class="forgot-password">
+                密码长度应该为6到20个字符，且需包含大写字母、小写字母、数字、特殊字符中的至少3项
+              </p>
             </div>
             <el-form-item class="login-group login-button-item">
-              <el-button
-                class="login-btn"
-                type="primary"
-                @click="submitRegisterForm(registerFormRef)"
+              <el-button class="login-btn" type="primary" @click="submitRegisterForm"
                 >立刻注册</el-button
               >
             </el-form-item>
