@@ -98,10 +98,10 @@ const submitRegisterForm = async () => {
 }
 </script>
 <template>
-  <body class="main-container">
+  <div class="main-container">
     <div class="login-card-wrapper">
       <div class="register-button-wrapper">
-        <a href="/login" class="register-button">登录</a>
+        <RouterLink to="/login" class="register-button">登录</RouterLink>
       </div>
       <div class="sso-banner">
         <div class="sso-logo">
@@ -109,7 +109,7 @@ const submitRegisterForm = async () => {
         </div>
       </div>
       <div class="sso-header">
-        <span class="heading">VBEP注册</span>
+        <span class="heading">VBEP数据平台注册</span>
       </div>
       <div class="login-container">
         <div class="login-panel">
@@ -162,7 +162,7 @@ const submitRegisterForm = async () => {
         </div>
       </div>
     </div>
-  </body>
+  </div>
 </template>
 <style>
 /* 全局背景和居中 */
@@ -324,6 +324,7 @@ const submitRegisterForm = async () => {
 }
 
 .login-btn {
+  --el-color-primary: #ef1c23;
   width: 100%;
   height: 48px;
   border-radius: 8px;
@@ -337,7 +338,7 @@ const submitRegisterForm = async () => {
 }
 
 .login-btn:hover {
-  background-color: #d1181f;
+  --el-button-hover-bg-color: #d1181f;
 }
 
 .footer-links {
