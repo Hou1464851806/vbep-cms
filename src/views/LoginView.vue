@@ -1,28 +1,76 @@
 <script setup>
 import { Lock, User } from '@element-plus/icons-vue'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 
 import logoSrc from '../assets/img/logo.png'
 import qrCodeSrc from '../assets/img/QRcode.jpg'
 
 import thirdPartyQrSrc from '../assets/img/qr-code.svg'
 import thirdPartyChatSrc from '../assets/img/wechat.png'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import axios from 'axios'
 
+const router = useRouter()
+
+const loginFormRef = ref()
 const loginForm = reactive({
   userInfo: '',
   password: '',
 })
+const isLoading = ref(false)
 
-const submitLoginFrom = () => {
-  console.log('login: ', loginForm)
+const loginRules = reactive({
+  userInfo: [{ required: true, message: '请输入邮箱或电话或登录名', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+})
+
+const submitLoginFrom = async () => {
+  if (!loginFormRef.value) return // 防御性编程，确保form实例存在
+  if (isLoading.value) return // 防止重复提交
+  try {
+    // 步骤 A: 对整个表单进行校验
+    await loginFormRef.value.validate()
+    isLoading.value = true
+    // 步骤 B: 准备并发送 API 请求
+    const requestData = {
+      user_info: loginForm.userInfo,
+      password: loginForm.password,
+    }
+    const response = await axios.post('/api/v1/users/login', requestData)
+    // 步骤 C: 登录成功处理
+    console.log('登录成功，Token已在Cookie中设置', response.data)
+    ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
+    // 跳转到主页或用户仪表盘
+    setTimeout(() => {
+      router.push({ name: 'home' })
+    }, 1000)
+  } catch (error) {
+    // 步骤 D: 统一错误处理
+    if (error && error.response) {
+      // API 返回的错误 (例如：密码错误, 用户不存在)
+      console.error('登录失败:', error.response.data)
+      ElMessage.error(error.response.data.message || '用户名或密码错误')
+    } else if (error instanceof Error) {
+      // 网络错误或代码错误
+      ElMessage.error('网络连接失败，请稍后重试')
+    } else {
+      // 表单校验未通过的错误
+      console.log('表单校验失败:', error)
+      ElMessage.error('请检查输入')
+    }
+  } finally {
+    // 步骤 E: 无论成功或失败，都结束加载状态
+    isLoading.value = false
+  }
 }
 </script>
 
 <template>
-  <body class="main-container">
+  <div class="main-container">
     <div class="login-card-wrapper">
       <div class="register-button-wrapper">
-        <a href="/register" class="register-button">注册</a>
+        <RouterLink to="/register" class="register-button">注册</RouterLink>
       </div>
       <div class="sso-banner">
         <div class="sso-logo">
@@ -40,8 +88,8 @@ const submitLoginFrom = () => {
           <div class="qr-code-line"></div>
         </div>
         <div class="login-panel">
-          <el-form class="login-form">
-            <el-form-item class="login-group">
+          <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
+            <el-form-item class="login-group" prop="userInfo">
               <el-input
                 class="login-info"
                 size="large"
@@ -53,7 +101,7 @@ const submitLoginFrom = () => {
                 </template>
               </el-input>
             </el-form-item>
-            <el-form-item class="login-group">
+            <el-form-item class="login-group" prop="password">
               <el-input
                 class="login-info"
                 size="large"
@@ -74,7 +122,7 @@ const submitLoginFrom = () => {
             </el-form-item>
           </el-form>
           <div class="login-group footer-links">
-            <a href="#" class="forgot-password">找回账号密码</a>
+            <RouterLink to="#" class="forgot-password">找回账号密码</RouterLink>
           </div>
           <div class="login-group other-methods">
             <span class="line"></span>
@@ -88,7 +136,7 @@ const submitLoginFrom = () => {
         </div>
       </div>
     </div>
-  </body>
+  </div>
 </template>
 
 <style scoped>
