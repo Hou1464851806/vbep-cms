@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
-import HomeView from '@/views/HomeView.vue'
+import HomeView from '@/views/home/HomeView.vue'
+import DataSetView from '@/views/home/DataSetView.vue'
+import ApplicationView from '@/views/home/ApplicationView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -18,9 +20,24 @@ const router = createRouter({
       component: RegisterView,
     },
     {
-      path: '/home',
+      path: '/home', // 所有登录后的页面都将基于这个根路径
       name: 'home',
       component: HomeView,
+      // redirect: '/home/datasets', // 访问根路径时，默认重定向到数据集列表
+      // meta: { requiresAuth: true }, // 这个布局下的所有页面都需要登录
+      children: [
+        {
+          path: 'datasets', // 访问 /datasets 时显示
+          name: 'dataset-list',
+          component: DataSetView,
+        },
+        {
+          path: 'applications', // 访问 /applications 时显示
+          name: 'application-list',
+          component: ApplicationView,
+        },
+        // 未来可以继续在这里添加子页面，如 "申请详情", "用户管理" 等
+      ],
     },
   ],
 })
