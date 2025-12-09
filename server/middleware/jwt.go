@@ -11,10 +11,10 @@ const CTXUserID = "user_id"
 
 func JWTAuth() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		token := ctx.Request.Header.Get("token")
-		if token == "" {
-			ctx.JSON(http.StatusBadRequest, gin.H{
-				"message": "token is empty",
+		token, err := ctx.Cookie("token")
+		if err != nil || token == "" {
+			ctx.JSON(http.StatusUnauthorized, gin.H{
+				"message": "token is missing",
 			})
 			ctx.Abort()
 			return
