@@ -21,5 +21,9 @@ func NewRouter() *gin.Engine {
 	userRouter := new(router.UserRouter)
 	userRouter.InitUserRouter(v1)
 
+	// dataset
+	datasetRouter := new(router.DatasetRouter)
+	datasetRouter.InitDatasetRouter(v1)
+
 	return r
 }
