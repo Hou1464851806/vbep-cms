@@ -5,38 +5,12 @@ import { Plus, Edit, Delete, Document, Upload, Download, Promotion } from '@elem
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // --- 模拟 API 函数 ---
-const fetchDatasetListAPI = () =>
-  new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          code: 200,
-          data: [
-            {
-              id: 'ds-001',
-              name: '2023年第一季度销售数据',
-              description:
-                '包含华北、华南、华东三大区的销售记录、客户反馈及退货情况的汇总数据。此数据集包含敏感财务信息，仅供决策层和数据分析部门主管参阅。',
-              creator: '张三',
-              fileCount: 15,
-              createdAt: '2023-04-01',
-              updatedAt: '2023-04-05',
-            },
-            {
-              id: 'ds-002',
-              name: '用户行为日志分析数据集',
-              description:
-                '记录了2023年3月App端所有用户的点击、浏览、停留时长等关键行为，用于用户画像分析。数据已经过脱敏处理，不包含用户个人身份信息。',
-              creator: '李四',
-              fileCount: 128,
-              createdAt: '2023-03-15',
-              updatedAt: '2023-04-10',
-            },
-          ],
-        }),
-      500,
-    ),
-  )
+import apiClient from '../../request/axios.js'
+
+// --- API 函数 ---
+const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
+
+const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 
 const fetchFilesForDatasetAPI = (datasetId) =>
   new Promise((resolve) =>
@@ -88,18 +62,48 @@ const applicationDialog = reactive({
   rules: { reason: [{ required: true, message: '申请理由不能为空', trigger: 'blur' }] },
 })
 
-// --- 生命周期钩子 ---
-onMounted(async () => {
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  try {
+    return new Date(value).toLocaleString()
+  } catch (error) {
+    return value
+  }
+}
+
+const normalizeDatasets = (datasets = []) =>
+  datasets.map((item) => {
+    const files = Array.isArray(item.Files) ? item.Files : []
+    const creatorName = item.Creator?.NickName || item.creator || (item.CreatedBy ? `用户 ${item.CreatedBy}` : '未知')
+    const datasetId = item.UUID || item.uuid || item.id || item.ID
+    return {
+      id: datasetId ? String(datasetId) : `dataset-${Date.now()}`,
+      name: item.Title || item.title || item.name || '未命名数据集',
+      description: item.Description || item.description || '暂无描述',
+      fileCount: item.fileCount ?? files.length,
+      creator: creatorName,
+      createdAt: formatDateTime(item.Time.CreatedAt),
+      raw: item,
+    }
+  })
+
+const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
     const res = await fetchDatasetListAPI()
-    if (res && res.code === 200) datasetList.value = res.data
+    if (res && res.data?.message === 'success') {
+      datasetList.value = normalizeDatasets(res.data.datasets)
+      return
+    }
+    ElMessage.error(res?.data?.message || '数据集加载失败')
   } catch (e) {
     ElMessage.error('数据集加载失败')
   } finally {
     isDataLoading.value = false
   }
-})
+}
+// --- 生命周期钩子 ---
+onMounted(fetchDatasets)
 
 // --- 数据集 CRUD 事件处理 ---
 const handleAdd = () => {
@@ -112,32 +116,38 @@ const handleEdit = (row) => {
   datasetFormDialog.form = { ...row }
   datasetFormDialog.visible = true
 }
-const handleSaveDataset = () => {
+const handleSaveDataset = async () => {
   const form = datasetFormDialog.form
   if (!form.name.trim()) {
     ElMessage.warning('数据集名称不能为空')
     return
   }
-  if (form.id) {
-    const index = datasetList.value.findIndex((item) => item.id === form.id)
-    if (index !== -1)
-      datasetList.value[index] = {
-        ...datasetList.value[index],
-        ...form,
-        updatedAt: new Date().toLocaleDateString(),
+
+  try {
+    if (form.id) {
+      // 编辑逻辑 (待实现)
+      const index = datasetList.value.findIndex((item) => item.id === form.id)
+      if (index !== -1) {
+        datasetList.value[index] = {
+          ...datasetList.value[index],
+          ...form,
+          updatedAt: new Date().toLocaleDateString(),
+        }
       }
-  } else {
-    datasetList.value.unshift({
-      ...form,
-      id: `ds-new-${Date.now()}`,
-      creator: '我',
-      fileCount: 0,
-      createdAt: new Date().toLocaleDateString(),
-      updatedAt: new Date().toLocaleDateString(),
-    })
+    } else {
+      // 新增逻辑
+      const res = await createDatasetAPI({ title: form.name, description: form.description })
+      if (res.data?.message === 'success') {
+        ElMessage.success('新增数据集成功！')
+        await fetchDatasets() // 重新获取列表
+      } else {
+        ElMessage.error(res.data.message || '新增失败')
+      }
+    }
+    datasetFormDialog.visible = false
+  } catch (error) {
+    ElMessage.error('操作失败')
   }
-  ElMessage.success(`${datasetFormDialog.title}成功！`)
-  datasetFormDialog.visible = false
 }
 const handleDelete = (row) => {
   ElMessageBox.confirm(`确定要删除数据集 "${row.name}" 吗？`, '警告', {
@@ -261,7 +271,7 @@ const handleSubmitApplication = async () => {
           <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip />
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
           <el-table-column prop="creator" label="创建者" width="120" />
-          <el-table-column prop="updatedAt" label="更新时间" width="160" />
+          <el-table-column prop="createdAt" label="创建时间" width="160" />
           <el-table-column label="操作" width="280" fixed="right" align="center">
             <template #default="scope">
               <!-- 管理员操作 -->
