@@ -1,7 +1,9 @@
 package v1
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"net/http"
 	"server/logger"
 	"server/model"
@@ -37,6 +39,11 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 }
 
 type NewDatasetParam struct {
+	Title       string `json:"title" binding:"required"`
+	Description string `json:"description"`
+}
+
+type UpdateDatasetParam struct {
 	Title       string `json:"title" binding:"required"`
 	Description string `json:"description"`
 }
@@ -78,9 +85,67 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 }
 
 func (a *DatasetApi) Update(ctx *gin.Context) {
+	uuid := ctx.Param("uuid")
+	if uuid == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid dataset uuid",
+		})
+		return
+	}
 
+	var p UpdateDatasetParam
+	if err := ctx.ShouldBind(&p); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	dataset, err := a.service.UpdateDataset(uuid, p.Title, p.Description)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"message": "dataset not found",
+			})
+			return
+		}
+		logger.Errorf("failed to update dataset %s: %v", uuid, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "failed to update dataset",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"dataset": dataset,
+	})
 }
 
 func (a *DatasetApi) Delete(ctx *gin.Context) {
+	uuid := ctx.Param("uuid")
+	if uuid == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid dataset uuid",
+		})
+		return
+	}
 
+	if err := a.service.DeleteDataset(uuid); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"message": "dataset not found",
+			})
+			return
+		}
+		logger.Errorf("failed to delete dataset %s: %v", uuid, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "failed to delete dataset",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+	})
 }

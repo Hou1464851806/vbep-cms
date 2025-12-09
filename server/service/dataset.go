@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"gorm.io/gorm"
 	"server/global"
@@ -39,10 +40,40 @@ func (s *DatasetService) GetDatasets() {
 
 }
 
-func (s *DatasetService) UpdateDataset() {
+func (s *DatasetService) UpdateDataset(uuid string, title, description string) (*model.Dataset, error) {
+	ctx := context.Background()
+	updates := map[string]any{
+		"title":       title,
+		"description": description,
+	}
 
+	res := global.DB.WithContext(ctx).Model(&model.Dataset{}).Where("uuid = ?", uuid).Updates(updates)
+	if res.Error != nil {
+		return nil, fmt.Errorf("failed to update dataset: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	updated, err := gorm.G[model.Dataset](global.DB).Where("uuid = ?", uuid).First(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to query updated dataset: %w", err)
+	}
+
+	return &updated, nil
 }
 
-func (s *DatasetService) DeleteDataset() {
-
+func (s *DatasetService) DeleteDataset(uuid string) error {
+	ctx := context.Background()
+	res := global.DB.WithContext(ctx).Where("uuid = ?", uuid).Delete(&model.Dataset{})
+	if res.Error != nil {
+		return fmt.Errorf("failed to delete dataset: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
