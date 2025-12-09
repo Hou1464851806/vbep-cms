@@ -11,6 +11,8 @@ import apiClient from '../../request/axios.js'
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
+const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
+const deleteDatasetAPI = (uuid) => apiClient.delete(`/api/v1/datasets/${uuid}`)
 
 const fetchFilesForDatasetAPI = (datasetId) =>
   new Promise((resolve) =>
@@ -74,15 +76,17 @@ const formatDateTime = (value) => {
 const normalizeDatasets = (datasets = []) =>
   datasets.map((item) => {
     const files = Array.isArray(item.Files) ? item.Files : []
-    const creatorName = item.Creator?.NickName || item.creator || (item.CreatedBy ? `用户 ${item.CreatedBy}` : '未知')
+    const creatorName =
+      item.Creator?.NickName || item.creator || (item.CreatedBy ? `用户 ${item.CreatedBy}` : '未知')
     const datasetId = item.UUID || item.uuid || item.id || item.ID
+    const createdAt = item.Time?.CreatedAt || item.CreatedAt || item.createdAt
     return {
       id: datasetId ? String(datasetId) : `dataset-${Date.now()}`,
       name: item.Title || item.title || item.name || '未命名数据集',
       description: item.Description || item.description || '暂无描述',
       fileCount: item.fileCount ?? files.length,
       creator: creatorName,
-      createdAt: formatDateTime(item.Time.CreatedAt),
+      createdAt: formatDateTime(createdAt),
       raw: item,
     }
   })
@@ -125,14 +129,15 @@ const handleSaveDataset = async () => {
 
   try {
     if (form.id) {
-      // 编辑逻辑 (待实现)
-      const index = datasetList.value.findIndex((item) => item.id === form.id)
-      if (index !== -1) {
-        datasetList.value[index] = {
-          ...datasetList.value[index],
-          ...form,
-          updatedAt: new Date().toLocaleDateString(),
-        }
+      const res = await updateDatasetAPI(form.id, {
+        title: form.name,
+        description: form.description,
+      })
+      if (res.data?.message === 'success') {
+        ElMessage.success('数据集更新成功！')
+        await fetchDatasets()
+      } else {
+        ElMessage.error(res.data?.message || '更新失败')
       }
     } else {
       // 新增逻辑
@@ -155,9 +160,18 @@ const handleDelete = (row) => {
     cancelButtonText: '取消',
     type: 'warning',
   })
-    .then(() => {
-      datasetList.value = datasetList.value.filter((item) => item.id !== row.id)
-      ElMessage.success(`数据集 "${row.name}" 已删除`)
+    .then(async () => {
+      try {
+        const res = await deleteDatasetAPI(row.id)
+        if (res.data?.message === 'success') {
+          ElMessage.success(`数据集 "${row.name}" 已删除`)
+          await fetchDatasets()
+        } else {
+          ElMessage.error(res.data?.message || '删除失败')
+        }
+      } catch (error) {
+        ElMessage.error('删除失败')
+      }
     })
     .catch(() => {
       ElMessage.info('已取消删除')
