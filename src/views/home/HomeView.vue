@@ -2,7 +2,7 @@
 <script setup>
 import { ref, reactive, onMounted, provide } from 'vue'
 import { useRoute } from 'vue-router'
-import { Tickets, Memo, User, CollectionTag } from '@element-plus/icons-vue'
+import { Tickets, Memo, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 // --- 模拟 API & 状态 ---
@@ -12,7 +12,7 @@ const fetchUserInfoAPI = () => {
       () =>
         resolve({
           code: 200,
-          data: { nickname: '数据探索者', email: 'explorer@example.com', role: 'user' },
+          data: { nickname: '数据探索者', email: 'explorer@example.com', role: 'admin' },
         }),
       200,
     ),
@@ -31,6 +31,7 @@ onMounted(async () => {
       Object.assign(userInfo, res.data)
     }
   } catch (error) {
+    console.log(error)
     ElMessage.error('无法获取用户信息')
   } finally {
     isUserLoading.value = false
@@ -46,7 +47,7 @@ provide('isAdmin', () => userInfo.role === 'admin')
 <template>
   <el-container class="main-layout-container">
     <!-- 左侧导航栏 -->
-    <el-aside width="220px">
+    <el-aside width="200px">
       <div class="logo-area">VBEP 数据平台</div>
       <el-menu :default-active="route.path" class="el-menu-vertical-demo" router>
         <el-menu-item index="/home/datasets">
@@ -55,7 +56,7 @@ provide('isAdmin', () => userInfo.role === 'admin')
         </el-menu-item>
         <el-menu-item index="/home/applications">
           <el-icon><Memo /></el-icon>
-          <span>申请审批</span>
+          <span>审批管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
