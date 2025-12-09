@@ -1,9 +1,12 @@
 package jwt
 
 import (
+	"context"
 	"errors"
-	"github.com/golang-jwt/jwt/v5"
+	"server/global"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 const TokenExpiredDuration = time.Hour * 24
@@ -41,4 +44,22 @@ func ParseToken(tokenString string) (*Claims, error) {
 	}
 
 	return nil, errors.New("invalid token")
+}
+
+// SetTokenBlacklist 将 token 加入 Redis 黑名单
+func SetTokenBlacklist(tokenString string, expiration time.Duration) error {
+	ctx := context.Background()
+	// key 建议加前缀，防止冲突
+	return global.REDIS.Set(ctx, "blacklist:"+tokenString, "1", expiration).Err()
+}
+
+// IsTokenInBlacklist 检查 token 是否在黑名单中
+func IsTokenInBlacklist(tokenString string) bool {
+	ctx := context.Background()
+	val, err := global.REDIS.Get(ctx, "blacklist:"+tokenString).Result()
+	// 如果没有错误且值为 "1"，说明在黑名单中
+	if err == nil && val == "1" {
+		return true
+	}
+	return false
 }

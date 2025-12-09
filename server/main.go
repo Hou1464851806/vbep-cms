@@ -15,4 +15,5 @@ func initializeServer() {
 	global.LOG, global.SLOG = initialize.NewLogger()
 	global.VP = initialize.NewViper()
 	global.DB = initialize.NewDB()
+	global.REDIS = initialize.Redis()
 }

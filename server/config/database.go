@@ -3,6 +3,10 @@ package config
 import "fmt"
 
 type DatabaseConfig struct {
+	DBType string `mapstructure:"db_type"`
+	// SQLite
+	DBPath string `mapstructure:"db_path"`
+	// Postgres
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	User     string `mapstructure:"user"`

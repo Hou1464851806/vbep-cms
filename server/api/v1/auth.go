@@ -2,12 +2,14 @@ package v1
 
 import (
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"server/logger"
-	"server/middleware"
 	"server/pkg/jwt"
 	"server/service"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type AuthApi struct {
@@ -50,14 +52,6 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 		})
 		return
 	}
-
-	// 设置Cookie
-	maxAge := 3600 * 24 * 7 // 7 天的秒数
-	path := "/"
-	domain := "localhost" // 开发时可以是 localhost，生产环境要换成你的域名
-	secure := false       // 开发时用 http，所以是 false；部署到线上用 https 时必须是 true
-	httpOnly := true
-	ctx.SetCookie("token", token, maxAge, path, domain, secure, httpOnly)
 	// 返回
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
@@ -66,25 +60,37 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 }
 
 func (a *AuthApi) Logout(ctx *gin.Context) {
-	uid, ok := ctx.Get(middleware.CTXUserID)
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to get jwt context",
-		})
+	// 1. 改为从 Header 获取 Token
+	authHeader := ctx.GetHeader("Authorization")
+	if authHeader == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "no token in header"})
 		return
 	}
-	userID, ok := uid.(uint)
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "invalid jwt context type",
-		})
+	parts := strings.SplitN(authHeader, " ", 2)
+	tokenString := ""
+	if len(parts) == 2 && parts[0] == "Bearer" {
+		tokenString = parts[1]
+	}
+
+	// 2. 解析 Token 获取过期时间
+	claims, err := jwt.ParseToken(tokenString)
+	if err != nil {
+		// 即使 Token 只有效性有问题，也告诉前端“注销成功”，让它删掉本地存储
+		ctx.JSON(http.StatusOK, gin.H{"message": "logout success"})
 		return
 	}
 
-	// Todo 主动注销JWT
+	// 3. 计算剩余时间并写入 Redis (调用你新加的 pkg/jwt 方法)
+	duration := claims.ExpiresAt.Time.Sub(time.Now())
+	if duration > 0 {
+		if err := jwt.SetTokenBlacklist(tokenString, duration); err != nil {
+			logger.Errorf("redis error: %v", err)
+			// 记录日志但不要阻拦用户注销
+		}
+	}
 
+	// 4. 不需要 SetCookie("", -1) 了，直接返回
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"user_id": userID,
+		"message": "logout success",
 	})
 }
