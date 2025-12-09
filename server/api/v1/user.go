@@ -32,7 +32,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 		return
 	}
 	// 入库
-	newUser := &model.User{Email: user.Email, PWDHash: user.PWDHash, NickName: user.Email, Role: model.RoleUser} // 昵称默认为邮箱名
+	newUser := &model.User{Email: user.Email, PWDHash: user.PWDHash, NickName: user.Email, Role: model.Common} // 昵称默认为邮箱名
 	err := u.service.CreateUser(newUser)
 	if err != nil {
 		logger.Errorf("Failed to create new user in db: %v", err)
