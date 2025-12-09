@@ -1,11 +1,14 @@
 package v1
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 	"net/http"
 	"server/logger"
 	"server/model"
 	"server/service"
+	"strconv"
 )
 
 type UserApi struct {
@@ -61,7 +64,38 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 
 func (u *UserApi) GetUser(ctx *gin.Context) {
 	id := ctx.Param("id")
-	ctx.String(http.StatusOK, "Get user id: %s", id)
+	userID, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "invalid user id",
+		})
+		return
+	}
+
+	user, err := u.service.GetUserByID(uint(userID))
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{
+				"message": "user not found",
+			})
+			return
+		}
+		logger.Errorf("failed to query user: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "failed to get user info",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"data": gin.H{
+			"id":       user.ID,
+			"nickname": user.NickName,
+			"email":    user.Email,
+			"role":     user.Role,
+		},
+	})
 }
 
 func (u *UserApi) GetAllUsers(ctx *gin.Context) {
