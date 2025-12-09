@@ -5,19 +5,9 @@ import { useRoute } from 'vue-router'
 import { Tickets, Memo, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
-// --- 模拟 API & 状态 ---
-const fetchUserInfoAPI = () => {
-  return new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          code: 200,
-          data: { nickname: '数据探索者', email: 'explorer@example.com', role: 'admin' },
-        }),
-      200,
-    ),
-  )
-}
+import apiClient from '../../request/axios.js'
+
+const fetchUserInfoAPI = (userId) => apiClient.get(`/api/v1/users/${userId}`)
 
 const userInfo = reactive({ nickname: '', email: '', role: 'user' })
 const isUserLoading = ref(true)
@@ -26,9 +16,21 @@ const route = useRoute() // 获取当前路由信息，用于菜单高亮
 onMounted(async () => {
   isUserLoading.value = true
   try {
-    const res = await fetchUserInfoAPI()
-    if (res && res.code === 200) {
-      Object.assign(userInfo, res.data)
+    const storedUserId = localStorage.getItem('user_id')
+    if (!storedUserId) {
+      ElMessage.error('无法获取用户信息，请重新登录')
+      return
+    }
+    const res = await fetchUserInfoAPI(storedUserId)
+    if (res && res.data?.message === 'success' && res.data.data) {
+      const { nickname, email, role } = res.data.data
+      Object.assign(userInfo, {
+        nickname,
+        email,
+        role: Number(role) === 1 ? 'admin' : 'user',
+      })
+    } else {
+      ElMessage.error('用户信息异常')
     }
   } catch (error) {
     console.log(error)
