@@ -25,5 +25,9 @@ func NewRouter() *gin.Engine {
 	datasetRouter := new(router.DatasetRouter)
 	datasetRouter.InitDatasetRouter(v1)
 
+	// file
+	fileRouter := new(router.FileRouter)
+	fileRouter.InitFileRouter(v1)
+
 	return r
 }
