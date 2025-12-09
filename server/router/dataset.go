@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/gin-gonic/gin"
 	v1 "server/api/v1"
+	"server/middleware"
 )
 
 type DatasetRouter struct {
@@ -15,8 +16,8 @@ func (r *DatasetRouter) InitDatasetRouter(router *gin.RouterGroup) {
 	{
 		datasetRouter.GET("/", datasetApi.GetAll)
 		datasetRouter.GET("/:uuid", datasetApi.GetOne)
-		datasetRouter.POST("/", datasetApi.New)
-		datasetRouter.PATCH("/:uuid", datasetApi.Update)
-		datasetRouter.DELETE("/:uuid", datasetApi.Delete)
+		datasetRouter.POST("/", middleware.JWTAuth(), datasetApi.New)
+		datasetRouter.PATCH("/:uuid", middleware.JWTAuth(), datasetApi.Update)
+		datasetRouter.DELETE("/:uuid", middleware.JWTAuth(), datasetApi.Delete)
 	}
 }

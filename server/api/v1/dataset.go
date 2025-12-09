@@ -37,7 +37,6 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 }
 
 type NewDatasetParam struct {
-	UserID      uint   `json:"user_id" binding:"required"`
 	Title       string `json:"title" binding:"required"`
 	Description string `json:"description"`
 }
@@ -49,19 +48,28 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": err.Error(),
 		})
+		return
+	}
+
+	// 从 JWT 获取 userID
+	userID, exists := ctx.Get("user_id")
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
 	}
 
 	err := a.service.CreateDataset(&model.Dataset{
 		UUID:        uuid.NewV4(),
 		Title:       p.Title,
 		Description: p.Description,
-		CreatedBy:   p.UserID,
+		CreatedBy:   userID.(uint),
 	})
 	if err != nil {
 		logger.Errorf("%v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": err.Error(),
 		})
+		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
