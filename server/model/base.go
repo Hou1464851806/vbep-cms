@@ -1,6 +1,7 @@
 package model
 
 import (
+	"server/pkg/uuid"
 	"time"
 
 	"gorm.io/gorm"
@@ -8,7 +9,15 @@ import (
 
 // Base Model 包装了记录的时间信息
 type Base struct {
+	ID        string         `gorm:"primaryKey;type:char(36)" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at"`
+}
+
+func (b *Base) BeforeCreate(tx *gorm.DB) (err error) {
+	if b.ID == "" {
+		b.ID = uuid.NewV4()
+	}
+	return
 }

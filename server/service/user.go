@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"gorm.io/gorm"
 	"server/global"
 	"server/model"
+
+	"gorm.io/gorm"
 )
 
 type UserService struct {
@@ -39,14 +40,14 @@ func (s *UserService) FindAndCheckUser(info string, password string) (*model.Use
 	return &user, nil
 }
 
-func (s *UserService) GetUserByID(id uint) (*model.User, error) {
+func (s *UserService) GetUserByID(id string) (*model.User, error) {
 	ctx := context.Background()
 	user, err := gorm.G[model.User](global.DB).Where("id = ?", id).First(ctx)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, gorm.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("failed to query user by id %d: %w", id, err)
+		return nil, fmt.Errorf("failed to query user by id %s: %w", id, err)
 	}
 
 	return &user, nil

@@ -2,13 +2,13 @@ package v1
 
 import (
 	"errors"
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 	"net/http"
 	"server/logger"
 	"server/model"
-	"server/pkg/uuid"
 	"server/service"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type DatasetApi struct {
@@ -64,13 +64,18 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
 		return
 	}
+	uidStr, ok := userID.(string)
+	if !ok {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "user id type error"})
+		return
+	}
 
-	err := a.service.CreateDataset(&model.Dataset{
-		UUID:        uuid.NewV4(),
+	newDataset := &model.Dataset{
 		Title:       p.Title,
 		Description: p.Description,
-		CreatedBy:   userID.(uint),
-	})
+		CreatorID:   uidStr,
+	}
+	err := a.service.CreateDataset(newDataset)
 	if err != nil {
 		logger.Errorf("%v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -81,14 +86,15 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
+		"id":      newDataset.ID,
 	})
 }
 
 func (a *DatasetApi) Update(ctx *gin.Context) {
-	uuid := ctx.Param("datasetUUID")
-	if uuid == "" {
+	id := ctx.Param("id")
+	if id == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid dataset uuid",
+			"message": "invalid dataset id",
 		})
 		return
 	}
@@ -101,7 +107,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 		return
 	}
 
-	dataset, err := a.service.UpdateDataset(uuid, p.Title, p.Description)
+	dataset, err := a.service.UpdateDataset(id, p.Title, p.Description)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{
@@ -109,7 +115,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 			})
 			return
 		}
-		logger.Errorf("failed to update dataset %s: %v", uuid, err)
+		logger.Errorf("failed to update dataset %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "failed to update dataset",
 		})
@@ -123,22 +129,22 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 }
 
 func (a *DatasetApi) Delete(ctx *gin.Context) {
-	uuid := ctx.Param("datasetUUID")
-	if uuid == "" {
+	id := ctx.Param("id")
+	if id == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid dataset uuid",
+			"message": "invalid dataset id",
 		})
 		return
 	}
 
-	if err := a.service.DeleteDataset(uuid); err != nil {
+	if err := a.service.DeleteDataset(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{
 				"message": "dataset not found",
 			})
 			return
 		}
-		logger.Errorf("failed to delete dataset %s: %v", uuid, err)
+		logger.Errorf("failed to delete dataset %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "failed to delete dataset",
 		})
