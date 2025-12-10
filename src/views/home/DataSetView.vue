@@ -13,11 +13,12 @@ const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uui
 const deleteDatasetAPI = (uuid) => apiClient.delete(`/api/v1/datasets/${uuid}`)
 
 const fetchFilesForDatasetAPI = (datasetId) => apiClient.get(`/api/v1/datasets/${datasetId}/files`)
-const uploadDatasetFileAPI = (datasetId, file) => {
+const uploadDatasetFileAPI = (datasetId, file, config = {}) => {
   const formData = new FormData()
   formData.append('file', file)
   return apiClient.post(`/api/v1/datasets/${datasetId}/files`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    ...config,
   })
 }
 const deleteDatasetFileAPI = (datasetId, fileId) =>
@@ -33,6 +34,9 @@ const submitApplicationAPI = (applicationData) => {
     }, 1000)
   })
 }
+
+const FILE_SIZE_LIMIT_MB = 50
+const FILE_SIZE_LIMIT_BYTES = FILE_SIZE_LIMIT_MB * 1024 * 1024
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
@@ -53,6 +57,7 @@ const fileDialog = reactive({
   list: [],
   isLoading: false,
   isUploading: false,
+  uploadTasks: [],
 })
 
 // 状态3: 申请使用对话框
@@ -115,6 +120,44 @@ const normalizeDatasetFiles = (files = []) =>
     uploadedAt: formatDateTime(item.createdAt || item.created_at || item.Time?.CreatedAt),
     raw: item,
   }))
+
+const updateUploadingState = () => {
+  fileDialog.isUploading = fileDialog.uploadTasks.some((task) => task.status === 'uploading')
+}
+
+const ensureUploadTask = (file) => {
+  const existing = fileDialog.uploadTasks.find((task) => task.uid === file.uid)
+  if (existing) return existing
+  const task = {
+    uid: file.uid,
+    name: file.name,
+    percentage: 0,
+    status: 'uploading',
+  }
+  fileDialog.uploadTasks.push(task)
+  updateUploadingState()
+  return task
+}
+
+const updateUploadTask = (uid, payload = {}) => {
+  const task = fileDialog.uploadTasks.find((item) => item.uid === uid)
+  if (task) {
+    Object.assign(task, payload)
+  }
+}
+
+const removeUploadTask = (uid, delay = 0) => {
+  const remover = () => {
+    const index = fileDialog.uploadTasks.findIndex((item) => item.uid === uid)
+    if (index !== -1) fileDialog.uploadTasks.splice(index, 1)
+    updateUploadingState()
+  }
+  if (delay > 0) {
+    setTimeout(remover, delay)
+  } else {
+    remover()
+  }
+}
 
 const fetchDatasets = async () => {
   isDataLoading.value = true
@@ -204,6 +247,22 @@ const handleDelete = (row) => {
 }
 
 // --- 文件管理事件处理 ---
+const handleBeforeUpload = (rawFile) => {
+  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+    return false
+  }
+  return true
+}
+
+const handleFileDialogClose = () => {
+  fileDialog.visible = false
+  fileDialog.currentDataset = null
+  fileDialog.list = []
+  fileDialog.uploadTasks = []
+  fileDialog.isUploading = false
+}
+
 const loadFilesForDataset = async (dataset) => {
   if (!dataset?.id) return
   fileDialog.isLoading = true
@@ -226,34 +285,51 @@ const loadFilesForDataset = async (dataset) => {
 const handleViewFiles = (row) => {
   fileDialog.currentDataset = row
   fileDialog.visible = true
+  fileDialog.uploadTasks = []
   loadFilesForDataset(row)
 }
 const handleDatasetFileUpload = async (options) => {
-  const { file, onError, onSuccess } = options
+  const { file, onError, onSuccess, onProgress } = options
   if (!fileDialog.currentDataset?.id) {
     const err = new Error('未选择数据集，无法上传文件')
     onError?.(err)
     ElMessage.error(err.message)
     return
   }
-  fileDialog.isUploading = true
+  const task = ensureUploadTask(file)
+  onProgress?.({ percent: 0 })
   try {
-    const res = await uploadDatasetFileAPI(fileDialog.currentDataset.id, file)
+    const res = await uploadDatasetFileAPI(fileDialog.currentDataset.id, file, {
+      onUploadProgress: (event) => {
+        const percentage = event.total ? Math.round((event.loaded / event.total) * 100) : 0
+        updateUploadTask(task.uid, { percentage })
+        onProgress?.({ percent: percentage })
+      },
+    })
     if (res?.data?.message === 'success') {
       ElMessage.success(`${file.name} 上传成功`)
       await loadFilesForDataset(fileDialog.currentDataset)
       onSuccess?.(res.data)
+      updateUploadTask(task.uid, { status: 'success', percentage: 100 })
+      updateUploadingState()
+      removeUploadTask(task.uid, 2000)
     } else {
       const message = res?.data?.message || '上传失败'
       ElMessage.error(message)
+      updateUploadTask(task.uid, { status: 'error' })
+      updateUploadingState()
+      removeUploadTask(task.uid, 4000)
       onError?.(new Error(message))
     }
   } catch (error) {
     console.error('Failed to upload file', error)
     ElMessage.error('上传文件失败')
+    updateUploadTask(task.uid, { status: 'error' })
+    updateUploadingState()
+    removeUploadTask(task.uid, 4000)
     onError?.(error)
   } finally {
-    fileDialog.isUploading = false
+    updateUploadingState()
   }
 }
 const handleDownloadFile = async (file) => {
@@ -430,18 +506,30 @@ const handleSubmitApplication = async () => {
       :title="`文件列表 - ${fileDialog.currentDataset?.name}`"
       width="70%"
       top="5vh"
+      @close="handleFileDialogClose"
     >
       <div class="file-dialog-toolbar">
         <el-upload
           action="#"
           :show-file-list="false"
-          :disabled="!fileDialog.currentDataset || fileDialog.isUploading"
+          :disabled="!fileDialog.currentDataset"
+          multiple
+          :before-upload="handleBeforeUpload"
           :http-request="handleDatasetFileUpload"
         >
           <el-button type="primary" :icon="Upload" :loading="fileDialog.isUploading"
             >上传文件</el-button
           >
         </el-upload>
+      </div>
+      <div v-if="fileDialog.uploadTasks.length" class="upload-progress-list">
+        <div v-for="task in fileDialog.uploadTasks" :key="task.uid" class="upload-progress-item">
+          <span class="upload-progress-name">{{ task.name }}</span>
+          <el-progress
+            :percentage="task.percentage"
+            :status="task.status === 'error' ? 'exception' : task.status === 'success' ? 'success' : undefined"
+          />
+        </div>
       </div>
       <el-skeleton :rows="5" animated :loading="fileDialog.isLoading">
         <el-table :data="fileDialog.list" stripe height="450px">
@@ -482,7 +570,7 @@ const handleSubmitApplication = async () => {
         </el-table>
       </el-skeleton>
       <template #footer>
-        <el-button @click="fileDialog.visible = false">关闭</el-button>
+        <el-button @click="handleFileDialogClose">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -561,6 +649,29 @@ const handleSubmitApplication = async () => {
   line-height: 1.7;
   color: #606266;
   white-space: pre-wrap;
+}
+.upload-progress-list {
+  margin-bottom: 16px;
+}
+.upload-progress-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.upload-progress-item:last-child {
+  margin-bottom: 0;
+}
+.upload-progress-name {
+  flex: 0 0 220px;
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-progress-item :deep(.el-progress) {
+  flex: 1;
 }
 .el-upload__tip {
   color: #909399;
