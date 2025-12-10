@@ -101,7 +101,9 @@ const normalizeDatasets = (datasets = []) =>
       item.Creator?.NickName || item.creator || (item.CreatedBy ? `用户 ${item.CreatedBy}` : '未知')
     const datasetId = item.UUID || item.uuid || item.id || item.ID
     const createdAt =
-      item.Time?.CreatedAt || item.CreatedAt || item.createdAt || item.Time.created_at
+      item.Time?.CreatedAt || item.CreatedAt || 
+      item.Time?.createdAt || item.createdAt || 
+      item.Time?.created_at || item.created_at
     return {
       id: datasetId ? String(datasetId) : `dataset-${Date.now()}`,
       name: item.Title || item.title || item.name || '未命名数据集',
@@ -115,7 +117,7 @@ const normalizeDatasets = (datasets = []) =>
 
 const normalizeDatasetFiles = (files = []) =>
   files.map((item) => ({
-    id: item.uuid || item.UUID || item.id,
+    id: item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
     name: item.name || item.Name || '未命名文件',
     size: Number(item.size ?? item.Size ?? 0),
     createdAt: formatDateTime(item.createdAt || item.created_at || item.Time?.CreatedAt),
