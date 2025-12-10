@@ -15,9 +15,9 @@ func (r *DatasetRouter) InitDatasetRouter(router *gin.RouterGroup) {
 	datasetRouter := router.Group("/datasets")
 	{
 		datasetRouter.GET("/", datasetApi.GetAll)
-		datasetRouter.GET("/:uuid", datasetApi.GetOne)
+		datasetRouter.GET("/:datasetUUID", datasetApi.GetOne)
 		datasetRouter.POST("/", middleware.JWTAuth(), datasetApi.New)
-		datasetRouter.PATCH("/:uuid", middleware.JWTAuth(), datasetApi.Update)
-		datasetRouter.DELETE("/:uuid", middleware.JWTAuth(), datasetApi.Delete)
+		datasetRouter.PATCH("/:datasetUUID", middleware.JWTAuth(), datasetApi.Update)
+		datasetRouter.DELETE("/:datasetUUID", middleware.JWTAuth(), datasetApi.Delete)
 	}
 }

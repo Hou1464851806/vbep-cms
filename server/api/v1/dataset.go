@@ -85,7 +85,7 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 }
 
 func (a *DatasetApi) Update(ctx *gin.Context) {
-	uuid := ctx.Param("uuid")
+	uuid := ctx.Param("datasetUUID")
 	if uuid == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "invalid dataset uuid",
@@ -123,7 +123,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 }
 
 func (a *DatasetApi) Delete(ctx *gin.Context) {
-	uuid := ctx.Param("uuid")
+	uuid := ctx.Param("datasetUUID")
 	if uuid == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "invalid dataset uuid",
