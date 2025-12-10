@@ -18,7 +18,10 @@ import (
 	"server/pkg/uuid"
 )
 
-const datasetUploadRoot = "uploads/datasets"
+const (
+	datasetUploadRoot = "uploads/datasets"
+	maxUploadSize     = 50 * 1024 * 1024
+)
 
 type FileService struct {
 }
@@ -30,6 +33,9 @@ func NewFileService() *FileService {
 func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	if fileHeader == nil {
 		return nil, fmt.Errorf("file header cannot be empty")
+	}
+	if fileHeader.Size > maxUploadSize {
+		return nil, fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
 	}
 
 	ctx := context.Background()
@@ -44,7 +50,7 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 	defer src.Close()
 
 	fileUUID := uuid.NewV4()
-	datasetDir := filepath.Join(datasetUploadRoot, datasetUUID)
+	datasetDir := datasetDirPath(datasetUUID)
 	if err := os.MkdirAll(datasetDir, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to create dataset upload directory: %w", err)
 	}
@@ -126,13 +132,31 @@ func (s *FileService) DeleteDatasetFile(datasetUUID, fileUUID string) error {
 		return gorm.ErrRecordNotFound
 	}
 
-	absPath, err := filepath.Abs(file.Path)
+	removePhysicalFile(file.Path)
+	cleanupDatasetDirectory(datasetUUID)
+	return nil
+}
+
+func (s *FileService) DeleteFilesByDataset(datasetUUID string) error {
+	ctx := context.Background()
+	files, err := gorm.G[model.File](global.DB).
+		Where("dataset_uuid = ?", datasetUUID).
+		Find(ctx)
 	if err != nil {
-		logger.Warnf("failed to compute absolute path for %s: %v", file.Path, err)
-		return nil
+		return fmt.Errorf("failed to query files for dataset %s: %w", datasetUUID, err)
 	}
-	if err := os.Remove(absPath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove file %s: %v", absPath, err)
+
+	for _, file := range files {
+		removePhysicalFile(file.Path)
+	}
+
+	res := global.DB.WithContext(ctx).Where("dataset_uuid = ?", datasetUUID).Delete(&model.File{})
+	if res.Error != nil {
+		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetUUID, res.Error)
+	}
+
+	if err := os.RemoveAll(datasetDirPath(datasetUUID)); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("failed to remove dataset directory %s: %v", datasetUUID, err)
 	}
 	return nil
 }
@@ -149,4 +173,36 @@ func (s *FileService) ensureDatasetExists(ctx context.Context, datasetUUID strin
 		return fmt.Errorf("failed to query dataset %s: %w", datasetUUID, err)
 	}
 	return nil
+}
+
+func datasetDirPath(datasetUUID string) string {
+	return filepath.Join(datasetUploadRoot, datasetUUID)
+}
+
+func removePhysicalFile(filePath string) {
+	targetPath := filePath
+	if !filepath.IsAbs(targetPath) {
+		if abs, err := filepath.Abs(filePath); err == nil {
+			targetPath = abs
+		}
+	}
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("failed to remove file %s: %v", targetPath, err)
+	}
+}
+
+func cleanupDatasetDirectory(datasetUUID string) {
+	dir := datasetDirPath(datasetUUID)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Warnf("failed to inspect dataset directory %s: %v", dir, err)
+		}
+		return
+	}
+	if len(entries) == 0 {
+		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
+			logger.Warnf("failed to remove dataset directory %s: %v", dir, err)
+		}
+	}
 }
