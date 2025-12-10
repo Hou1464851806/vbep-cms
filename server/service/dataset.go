@@ -28,7 +28,11 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 
 func (s *DatasetService) GetAllDatasets() ([]model.Dataset, error) {
 	ctx := context.Background()
-	datasets, err := gorm.G[model.Dataset](global.DB).Find(ctx)
+	var datasets []model.Dataset
+	err := global.DB.WithContext(ctx).
+		Preload("Files").
+		Preload("Creator").
+		Find(&datasets).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all datasets: %w", err)
 	}
@@ -68,6 +72,11 @@ func (s *DatasetService) UpdateDataset(uuid string, title, description string) (
 
 func (s *DatasetService) DeleteDataset(uuid string) error {
 	ctx := context.Background()
+
+	if err := NewFileService().DeleteFilesByDataset(uuid); err != nil {
+		return fmt.Errorf("failed to delete files under dataset %s: %w", uuid, err)
+	}
+
 	res := global.DB.WithContext(ctx).Where("uuid = ?", uuid).Delete(&model.Dataset{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete dataset: %w", res.Error)
