@@ -52,3 +52,36 @@ func (s *UserService) GetUserByID(id string) (*model.User, error) {
 
 	return &user, nil
 }
+
+func (s *UserService) ChangeUserRole(operator *model.User, targetUserID string, newRole model.UserRole) error {
+	// 规则一：只有 SuperAdmin 才有资格修改角色
+	if operator.Role != model.SuperAdmin {
+		return fmt.Errorf("permission denied: only SuperAdmin can change roles")
+	}
+
+	targetUser, err := s.GetUserByID(targetUserID)
+	if err != nil {
+		return err
+	}
+
+	if targetUser.Role == model.SuperAdmin && newRole != model.SuperAdmin {
+
+		// 规则二：禁止自我降级 (防自杀)
+		if operator.ID == targetUserID {
+			return fmt.Errorf("operation failed: you cannot demote yourself")
+		}
+
+		// 规则三：最后一人原则 (可选，但在生产环境强烈建议)
+		var count int64
+		global.DB.Model(&model.User{}).Where("role = ?", model.SuperAdmin).Count(&count)
+		if count <= 1 {
+			return fmt.Errorf("operation failed: system must have at least one SuperAdmin")
+		}
+	}
+	targetUser.Role = newRole
+	if err := global.DB.Save(targetUser).Error; err != nil {
+		return fmt.Errorf("failed to update role: %w", err)
+	}
+
+	return nil
+}

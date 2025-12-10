@@ -6,6 +6,7 @@ type UserRole uint
 const (
 	Common UserRole = iota
 	Admin
+	SuperAdmin
 )
 
 // User Model 用户表模型
