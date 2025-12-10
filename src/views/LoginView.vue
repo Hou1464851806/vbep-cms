@@ -13,6 +13,15 @@ import axios from 'axios'
 
 const router = useRouter()
 
+const saveUserId = (userId) => {
+  if (userId === undefined || userId === null) return
+  try {
+    localStorage.setItem('user_id', String(userId))
+  } catch (error) {
+    console.error('Failed to persist user id', error)
+  }
+}
+
 const loginFormRef = ref()
 const loginForm = reactive({
   userInfo: '',
@@ -40,6 +49,7 @@ const submitLoginFrom = async () => {
     const response = await axios.post('/api/v1/users/login', requestData)
     // 步骤 C: 登录成功处理
     console.log('登录成功，Token已在Cookie中设置', response.data)
+    saveUserId(response.data?.user_id)
     ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
     // 跳转到主页或用户仪表盘
     setTimeout(() => {

@@ -48,7 +48,8 @@ func NewDB() *gorm.DB {
 	// 4. 自动迁移
 	err = autoMigrate(db)
 	if err != nil {
-		logger.Errorf("Failed to migrate schema: %v", err)
+		//logger.Errorf("Failed to migrate schema: %v", err)
+		logger.Fatalf("Failed to migrate schema: %v", err)
 	}
 
 	logger.Successf("Auto migrate schema")
@@ -57,6 +58,6 @@ func NewDB() *gorm.DB {
 }
 
 func autoMigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&model.User{})
+	err := db.AutoMigrate(&model.User{}, &model.Dataset{}, &model.File{}, &model.Application{})
 	return err
 }

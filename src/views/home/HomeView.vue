@@ -2,22 +2,12 @@
 <script setup>
 import { ref, reactive, onMounted, provide } from 'vue'
 import { useRoute } from 'vue-router'
-import { Tickets, Memo, User, CollectionTag } from '@element-plus/icons-vue'
+import { Tickets, Memo, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
-// --- 模拟 API & 状态 ---
-const fetchUserInfoAPI = () => {
-  return new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          code: 200,
-          data: { nickname: '数据探索者', email: 'explorer@example.com', role: 'user' },
-        }),
-      200,
-    ),
-  )
-}
+import apiClient from '../../request/axios.js'
+
+const fetchUserInfoAPI = (userId) => apiClient.get(`/api/v1/users/${userId}`)
 
 const userInfo = reactive({ nickname: '', email: '', role: 'user' })
 const isUserLoading = ref(true)
@@ -26,11 +16,24 @@ const route = useRoute() // 获取当前路由信息，用于菜单高亮
 onMounted(async () => {
   isUserLoading.value = true
   try {
-    const res = await fetchUserInfoAPI()
-    if (res && res.code === 200) {
-      Object.assign(userInfo, res.data)
+    const storedUserId = localStorage.getItem('user_id')
+    if (!storedUserId) {
+      ElMessage.error('无法获取用户信息，请重新登录')
+      return
+    }
+    const res = await fetchUserInfoAPI(storedUserId)
+    if (res && res.data?.message === 'success' && res.data.data) {
+      const { nickname, email, role } = res.data.data
+      Object.assign(userInfo, {
+        nickname,
+        email,
+        role: Number(role) === 1 ? 'admin' : 'user',
+      })
+    } else {
+      ElMessage.error('用户信息异常')
     }
   } catch (error) {
+    console.log(error)
     ElMessage.error('无法获取用户信息')
   } finally {
     isUserLoading.value = false
@@ -46,7 +49,7 @@ provide('isAdmin', () => userInfo.role === 'admin')
 <template>
   <el-container class="main-layout-container">
     <!-- 左侧导航栏 -->
-    <el-aside width="220px">
+    <el-aside width="200px">
       <div class="logo-area">VBEP 数据平台</div>
       <el-menu :default-active="route.path" class="el-menu-vertical-demo" router>
         <el-menu-item index="/home/datasets">
@@ -55,7 +58,7 @@ provide('isAdmin', () => userInfo.role === 'admin')
         </el-menu-item>
         <el-menu-item index="/home/applications">
           <el-icon><Memo /></el-icon>
-          <span>申请审批</span>
+          <span>审批管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>

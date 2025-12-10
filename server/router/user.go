@@ -19,7 +19,7 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 		userRouter.POST("/", userApi.CreateUser)
 		userRouter.DELETE("/:id", userApi.DeleteUser)
 		userRouter.PATCH("/:id", userApi.UpdateUser)
-		userRouter.GET("/:id", userApi.GetUser)
+		userRouter.GET("/:id", middleware.JWTAuth(), userApi.GetUser)
 		userRouter.GET("/", userApi.GetAllUsers)
 
 		// auth

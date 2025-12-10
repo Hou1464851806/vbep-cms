@@ -56,6 +56,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"token":   token,
+		"user_id": user.ID,
 	})
 }
 
