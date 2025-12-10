@@ -1,14 +1,11 @@
 package model
 
 type File struct {
-	UUID string `gorm:"primaryKey"`
-	Name string `gorm:"not null"`
-	Path string `gorm:"not null"`
-	MD5  string `gorm:"not null"`
-	Size uint
-	// belongs to
-	DatasetUUID string  `gorm:"not null"`
-	Dataset     Dataset `gorm:"foreignKey:DatasetUUID;references:UUID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-
-	Time Base `gorm:"embedded"`
+	Base
+	Name      string `gorm:"not null"`
+	Path      string `gorm:"not null"`
+	MD5       string `gorm:"not null"`
+	Size      uint
+	DatasetID string  `gorm:"not null;index"`
+	Dataset   Dataset `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
 }

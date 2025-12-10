@@ -11,17 +11,16 @@ const (
 )
 
 type Application struct {
-	UUID           string            `gorm:"primaryKey"`
-	UserID         uint              `gorm:"not null"`
-	User           User              `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	DatasetUUID    string            `gorm:"not null"`
-	Dataset        Dataset           `gorm:"foreignKey:DatasetUUID;references:UUID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	Base
+	ApplicantID    string            `gorm:"not null;type:char(36)"`
+	Applicant      User              `gorm:"foreignKey:ApplicantID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	DatasetID      string            `gorm:"not null;type:char(36)"`
+	Dataset        Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 	Status         ApplicationStatus `gorm:"not null;default:0"`
 	Reason         string            `gorm:"not null"`
 	AttachmentPath []string          `gorm:"serializer:json;type:json"`
-	AuditorID      *uint
-	Auditor        User `gorm:"foreignKey:AuditorID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
+	AuditorID      *string           `gorm:"not null;type:char(36)"`
+	Auditor        User              `gorm:"foreignKey:AuditorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 	AuditorResult  *string
-	AuditedAt      *time.Time `gorm:"type:timestamptz"`
-	Time           Base       `gorm:"embedded"`
+	AuditedAt      *time.Time
 }

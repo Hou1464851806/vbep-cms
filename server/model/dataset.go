@@ -1,14 +1,12 @@
 package model
 
 type Dataset struct {
-	UUID        string `gorm:"primaryKey"`
+	Base
 	Title       string `gorm:"not null"`
 	Description string
-	CreatedBy   uint `gorm:"not null"`
-	// 不显示在表中，让gorm识别belongs to关系，默认引用user.id
-	Creator User `gorm:"foreignKey:CreatedBy;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
-	Time Base `gorm:"embedded"`
+	CreatorID string `gorm:"not null;type:char(36)"`
+	Creator   User   `gorm:"foreignKey:CreatorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
-	Files []File `gorm:"foreignKey:DatasetUUID;references:UUID"`
+	Files []File `gorm:"foreignKey:DatasetID;references:ID"`
 }

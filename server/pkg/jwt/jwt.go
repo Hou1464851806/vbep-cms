@@ -15,11 +15,11 @@ const TokenExpiredDuration = time.Hour * 24
 var secret = []byte("uzcqzTjZ7iRnEowCKA88WIOy7f52I5ezScbYgEv2BXU=")
 
 type Claims struct {
-	UserID uint `json:"user_id"`
+	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
-func GenerateToken(userID uint) (string, error) {
+func GenerateToken(userID string) (string, error) {
 	claims := Claims{
 		userID,
 		jwt.RegisteredClaims{

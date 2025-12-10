@@ -1,9 +1,10 @@
 package router
 
 import (
-	"github.com/gin-gonic/gin"
-	"server/api/v1"
+	v1 "server/api/v1"
 	"server/middleware"
+
+	"github.com/gin-gonic/gin"
 )
 
 type UserRouter struct {
@@ -20,7 +21,7 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 		userRouter.DELETE("/:id", userApi.DeleteUser)
 		userRouter.PATCH("/:id", userApi.UpdateUser)
 		userRouter.GET("/:id", middleware.JWTAuth(), userApi.GetUser)
-		userRouter.GET("/", userApi.GetAllUsers)
+		userRouter.GET("/", middleware.JWTAuth(), userApi.GetAllUsers)
 
 		// auth
 		userRouter.POST("/login", authApi.Login)
