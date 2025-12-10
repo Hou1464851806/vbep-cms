@@ -9,7 +9,7 @@ import thirdPartyQrSrc from '../assets/img/qr-code.svg'
 import thirdPartyChatSrc from '../assets/img/wechat.png'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import apiClient, { setAuthToken } from '../request/axios.js'
 
 const router = useRouter()
 
@@ -46,9 +46,15 @@ const submitLoginFrom = async () => {
       user_info: loginForm.userInfo,
       password: loginForm.password,
     }
-    const response = await axios.post('/api/v1/users/login', requestData)
+    const response = await apiClient.post('/api/v1/users/login', requestData)
     // 步骤 C: 登录成功处理
-    console.log('登录成功，Token已在Cookie中设置', response.data)
+    console.log('登录成功，Token已写入本地存储', response.data)
+    const token = response.data?.token
+    if (token) {
+      setAuthToken(token)
+    } else {
+      console.warn('登录响应中未找到 token')
+    }
     saveUserId(response.data?.user_id)
     ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
     // 跳转到主页或用户仪表盘
