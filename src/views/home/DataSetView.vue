@@ -4,30 +4,26 @@ import { ref, onMounted, inject, reactive } from 'vue'
 import { Plus, Edit, Delete, Document, Upload, Download, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-// --- 模拟 API 函数 ---
 import apiClient from '../../request/axios.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
-
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
 const deleteDatasetAPI = (uuid) => apiClient.delete(`/api/v1/datasets/${uuid}`)
 
-const fetchFilesForDatasetAPI = (datasetId) =>
-  new Promise((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          code: 200,
-          data: [
-            { id: 'file-01', name: '华北区销售额.xlsx', size: '2.3 MB', uploadedAt: '2023-04-01' },
-            { id: 'file-02', name: '华南区客户画像.csv', size: '5.1 MB', uploadedAt: '2023-04-01' },
-          ],
-        }),
-      400,
-    ),
-  )
+const fetchFilesForDatasetAPI = (datasetId) => apiClient.get(`/api/v1/datasets/${datasetId}/files`)
+const uploadDatasetFileAPI = (datasetId, file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.post(`/api/v1/datasets/${datasetId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
+const deleteDatasetFileAPI = (datasetId, fileId) =>
+  apiClient.delete(`/api/v1/datasets/${datasetId}/files/${fileId}`)
+const downloadDatasetFileAPI = (datasetId, fileId) =>
+  apiClient.get(`/api/v1/datasets/${datasetId}/files/${fileId}`, { responseType: 'blob' })
 
 const submitApplicationAPI = (applicationData) => {
   console.log('正在提交申请数据:', applicationData)
@@ -51,7 +47,13 @@ const datasetFormDialog = reactive({
 })
 
 // 状态2: 文件管理对话框
-const fileDialog = reactive({ visible: false, currentDataset: null, list: [], isLoading: false })
+const fileDialog = reactive({
+  visible: false,
+  currentDataset: null,
+  list: [],
+  isLoading: false,
+  isUploading: false,
+})
 
 // 状态3: 申请使用对话框
 const applicationFormRef = ref(null)
@@ -68,9 +70,23 @@ const formatDateTime = (value) => {
   if (!value) return '-'
   try {
     return new Date(value).toLocaleString()
-  } catch (error) {
+  } catch {
     return value
   }
+}
+
+const formatFileSize = (value) => {
+  const size = Number(value) || 0
+  if (size <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let idx = 0
+  let current = size
+  while (current >= 1024 && idx < units.length - 1) {
+    current /= 1024
+    idx += 1
+  }
+  const formatted = idx === 0 ? current.toFixed(0) : current.toFixed(2)
+  return `${formatted} ${units[idx]}`
 }
 
 const normalizeDatasets = (datasets = []) =>
@@ -91,6 +107,15 @@ const normalizeDatasets = (datasets = []) =>
     }
   })
 
+const normalizeDatasetFiles = (files = []) =>
+  files.map((item) => ({
+    id: item.uuid || item.UUID || item.id,
+    name: item.name || item.Name || '未命名文件',
+    size: Number(item.size ?? item.Size ?? 0),
+    uploadedAt: formatDateTime(item.createdAt || item.created_at || item.Time?.CreatedAt),
+    raw: item,
+  }))
+
 const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
@@ -100,7 +125,7 @@ const fetchDatasets = async () => {
       return
     }
     ElMessage.error(res?.data?.message || '数据集加载失败')
-  } catch (e) {
+  } catch {
     ElMessage.error('数据集加载失败')
   } finally {
     isDataLoading.value = false
@@ -150,7 +175,7 @@ const handleSaveDataset = async () => {
       }
     }
     datasetFormDialog.visible = false
-  } catch (error) {
+  } catch {
     ElMessage.error('操作失败')
   }
 }
@@ -169,7 +194,7 @@ const handleDelete = (row) => {
         } else {
           ElMessage.error(res.data?.message || '删除失败')
         }
-      } catch (error) {
+      } catch {
         ElMessage.error('删除失败')
       }
     })
@@ -179,41 +204,101 @@ const handleDelete = (row) => {
 }
 
 // --- 文件管理事件处理 ---
-const handleViewFiles = async (row) => {
-  fileDialog.currentDataset = row
-  fileDialog.visible = true
+const loadFilesForDataset = async (dataset) => {
+  if (!dataset?.id) return
   fileDialog.isLoading = true
   fileDialog.list = []
   try {
-    const res = await fetchFilesForDatasetAPI(row.id)
-    if (res && res.code === 200) fileDialog.list = res.data
-  } catch (e) {
+    const res = await fetchFilesForDatasetAPI(dataset.id)
+    if (res?.data?.message === 'success') {
+      fileDialog.list = normalizeDatasetFiles(res.data.files)
+      dataset.fileCount = fileDialog.list.length
+    } else {
+      ElMessage.error(res?.data?.message || '文件列表加载失败')
+    }
+  } catch (error) {
+    console.error('Failed to load files', error)
     ElMessage.error('文件列表加载失败')
   } finally {
     fileDialog.isLoading = false
   }
 }
-const handleFileUploadSuccess = (response, file) => {
-  ElMessage.success(`${file.name} 上传成功! (模拟)`)
-  fileDialog.list.unshift({
-    id: `new-${Date.now()}`,
-    name: file.name,
-    size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-    uploadedAt: new Date().toLocaleDateString(),
-  })
-  if (fileDialog.currentDataset) {
-    fileDialog.currentDataset.fileCount++
+const handleViewFiles = (row) => {
+  fileDialog.currentDataset = row
+  fileDialog.visible = true
+  loadFilesForDataset(row)
+}
+const handleDatasetFileUpload = async (options) => {
+  const { file, onError, onSuccess } = options
+  if (!fileDialog.currentDataset?.id) {
+    const err = new Error('未选择数据集，无法上传文件')
+    onError?.(err)
+    ElMessage.error(err.message)
+    return
+  }
+  fileDialog.isUploading = true
+  try {
+    const res = await uploadDatasetFileAPI(fileDialog.currentDataset.id, file)
+    if (res?.data?.message === 'success') {
+      ElMessage.success(`${file.name} 上传成功`)
+      await loadFilesForDataset(fileDialog.currentDataset)
+      onSuccess?.(res.data)
+    } else {
+      const message = res?.data?.message || '上传失败'
+      ElMessage.error(message)
+      onError?.(new Error(message))
+    }
+  } catch (error) {
+    console.error('Failed to upload file', error)
+    ElMessage.error('上传文件失败')
+    onError?.(error)
+  } finally {
+    fileDialog.isUploading = false
   }
 }
-const handleDownloadFile = (file) => {
-  ElMessage.info(`开始下载文件: ${file.name} (模拟)`)
-  const link = document.createElement('a')
-  link.style.display = 'none'
-  link.href = '#'
-  link.setAttribute('download', file.name)
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
+const handleDownloadFile = async (file) => {
+  if (!fileDialog.currentDataset?.id) {
+    ElMessage.error('未找到对应的数据集')
+    return
+  }
+  try {
+    const res = await downloadDatasetFileAPI(fileDialog.currentDataset.id, file.id)
+    const blob = new Blob([res.data])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', file.name)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to download file', error)
+    ElMessage.error('下载文件失败')
+  }
+}
+const handleDeleteFile = (file) => {
+  if (!fileDialog.currentDataset?.id) return
+  ElMessageBox.confirm(`确定要删除文件 "${file.name}" 吗？`, '提示', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      try {
+        const res = await deleteDatasetFileAPI(fileDialog.currentDataset.id, file.id)
+        if (res?.data?.message === 'success') {
+          ElMessage.success('文件已删除')
+          await loadFilesForDataset(fileDialog.currentDataset)
+        } else {
+          ElMessage.error(res?.data?.message || '删除失败')
+        }
+      } catch (error) {
+        console.error('Failed to delete file', error)
+        ElMessage.error('删除文件失败')
+      }
+    })
+    .catch(() => {})
 }
 
 // --- 申请功能事件处理 ---
@@ -350,11 +435,12 @@ const handleSubmitApplication = async () => {
         <el-upload
           action="#"
           :show-file-list="false"
-          :on-success="handleFileUploadSuccess"
-          :data="{ datasetId: fileDialog.currentDataset?.id }"
-          :http-request="() => {}"
+          :disabled="!fileDialog.currentDataset || fileDialog.isUploading"
+          :http-request="handleDatasetFileUpload"
         >
-          <el-button type="primary" :icon="Upload">上传文件</el-button>
+          <el-button type="primary" :icon="Upload" :loading="fileDialog.isUploading"
+            >上传文件</el-button
+          >
         </el-upload>
       </div>
       <el-skeleton :rows="5" animated :loading="fileDialog.isLoading">
@@ -365,9 +451,17 @@ const handleSubmitApplication = async () => {
               <span>{{ scope.row.name }}</span>
             </template>
           </el-table-column>
-          <el-table-column property="size" label="大小" width="120" />
-          <el-table-column property="uploadedAt" label="上传时间" width="180" />
-          <el-table-column label="操作" width="120" align="center">
+          <el-table-column label="大小" width="140">
+            <template #default="scope">
+              {{ formatFileSize(scope.row.size) }}
+            </template>
+          </el-table-column>
+          <el-table-column property="uploadedAt" label="上传时间" width="180">
+            <template #default="scope">
+              {{ scope.row.uploadedAt || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" align="center">
             <template #default="scope">
               <el-button
                 type="success"
@@ -375,6 +469,13 @@ const handleSubmitApplication = async () => {
                 size="small"
                 @click="handleDownloadFile(scope.row)"
                 >下载</el-button
+              >
+              <el-button
+                type="danger"
+                :icon="Delete"
+                size="small"
+                @click="handleDeleteFile(scope.row)"
+                >删除</el-button
               >
             </template>
           </el-table-column>
