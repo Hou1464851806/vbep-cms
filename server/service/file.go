@@ -71,15 +71,18 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 
 	size := uint(written)
 	newFile := &model.File{
-		UUID:        fileUUID,
-		Name:        fileHeader.Filename,
-		Path:        filepath.ToSlash(targetPath),
-		MD5:         hex.EncodeToString(hasher.Sum(nil)),
-		Size:        size,
-		DatasetUUID: datasetUUID,
+		Base: model.Base{
+			ID: fileUUID,
+		},
+		Name:      fileHeader.Filename,
+		Path:      filepath.ToSlash(targetPath),
+		MD5:       hex.EncodeToString(hasher.Sum(nil)),
+		Size:      size,
+		DatasetID: datasetUUID,
 	}
 
 	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
+		_ = os.Remove(targetPath)
 		return nil, fmt.Errorf("failed to save file metadata: %w", err)
 	}
 
@@ -93,7 +96,7 @@ func (s *FileService) GetFilesByDataset(datasetUUID string) ([]model.File, error
 	}
 
 	files, err := gorm.G[model.File](global.DB).
-		Where("dataset_uuid = ?", datasetUUID).
+		Where("dataset_id = ?", datasetUUID).
 		Order("created_at DESC").
 		Find(ctx)
 	if err != nil {
@@ -106,7 +109,7 @@ func (s *FileService) GetFilesByDataset(datasetUUID string) ([]model.File, error
 func (s *FileService) GetDatasetFile(datasetUUID, fileUUID string) (*model.File, error) {
 	ctx := context.Background()
 	file, err := gorm.G[model.File](global.DB).
-		Where("uuid = ? AND dataset_uuid = ?", fileUUID, datasetUUID).
+		Where("id = ? AND dataset_id = ?", fileUUID, datasetUUID).
 		First(ctx)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -124,7 +127,7 @@ func (s *FileService) DeleteDatasetFile(datasetUUID, fileUUID string) error {
 	}
 
 	ctx := context.Background()
-	res := global.DB.WithContext(ctx).Where("uuid = ?", fileUUID).Delete(&model.File{})
+	res := global.DB.WithContext(ctx).Where("id = ?", fileUUID).Delete(&model.File{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete file record: %w", res.Error)
 	}
@@ -140,7 +143,7 @@ func (s *FileService) DeleteDatasetFile(datasetUUID, fileUUID string) error {
 func (s *FileService) DeleteFilesByDataset(datasetUUID string) error {
 	ctx := context.Background()
 	files, err := gorm.G[model.File](global.DB).
-		Where("dataset_uuid = ?", datasetUUID).
+		Where("dataset_id = ?", datasetUUID).
 		Find(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to query files for dataset %s: %w", datasetUUID, err)
@@ -150,7 +153,7 @@ func (s *FileService) DeleteFilesByDataset(datasetUUID string) error {
 		removePhysicalFile(file.Path)
 	}
 
-	res := global.DB.WithContext(ctx).Where("dataset_uuid = ?", datasetUUID).Delete(&model.File{})
+	res := global.DB.WithContext(ctx).Where("dataset_id = ?", datasetUUID).Delete(&model.File{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetUUID, res.Error)
 	}
@@ -163,8 +166,8 @@ func (s *FileService) DeleteFilesByDataset(datasetUUID string) error {
 
 func (s *FileService) ensureDatasetExists(ctx context.Context, datasetUUID string) error {
 	_, err := gorm.G[model.Dataset](global.DB).
-		Select("uuid").
-		Where("uuid = ?", datasetUUID).
+		Select("id").
+		Where("id = ?", datasetUUID).
 		First(ctx)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {

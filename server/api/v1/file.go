@@ -18,11 +18,11 @@ type FileApi struct {
 }
 
 type datasetFileResponse struct {
-	UUID        string    `json:"uuid"`
-	Name        string    `json:"name"`
-	Size        uint      `json:"size"`
-	DatasetUUID string    `json:"datasetUUID"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID        string    `json:"fileID"`
+	Name      string    `json:"name"`
+	Size      uint      `json:"size"`
+	DatasetID string    `json:"datasetID"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func NewFileApi() *FileApi {
@@ -30,7 +30,7 @@ func NewFileApi() *FileApi {
 }
 
 func (a *FileApi) ListByDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("datasetUUID")
+	datasetUUID := ctx.Param("id")
 	if datasetUUID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
 		return
@@ -50,11 +50,11 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 	resp := make([]datasetFileResponse, 0, len(files))
 	for _, file := range files {
 		resp = append(resp, datasetFileResponse{
-			UUID:        file.UUID,
-			Name:        file.Name,
-			Size:        file.Size,
-			DatasetUUID: file.DatasetUUID,
-			CreatedAt:   file.Time.CreatedAt,
+			ID:        file.ID,
+			Name:      file.Name,
+			Size:      file.Size,
+			DatasetID: file.DatasetID,
+			CreatedAt: file.CreatedAt,
 		})
 	}
 
@@ -65,7 +65,7 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 }
 
 func (a *FileApi) UploadToDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("datasetUUID")
+	datasetUUID := ctx.Param("id")
 	if datasetUUID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
 		return
@@ -91,18 +91,18 @@ func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"file": datasetFileResponse{
-			UUID:        file.UUID,
-			Name:        file.Name,
-			Size:        file.Size,
-			DatasetUUID: file.DatasetUUID,
-			CreatedAt:   file.Time.CreatedAt,
+			ID:        file.ID,
+			Name:      file.Name,
+			Size:      file.Size,
+			DatasetID: file.DatasetID,
+			CreatedAt: file.CreatedAt,
 		},
 	})
 }
 
 func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("datasetUUID")
-	fileUUID := ctx.Param("fileUUID")
+	datasetUUID := ctx.Param("id")
+	fileUUID := ctx.Param("fileID")
 	if datasetUUID == "" || fileUUID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
 		return
@@ -130,8 +130,8 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 }
 
 func (a *FileApi) DeleteFromDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("datasetUUID")
-	fileUUID := ctx.Param("fileUUID")
+	datasetUUID := ctx.Param("id")
+	fileUUID := ctx.Param("fileID")
 	if datasetUUID == "" || fileUUID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
 		return
