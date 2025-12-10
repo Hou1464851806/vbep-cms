@@ -40,3 +40,4 @@ __screenshots__/
 *.sqlite3
 
 pic
+server/uploads/
