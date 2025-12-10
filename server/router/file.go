@@ -12,11 +12,12 @@ type FileRouter struct {
 func (r *FileRouter) InitFileRouter(router *gin.RouterGroup) {
 	var fileApi = v1.NewFileApi()
 
-	//fileRouter := router.Group("/files")
-
-	router.GET("/datasets/files/:id", middleware.JWTAuth(), fileApi.DownloadByDataset)
-	router.GET("/requests/files/:id", middleware.JWTAuth(), fileApi.DownloadByRequest)
-	router.POST("/datasets/files/", middleware.JWTAuth(), fileApi.UploadToDataset)
-	router.POST("/requests/files/", middleware.JWTAuth(), fileApi.UploadToRequest)
-
+	datasetFiles := router.Group("/datasets/:datasetUUID/files")
+	datasetFiles.Use(middleware.JWTAuth())
+	{
+		datasetFiles.GET("", fileApi.ListByDataset)
+		datasetFiles.POST("", fileApi.UploadToDataset)
+		datasetFiles.GET("/:fileUUID", fileApi.DownloadByDataset)
+		datasetFiles.DELETE("/:fileUUID", fileApi.DeleteFromDataset)
+	}
 }
