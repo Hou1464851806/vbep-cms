@@ -100,7 +100,8 @@ const normalizeDatasets = (datasets = []) =>
     const creatorName =
       item.Creator?.NickName || item.creator || (item.CreatedBy ? `用户 ${item.CreatedBy}` : '未知')
     const datasetId = item.UUID || item.uuid || item.id || item.ID
-    const createdAt = item.Time?.CreatedAt || item.CreatedAt || item.createdAt
+    const createdAt =
+      item.Time?.CreatedAt || item.CreatedAt || item.createdAt || item.Time.created_at
     return {
       id: datasetId ? String(datasetId) : `dataset-${Date.now()}`,
       name: item.Title || item.title || item.name || '未命名数据集',
@@ -117,7 +118,7 @@ const normalizeDatasetFiles = (files = []) =>
     id: item.uuid || item.UUID || item.id,
     name: item.name || item.Name || '未命名文件',
     size: Number(item.size ?? item.Size ?? 0),
-    uploadedAt: formatDateTime(item.createdAt || item.created_at || item.Time?.CreatedAt),
+    createdAt: formatDateTime(item.createdAt || item.created_at || item.Time?.CreatedAt),
     raw: item,
   }))
 
@@ -527,7 +528,13 @@ const handleSubmitApplication = async () => {
           <span class="upload-progress-name">{{ task.name }}</span>
           <el-progress
             :percentage="task.percentage"
-            :status="task.status === 'error' ? 'exception' : task.status === 'success' ? 'success' : undefined"
+            :status="
+              task.status === 'error'
+                ? 'exception'
+                : task.status === 'success'
+                  ? 'success'
+                  : undefined
+            "
           />
         </div>
       </div>
@@ -544,9 +551,9 @@ const handleSubmitApplication = async () => {
               {{ formatFileSize(scope.row.size) }}
             </template>
           </el-table-column>
-          <el-table-column property="uploadedAt" label="上传时间" width="180">
+          <el-table-column property="createdAt" label="上传时间" width="180">
             <template #default="scope">
-              {{ scope.row.uploadedAt || '-' }}
+              {{ scope.row.createdAt || '-' }}
             </template>
           </el-table-column>
           <el-table-column label="操作" width="200" align="center">
