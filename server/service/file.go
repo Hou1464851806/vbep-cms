@@ -21,6 +21,9 @@ import (
 const (
 	datasetUploadRoot = "uploads/datasets"
 	maxUploadSize     = 50 * 1024 * 1024
+
+	// Default GORM table name for Dataset is "datasets", which is stored in OwnerType.
+	datasetOwnerType = "datasets"
 )
 
 type FileService struct {
@@ -30,7 +33,7 @@ func NewFileService() *FileService {
 	return &FileService{}
 }
 
-func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreateDatasetFile(datasetID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	if fileHeader == nil {
 		return nil, fmt.Errorf("file header cannot be empty")
 	}
@@ -39,7 +42,7 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 	}
 
 	ctx := context.Background()
-	if err := s.ensureDatasetExists(ctx, datasetUUID); err != nil {
+	if err := s.ensureDatasetExists(ctx, datasetID); err != nil {
 		return nil, err
 	}
 
@@ -50,7 +53,7 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 	defer src.Close()
 
 	fileUUID := uuid.NewV4()
-	datasetDir := datasetDirPath(datasetUUID)
+	datasetDir := datasetDirPath(datasetID)
 	if err := os.MkdirAll(datasetDir, os.ModePerm); err != nil {
 		return nil, fmt.Errorf("failed to create dataset upload directory: %w", err)
 	}
@@ -78,7 +81,8 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 		Path:      filepath.ToSlash(targetPath),
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      size,
-		DatasetID: datasetUUID,
+		OwnerID:   datasetID,
+		OwnerType: datasetOwnerType,
 	}
 
 	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
@@ -89,14 +93,14 @@ func (s *FileService) CreateDatasetFile(datasetUUID string, fileHeader *multipar
 	return newFile, nil
 }
 
-func (s *FileService) GetFilesByDataset(datasetUUID string) ([]model.File, error) {
+func (s *FileService) GetFilesByDataset(datasetID string) ([]model.File, error) {
 	ctx := context.Background()
-	if err := s.ensureDatasetExists(ctx, datasetUUID); err != nil {
+	if err := s.ensureDatasetExists(ctx, datasetID); err != nil {
 		return nil, err
 	}
 
 	files, err := gorm.G[model.File](global.DB).
-		Where("dataset_id = ?", datasetUUID).
+		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
 		Order("created_at DESC").
 		Find(ctx)
 	if err != nil {
@@ -106,10 +110,10 @@ func (s *FileService) GetFilesByDataset(datasetUUID string) ([]model.File, error
 	return files, nil
 }
 
-func (s *FileService) GetDatasetFile(datasetUUID, fileUUID string) (*model.File, error) {
+func (s *FileService) GetDatasetFile(datasetID, fileID string) (*model.File, error) {
 	ctx := context.Background()
 	file, err := gorm.G[model.File](global.DB).
-		Where("id = ? AND dataset_id = ?", fileUUID, datasetUUID).
+		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, datasetID, datasetOwnerType).
 		First(ctx)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -120,14 +124,16 @@ func (s *FileService) GetDatasetFile(datasetUUID, fileUUID string) (*model.File,
 	return &file, nil
 }
 
-func (s *FileService) DeleteDatasetFile(datasetUUID, fileUUID string) error {
-	file, err := s.GetDatasetFile(datasetUUID, fileUUID)
+func (s *FileService) DeleteDatasetFile(datasetID, fileID string) error {
+	file, err := s.GetDatasetFile(datasetID, fileID)
 	if err != nil {
 		return err
 	}
 
 	ctx := context.Background()
-	res := global.DB.WithContext(ctx).Where("id = ?", fileUUID).Delete(&model.File{})
+	res := global.DB.WithContext(ctx).
+		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, datasetID, datasetOwnerType).
+		Delete(&model.File{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete file record: %w", res.Error)
 	}
@@ -136,50 +142,52 @@ func (s *FileService) DeleteDatasetFile(datasetUUID, fileUUID string) error {
 	}
 
 	removePhysicalFile(file.Path)
-	cleanupDatasetDirectory(datasetUUID)
+	cleanupDatasetDirectory(datasetID)
 	return nil
 }
 
-func (s *FileService) DeleteFilesByDataset(datasetUUID string) error {
+func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 	ctx := context.Background()
 	files, err := gorm.G[model.File](global.DB).
-		Where("dataset_id = ?", datasetUUID).
+		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
 		Find(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to query files for dataset %s: %w", datasetUUID, err)
+		return fmt.Errorf("failed to query files for dataset %s: %w", datasetID, err)
 	}
 
 	for _, file := range files {
 		removePhysicalFile(file.Path)
 	}
 
-	res := global.DB.WithContext(ctx).Where("dataset_id = ?", datasetUUID).Delete(&model.File{})
+	res := global.DB.WithContext(ctx).
+		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
+		Delete(&model.File{})
 	if res.Error != nil {
-		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetUUID, res.Error)
+		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetID, res.Error)
 	}
 
-	if err := os.RemoveAll(datasetDirPath(datasetUUID)); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove dataset directory %s: %v", datasetUUID, err)
+	if err := os.RemoveAll(datasetDirPath(datasetID)); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("failed to remove dataset directory %s: %v", datasetID, err)
 	}
 	return nil
 }
 
-func (s *FileService) ensureDatasetExists(ctx context.Context, datasetUUID string) error {
+func (s *FileService) ensureDatasetExists(ctx context.Context, datasetID string) error {
 	_, err := gorm.G[model.Dataset](global.DB).
 		Select("id").
-		Where("id = ?", datasetUUID).
+		Where("id = ?", datasetID).
 		First(ctx)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return err
 		}
-		return fmt.Errorf("failed to query dataset %s: %w", datasetUUID, err)
+		return fmt.Errorf("failed to query dataset %s: %w", datasetID, err)
 	}
 	return nil
 }
 
-func datasetDirPath(datasetUUID string) string {
-	return filepath.Join(datasetUploadRoot, datasetUUID)
+func datasetDirPath(datasetID string) string {
+	return filepath.Join(datasetUploadRoot, datasetID)
 }
 
 func removePhysicalFile(filePath string) {

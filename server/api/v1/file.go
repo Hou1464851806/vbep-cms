@@ -30,19 +30,19 @@ func NewFileApi() *FileApi {
 }
 
 func (a *FileApi) ListByDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("id")
-	if datasetUUID == "" {
+	datasetID := ctx.Param("id")
+	if datasetID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
 		return
 	}
 
-	files, err := a.service.GetFilesByDataset(datasetUUID)
+	files, err := a.service.GetFilesByDataset(datasetID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
 			return
 		}
-		logger.Errorf("failed to list files for dataset %s: %v", datasetUUID, err)
+		logger.Errorf("failed to list files for dataset %s: %v", datasetID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load files"})
 		return
 	}
@@ -53,7 +53,7 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 			ID:        file.ID,
 			Name:      file.Name,
 			Size:      file.Size,
-			DatasetID: file.DatasetID,
+			DatasetID: file.OwnerID,
 			CreatedAt: file.CreatedAt,
 		})
 	}
@@ -65,8 +65,8 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 }
 
 func (a *FileApi) UploadToDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("id")
-	if datasetUUID == "" {
+	datasetID := ctx.Param("id")
+	if datasetID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
 		return
 	}
@@ -77,13 +77,13 @@ func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreateDatasetFile(datasetUUID, fileHeader)
+	file, err := a.service.CreateDatasetFile(datasetID, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
 			return
 		}
-		logger.Errorf("failed to upload file for dataset %s: %v", datasetUUID, err)
+		logger.Errorf("failed to upload file for dataset %s: %v", datasetID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})
 		return
 	}
@@ -94,27 +94,27 @@ func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 			ID:        file.ID,
 			Name:      file.Name,
 			Size:      file.Size,
-			DatasetID: file.DatasetID,
+			DatasetID: file.OwnerID,
 			CreatedAt: file.CreatedAt,
 		},
 	})
 }
 
 func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("id")
-	fileUUID := ctx.Param("fileID")
-	if datasetUUID == "" || fileUUID == "" {
+	datasetID := ctx.Param("id")
+	fileID := ctx.Param("fileID")
+	if datasetID == "" || fileID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
 		return
 	}
 
-	file, err := a.service.GetDatasetFile(datasetUUID, fileUUID)
+	file, err := a.service.GetDatasetFile(datasetID, fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
 			return
 		}
-		logger.Errorf("failed to get file %s for dataset %s: %v", fileUUID, datasetUUID, err)
+		logger.Errorf("failed to get file %s for dataset %s: %v", fileID, datasetID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to download file"})
 		return
 	}
@@ -130,19 +130,19 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 }
 
 func (a *FileApi) DeleteFromDataset(ctx *gin.Context) {
-	datasetUUID := ctx.Param("id")
-	fileUUID := ctx.Param("fileID")
-	if datasetUUID == "" || fileUUID == "" {
+	datasetID := ctx.Param("id")
+	fileID := ctx.Param("fileID")
+	if datasetID == "" || fileID == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
 		return
 	}
 
-	if err := a.service.DeleteDatasetFile(datasetUUID, fileUUID); err != nil {
+	if err := a.service.DeleteDatasetFile(datasetID, fileID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
 			return
 		}
-		logger.Errorf("failed to delete file %s for dataset %s: %v", fileUUID, datasetUUID, err)
+		logger.Errorf("failed to delete file %s for dataset %s: %v", fileID, datasetID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
 		return
 	}
