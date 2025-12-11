@@ -3,13 +3,12 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"server/global"
 	"server/pkg/jwt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
-
-const CTXUserID = "user_id"
 
 func JWTAuth() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
@@ -51,7 +50,7 @@ func JWTAuth() gin.HandlerFunc {
 			ctx.Abort()
 			return
 		}
-		ctx.Set(CTXUserID, claims.UserID)
+		ctx.Set(global.CTXUserID, claims.UserID)
 		ctx.Next()
 	}
 }

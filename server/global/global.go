@@ -17,3 +17,8 @@ var (
 	DB    *gorm.DB
 	REDIS *redis.Client
 )
+
+const (
+	CTXUserObj = "user_obj"
+	CTXUserID  = "user_id"
+)

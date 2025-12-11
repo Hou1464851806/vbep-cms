@@ -21,7 +21,6 @@ func NewAuthApi() *AuthApi {
 }
 
 type LoginParam struct {
-	//UserID   uint   `json:"user_id" binding:"required"`
 	UserInfo string `json:"user_info" binding:"required"`
 	PWDHash  string `json:"password" binding:"required"`
 }
