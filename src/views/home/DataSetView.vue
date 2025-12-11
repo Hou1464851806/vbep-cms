@@ -26,14 +26,7 @@ const deleteDatasetFileAPI = (datasetId, fileId) =>
 const downloadDatasetFileAPI = (datasetId, fileId) =>
   apiClient.get(`/api/v1/datasets/${datasetId}/files/${fileId}`, { responseType: 'blob' })
 
-const submitApplicationAPI = (applicationData) => {
-  console.log('正在提交申请数据:', applicationData)
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ code: 200, message: '申请提交成功，请等待管理员审批！' })
-    }, 1000)
-  })
-}
+const submitApplicationAPI = (applicationData) => apiClient.post('/api/v1/applications', applicationData)
 
 const FILE_SIZE_LIMIT_MB = 50
 const FILE_SIZE_LIMIT_BYTES = FILE_SIZE_LIMIT_MB * 1024 * 1024
@@ -395,20 +388,15 @@ const handleSubmitApplication = async () => {
     if (valid) {
       applicationDialog.isSubmitting = true
       try {
-        const uploadedFiles = uploadRef.value
-          ?.getFiles()
-          .map((f) => ({ name: f.name, size: f.size }))
         const res = await submitApplicationAPI({
           datasetId: applicationDialog.dataset.id,
-          datasetName: applicationDialog.dataset.name,
           reason: applicationDialog.form.reason,
-          attachments: uploadedFiles,
         })
-        if (res.code === 200) {
-          ElMessage.success(res.message)
+        if (res.data?.message === 'success') {
+          ElMessage.success('申请提交成功，请等待管理员审批')
           applicationDialog.visible = false
         } else {
-          ElMessage.error(res.message || '申请提交失败')
+          ElMessage.error(res.data?.message || '申请提交失败')
         }
       } catch (error) {
         console.error('Application submission failed:', error)
