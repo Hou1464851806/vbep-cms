@@ -13,6 +13,11 @@ import (
 	"server/service"
 )
 
+var (
+	errUserNotAuthenticated = errors.New("user not authenticated")
+	errInvalidUserID        = errors.New("invalid user id")
+)
+
 type ApplicationApi struct {
 	service *service.ApplicationService
 }
@@ -55,14 +60,13 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 		return
 	}
 
-	userID, exists := ctx.Get("user_id")
-	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
-		return
-	}
-	userIDStr, ok := userID.(string)
-	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "invalid user id"})
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUserID) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
 
@@ -132,6 +136,57 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	})
 }
 
+func (a *ApplicationApi) Approve(ctx *gin.Context) {
+	a.handleAuditAction(ctx, func(id, auditorID string) (*model.Application, error) {
+		return a.service.ApproveApplication(id, auditorID)
+	}, "approve")
+}
+
+func (a *ApplicationApi) Reject(ctx *gin.Context) {
+	a.handleAuditAction(ctx, func(id, auditorID string) (*model.Application, error) {
+		return a.service.RejectApplication(id, auditorID)
+	}, "reject")
+}
+
+func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action func(id, auditorID string) (*model.Application, error), actionName string) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUserID) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
+		return
+	}
+
+	application, err := action(id, userIDStr)
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			return
+		case errors.Is(err, service.ErrApplicationAlreadyProcessed):
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already processed"})
+			return
+		default:
+			logger.Errorf("failed to %s application %s: %v", actionName, id, err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to process application"})
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message":     "success",
+		"application": buildApplicationResponse(*application),
+	})
+}
+
 func buildApplicationResponse(app model.Application) applicationResponse {
 	resp := applicationResponse{
 		ID:        app.ID,
@@ -170,4 +225,16 @@ func formatApplicationStatus(status model.ApplicationStatus) string {
 	default:
 		return "pending"
 	}
+}
+
+func getUserIDFromContext(ctx *gin.Context) (string, error) {
+	userID, exists := ctx.Get("user_id")
+	if !exists {
+		return "", errUserNotAuthenticated
+	}
+	userIDStr, ok := userID.(string)
+	if !ok {
+		return "", errInvalidUserID
+	}
+	return userIDStr, nil
 }
