@@ -78,7 +78,7 @@ func (s *DatasetService) DeleteDataset(id string) error {
 		return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
 	}
 
-	res := global.DB.WithContext(ctx).Where("uuid = ?", id).Delete(&model.Dataset{})
+	res := global.DB.WithContext(ctx).Where("id = ?", id).Delete(&model.Dataset{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete dataset: %w", res.Error)
 	}
