@@ -22,4 +22,13 @@ func (r *FileRouter) InitFileRouter(router *gin.RouterGroup) {
 		datasetFiles.GET("/:fileID", middleware.JWTAuth(), middleware.AuthRole(model.Common), fileApi.DownloadByDataset)
 		datasetFiles.DELETE("/:fileID", middleware.JWTAuth(), middleware.AuthRole(model.Admin), fileApi.DeleteFromDataset)
 	}
+
+	applicationFiles := router.Group("/applications/:id/files")
+	applicationFiles.Use(middleware.JWTAuth(), middleware.AuthRole(model.Common))
+	{
+		applicationFiles.GET("", fileApi.ListByApplication)
+		applicationFiles.POST("", fileApi.UploadToApplication)
+		applicationFiles.GET("/:fileID", fileApi.DownloadByApplication)
+		applicationFiles.DELETE("/:fileID", fileApi.DeleteFromApplication)
+	}
 }
