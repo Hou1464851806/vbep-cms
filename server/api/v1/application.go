@@ -49,8 +49,13 @@ type applicationResponse struct {
 	Applicant userBrief    `json:"applicant"`
 	Dataset   datasetBrief `json:"dataset"`
 	Auditor   *userBrief   `json:"auditor,omitempty"`
+	Result    *string      `json:"auditorResult"`
 	AuditedAt *time.Time   `json:"auditedAt"`
 	CreatedAt time.Time    `json:"createdAt"`
+}
+
+type auditApplicationParam struct {
+	Result string `json:"result" binding:"required"`
 }
 
 func (a *ApplicationApi) Create(ctx *gin.Context) {
@@ -137,21 +142,29 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 }
 
 func (a *ApplicationApi) Approve(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID string) (*model.Application, error) {
-		return a.service.ApproveApplication(id, auditorID)
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.Application, error) {
+		return a.service.ApproveApplication(id, auditorID, result)
 	}, "approve")
 }
 
 func (a *ApplicationApi) Reject(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID string) (*model.Application, error) {
-		return a.service.RejectApplication(id, auditorID)
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.Application, error) {
+		return a.service.RejectApplication(id, auditorID, result)
 	}, "reject")
 }
 
-func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action func(id, auditorID string) (*model.Application, error), actionName string) {
+type auditActionFunc func(id, auditorID, result string) (*model.Application, error)
+
+func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionFunc, actionName string) {
 	id := ctx.Param("id")
 	if id == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	var param auditApplicationParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
@@ -165,7 +178,7 @@ func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action func(id, aud
 		return
 	}
 
-	application, err := action(id, userIDStr)
+	application, err := action(id, userIDStr, param.Result)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
@@ -212,6 +225,7 @@ func buildApplicationResponse(app model.Application) applicationResponse {
 			Email:    app.Auditor.Email,
 		}
 	}
+	resp.Result = app.AuditorResult
 
 	return resp
 }

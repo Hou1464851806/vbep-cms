@@ -81,20 +81,21 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 	return nil
 }
 
-func (s *ApplicationService) ApproveApplication(id, auditorID string) (*model.Application, error) {
-	return s.updateApplicationStatus(id, auditorID, model.APPROVED)
+func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.Application, error) {
+	return s.updateApplicationStatus(id, auditorID, result, model.APPROVED)
 }
 
-func (s *ApplicationService) RejectApplication(id, auditorID string) (*model.Application, error) {
-	return s.updateApplicationStatus(id, auditorID, model.DISAPPROVED)
+func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.Application, error) {
+	return s.updateApplicationStatus(id, auditorID, result, model.DISAPPROVED)
 }
 
-func (s *ApplicationService) updateApplicationStatus(id, auditorID string, status model.ApplicationStatus) (*model.Application, error) {
+func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus) (*model.Application, error) {
 	ctx := context.Background()
 	updates := map[string]any{
-		"status":     status,
-		"auditor_id": auditorID,
-		"audited_at": time.Now(),
+		"status":         status,
+		"auditor_id":     auditorID,
+		"audited_at":     time.Now(),
+		"auditor_result": result,
 	}
 
 	res := global.DB.WithContext(ctx).
