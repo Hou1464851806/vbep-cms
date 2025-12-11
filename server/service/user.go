@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"server/global"
 	"server/model"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -54,63 +55,93 @@ func (s *UserService) GetUserByID(id string) (*model.User, error) {
 }
 
 func (s *UserService) DeleteUser(id string) error {
-	// 使用 Unscoped() 可以执行物理删除，但在用户系统中通常建议使用软删除
-	// 这里直接使用 GORM 的 Delete 方法，它会自动更新 deleted_at 字段
-	result := global.DB.Delete(&model.User{}, "id = ?", id)
+	ctx := context.Background()
+	// 直接使用 GORM 的 Delete 方法，它会自动软删除
+	result := global.DB.WithContext(ctx).Where("id = ?", id).Delete(&model.User{})
 
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete user: %w", result.Error)
 	}
-
-	// 可选：如果 id 不存在，result.RowsAffected 为 0
-	// 根据业务需求，你可以选择报错或视为成功（幂等性）
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("user not found")
+	} else if result.RowsAffected > 1 {
+		return fmt.Errorf("more than 1 user affected")
 	}
 
 	return nil
 }
 
-func (s *UserService) ChangeUserRole(operator *model.User, targetUserID string, newRole model.UserRole) error {
+func (s *UserService) UpdateUser(operator *model.User, targetUserID string, updates map[string]interface{}) error {
 	ctx := context.Background()
-	// 规则一：只有 SuperAdmin 才有资格修改角色
-	if operator.Role != model.SuperAdmin {
-		return fmt.Errorf("permission denied: only SuperAdmin can change roles")
+
+	// 1. 查目标用户
+	var targetUser model.User
+	if err := global.DB.First(&targetUser, "id = ?", targetUserID).Error; err != nil {
+		return fmt.Errorf("user not found")
 	}
 
-	targetUser, err := s.GetUserByID(targetUserID)
-	if err != nil {
-		return err
-	}
+	// 2. 角色变更的安全检查
+	// 只要 updates 里有 role，说明 API 层已经确认操作者是 SuperAdmin 了
+	if newRoleVal, ok := updates["role"]; ok {
+		newRole := newRoleVal.(model.UserRole)
 
-	if targetUser.Role == model.SuperAdmin && newRole != model.SuperAdmin {
-		// 规则二：禁止自我降级 (防自杀)
-		if operator.ID == targetUserID {
-			return fmt.Errorf("operation failed: you cannot demote yourself")
+		// 规则一：防止自我降级
+		// 如果 target 就是操作者自己，且试图取消 SuperAdmin 身份
+		if operator.ID == targetUser.ID {
+			if targetUser.Role == model.SuperAdmin && newRole != model.SuperAdmin {
+				return fmt.Errorf("operation failed: you cannot demote yourself")
+			}
 		}
 
-		// 规则三：最后一人原则 (可选，但在生产环境强烈建议)
-		// var count int64
-		// global.DB.Model(&model.User{}).Where("role = ?", model.SuperAdmin).Count(&count)
-		count, err := gorm.G[model.User](global.DB).Where("role = ?", model.SuperAdmin).Count(ctx, "*")
-		if err != nil {
-			return fmt.Errorf("failed to count SuperAdmins")
-		}
-		if count <= 1 {
-			return fmt.Errorf("operation failed: system must have at least one SuperAdmin")
+		// 规则二：最后一人原则
+		if targetUser.Role == model.SuperAdmin && newRole != model.SuperAdmin {
+			count, err := gorm.G[model.User](global.DB).Where("role = ?", model.SuperAdmin).Count(ctx, "*")
+			if err != nil {
+				return fmt.Errorf("failed to count admins")
+			}
+			if count <= 1 {
+				return fmt.Errorf("operation failed: system must have at least one SuperAdmin")
+			}
 		}
 	}
 
-	// targetUser.Role = newRole
-	// if err := global.DB.Save(targetUser).Error; err != nil {
-	// 	return fmt.Errorf("failed to update role: %w", err)
-	// }
-	count, err := gorm.G[model.User](global.DB).Where("id = ?", targetUser.ID).Update(ctx, "role", newRole)
-	if count != 1 {
-		return fmt.Errorf("operation failed: more than 1 user affected")
+	// 3. 邮箱/手机号 约束检查 (Phone/Email at least one)
+	nextEmail := targetUser.Email
+	nextPhone := targetUser.Phone
+
+	if val, ok := updates["email"]; ok {
+		if val == nil {
+			nextEmail = nil
+		} else {
+			v := val.(string)
+			nextEmail = &v
+		}
 	}
-	if err != nil {
-		return fmt.Errorf("failed to update role: %w", err)
+	if val, ok := updates["phone"]; ok {
+		if val == nil {
+			nextPhone = nil
+		} else {
+			v := val.(string)
+			nextPhone = &v
+		}
+	}
+
+	if nextEmail == nil && nextPhone == nil {
+		return fmt.Errorf("constraint violation: user must have at least an email or a phone number")
+	}
+
+	// 4. 执行更新
+	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", targetUserID).Updates(updates)
+	if result.Error != nil {
+		if strings.Contains(result.Error.Error(), "Duplicate entry") {
+			return fmt.Errorf("email or phone already occupied")
+		}
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	} else if result.RowsAffected > 1 {
+		return fmt.Errorf("more than 1 user affected")
 	}
 
 	return nil

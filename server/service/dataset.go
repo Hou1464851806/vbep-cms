@@ -57,7 +57,9 @@ func (s *DatasetService) UpdateDataset(id string, title, description string) (*m
 		return nil, fmt.Errorf("failed to update dataset: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
-		return nil, gorm.ErrRecordNotFound
+		return nil, fmt.Errorf("dataset not found")
+	} else if res.RowsAffected > 1 {
+		return nil, fmt.Errorf("more than 1 dataset affected")
 	}
 
 	updated, err := gorm.G[model.Dataset](global.DB).Where("id = ?", id).First(ctx)
@@ -83,7 +85,9 @@ func (s *DatasetService) DeleteDataset(id string) error {
 		return fmt.Errorf("failed to delete dataset: %w", res.Error)
 	}
 	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return fmt.Errorf("dataset not found")
+	} else if res.RowsAffected > 1 {
+		return fmt.Errorf("more than 1 dataset affected")
 	}
 	return nil
 }

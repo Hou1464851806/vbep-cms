@@ -28,6 +28,14 @@ type CreateUserParam struct {
 	NickName string `json:"nickname"`
 }
 
+type UpdateUserParam struct {
+	Email    *string         `json:"email"`
+	Phone    *string         `json:"phone"`
+	NickName *string         `json:"nickname"`
+	Password *string         `json:"password"`
+	Role     *model.UserRole `json:"role"`
+}
+
 func (u *UserApi) CreateUser(ctx *gin.Context) {
 	// 1. 绑定参数
 	var param CreateUserParam
@@ -150,8 +158,101 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 }
 
 func (u *UserApi) UpdateUser(ctx *gin.Context) {
-	id := ctx.Param("id")
-	ctx.String(http.StatusOK, "Update user id: %s", id)
+	targetID := ctx.Param("id")
+	if targetID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "User ID is required"})
+		return
+	}
+
+	var param UpdateUserParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid parameters: " + err.Error()})
+		return
+	}
+
+	// 1. 获取操作者身份
+	obj, _ := ctx.Get("user_obj")
+	operator := obj.(*model.User)
+
+	// 2. 基础鉴权：有没有资格碰到这个 User？
+	// 规则：只有 "自己" 或 "管理员(Admin+)" 才能发起修改请求
+	isSelf := operator.ID == targetID
+	isManager := operator.Role >= model.Admin // Admin 或 SuperAdmin
+
+	if !isSelf && !isManager {
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "Permission denied: insufficient privileges"})
+		return
+	}
+
+	// 3. 构建更新 Map 并进行【字段级鉴权】
+	updates := make(map[string]interface{})
+
+	// --- A. 处理权限 (Role) ---
+	// 这是最敏感的字段，优先检查
+	if param.Role != nil {
+		// 规则：只有 SuperAdmin 有资格修改 Role
+		if operator.Role != model.SuperAdmin {
+			ctx.JSON(http.StatusForbidden, gin.H{
+				"message": "Permission denied: only SuperAdmin can change roles",
+			})
+			return
+		}
+		updates["role"] = *param.Role
+	}
+
+	// --- B. 处理普通字段 ---
+	// 只要通过了基础鉴权 (是自己或Admin)，就有资格改这些
+	if param.NickName != nil {
+		updates["nick_name"] = strings.TrimSpace(*param.NickName)
+	}
+
+	if param.Email != nil {
+		cleanEmail := strings.TrimSpace(*param.Email)
+		if cleanEmail == "" {
+			updates["email"] = nil
+		} else {
+			updates["email"] = cleanEmail
+		}
+	}
+
+	if param.Phone != nil {
+		cleanPhone := strings.TrimSpace(*param.Phone)
+		if cleanPhone == "" {
+			updates["phone"] = nil
+		} else {
+			updates["phone"] = cleanPhone
+		}
+	}
+
+	if param.Password != nil {
+		updates["pwd_hash"] = *param.Password
+	}
+
+	if len(updates) == 0 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "No fields to update"})
+		return
+	}
+
+	// 4. 调用 Service 执行业务规则检查和入库
+	// 需要 operator ID 来防止“自我降级”
+	err := u.service.UpdateUser(operator, targetID, updates)
+	if err != nil {
+		// 简单的错误分类
+		if strings.Contains(err.Error(), "user not found") {
+			ctx.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+		} else if strings.Contains(err.Error(), "constraint") || strings.Contains(err.Error(), "operation failed") {
+			// 业务规则错误 (如二选一失败、最后一人原则失败)
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		} else if strings.Contains(err.Error(), "occupied") {
+			ctx.JSON(http.StatusConflict, gin.H{"message": err.Error()})
+		} else {
+			logger.Errorf("UpdateUser error: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "User updated successfully", "id": targetID})
 }
 
 func (u *UserApi) GetUser(ctx *gin.Context) {
