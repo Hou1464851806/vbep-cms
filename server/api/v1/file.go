@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"server/global"
 	"server/logger"
-	"server/middleware"
 	"server/model"
 	"server/service"
 )
@@ -346,7 +346,7 @@ func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*mode
 }
 
 func getUserFromContext(ctx *gin.Context) (*model.User, bool) {
-	userObj, exists := ctx.Get(middleware.CTXUserObj)
+	userObj, exists := ctx.Get(global.CTXUserObj)
 	if !exists {
 		return nil, false
 	}

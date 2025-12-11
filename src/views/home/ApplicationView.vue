@@ -295,7 +295,7 @@ onMounted(fetchApplications)
         <el-table-column label="申请人">
           <template #default="scope">
             <div>{{ scope.row.applicant.nickname }}</div>
-            <small class="table-sub-text">{{ scope.row.applicant.email }}</small>
+            <small v-if="scope.row.applicant.email" class="table-sub-text">{{ scope.row.applicant.email }}</small>
           </template>
         </el-table-column>
         <el-table-column label="申请的数据集">
@@ -329,7 +329,7 @@ onMounted(fetchApplications)
           </el-descriptions-item>
           <el-descriptions-item label="申请人">
             {{ detailDialog.data.applicant.nickname }}
-            <span class="table-sub-text">({{ detailDialog.data.applicant.email }})</span>
+            <span v-if="detailDialog.data.applicant.email" class="table-sub-text">({{ detailDialog.data.applicant.email }})</span>
           </el-descriptions-item>
           <el-descriptions-item label="申请状态">
             <el-tag :type="detailDialog.data.statusMeta.type">{{
@@ -348,7 +348,7 @@ onMounted(fetchApplications)
           <el-descriptions-item label="审核人">
             <template v-if="detailDialog.data.auditor">
               {{ detailDialog.data.auditor.nickname }}
-              <span class="table-sub-text">({{ detailDialog.data.auditor.email }})</span>
+              <span v-if="detailDialog.data.auditor.email" class="table-sub-text">({{ detailDialog.data.auditor.email }})</span>
             </template>
             <span v-else>-</span>
           </el-descriptions-item>

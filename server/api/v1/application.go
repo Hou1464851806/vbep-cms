@@ -201,6 +201,11 @@ func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionF
 }
 
 func buildApplicationResponse(app model.Application) applicationResponse {
+	var applicantEmail string
+	if app.Applicant.Email != nil {
+		applicantEmail = *app.Applicant.Email
+	}
+
 	resp := applicationResponse{
 		ID:        app.ID,
 		Status:    formatApplicationStatus(app.Status),
@@ -210,7 +215,7 @@ func buildApplicationResponse(app model.Application) applicationResponse {
 		Applicant: userBrief{
 			ID:       app.Applicant.ID,
 			Nickname: app.Applicant.NickName,
-			Email:    app.Applicant.Email,
+			Email:    applicantEmail,
 		},
 		Dataset: datasetBrief{
 			ID:    app.Dataset.ID,
@@ -219,17 +224,21 @@ func buildApplicationResponse(app model.Application) applicationResponse {
 	}
 
 	if app.Auditor != nil {
+		var auditorEmail string
+		if app.Auditor.Email != nil {
+			auditorEmail = *app.Auditor.Email
+		}
+
 		resp.Auditor = &userBrief{
 			ID:       app.Auditor.ID,
 			Nickname: app.Auditor.NickName,
-			Email:    app.Auditor.Email,
+			Email:    auditorEmail,
 		}
 	}
 	resp.Result = app.AuditorResult
 
 	return resp
 }
-
 func formatApplicationStatus(status model.ApplicationStatus) string {
 	switch status {
 	case model.APPROVED:
