@@ -1,6 +1,6 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
-import { ref, reactive, onMounted, inject } from 'vue'
+import { ref, reactive, onMounted, inject, watch } from 'vue'
 import { Check, Close, View } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -8,17 +8,20 @@ import apiClient from '../../request/axios.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
-const approveApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/approve`)
-const rejectApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/reject`)
+const approveApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/approve`, data)
+const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
 
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
 const isLoading = ref(true)
-const actionLoadingId = ref(null)
 const detailDialog = reactive({
   visible: false,
   loading: false,
   data: null,
+  audit: {
+    result: '',
+    loading: false,
+  },
 })
 
 const statusMetaMap = {
@@ -28,6 +31,12 @@ const statusMetaMap = {
 }
 
 const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
+const getActionButtonLabel = (row) => {
+  if (isAdmin()) {
+    return row.status === 'pending' ? '审核' : '结果详情'
+  }
+  return row.status === 'pending' ? '申请详情' : '结果详情'
+}
 const formatDateTime = (value) => {
   if (!value) return '-'
   try {
@@ -58,6 +67,7 @@ const normalizeApplication = (item = {}) => ({
         email: item.auditor.email,
       }
     : null,
+  auditorResult: item.auditorResult || '',
   createdAt: formatDateTime(item.createdAt),
   auditedAt: formatDateTime(item.auditedAt),
 })
@@ -83,6 +93,7 @@ const handleViewDetail = async (row) => {
   detailDialog.visible = true
   detailDialog.loading = true
   detailDialog.data = null
+  detailDialog.audit.result = ''
   try {
     const res = await fetchApplicationDetailAPI(row.id)
     if (res.data?.message === 'success') {
@@ -112,14 +123,22 @@ const updateApplicationEntry = (nextData) => {
   }
 }
 
-const processApplicationAction = async (row, action) => {
-  if (!row?.id) return
-  actionLoadingId.value = row.id
+const handleDialogAudit = async (action) => {
+  const current = detailDialog.data
+  if (!current?.id) return
+  const result = detailDialog.audit.result.trim()
+  if (!result) {
+    ElMessage.warning('请填写审核结果')
+    return
+  }
+  detailDialog.audit.loading = true
   try {
     const api = action === 'approve' ? approveApplicationAPI : rejectApplicationAPI
-    const res = await api(row.id)
+    const res = await api(current.id, { result })
     if (res.data?.message === 'success' && res.data.application) {
+      const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
+      detailDialog.audit.result = normalized.auditorResult
       ElMessage.success(action === 'approve' ? '申请已批准' : '申请已驳回')
     } else {
       ElMessage.error(res.data?.message || '操作失败')
@@ -128,12 +147,16 @@ const processApplicationAction = async (row, action) => {
     console.error('Failed to process application', error)
     ElMessage.error('操作失败')
   } finally {
-    actionLoadingId.value = null
+    detailDialog.audit.loading = false
   }
 }
 
-const handleApprove = (row) => processApplicationAction(row, 'approve')
-const handleReject = (row) => processApplicationAction(row, 'reject')
+watch(
+  () => detailDialog.data,
+  (value) => {
+    detailDialog.audit.result = value?.auditorResult || ''
+  },
+)
 
 onMounted(fetchApplications)
 </script>
@@ -163,29 +186,11 @@ onMounted(fetchApplications)
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220">
+        <el-table-column label="操作" width="140">
           <template #default="scope">
-            <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)"
-              >查看详情</el-button
-            >
-            <template v-if="isAdmin() && scope.row.status === 'pending'">
-              <el-button
-                size="small"
-                type="success"
-                :icon="Check"
-                :loading="actionLoadingId === scope.row.id"
-                @click="handleApprove(scope.row)"
-                >批准</el-button
-              >
-              <el-button
-                size="small"
-                type="danger"
-                :icon="Close"
-                :loading="actionLoadingId === scope.row.id"
-                @click="handleReject(scope.row)"
-                >驳回</el-button
-              >
-            </template>
+            <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
+              {{ getActionButtonLabel(scope.row) }}
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -224,7 +229,42 @@ onMounted(fetchApplications)
             </template>
             <span v-else>-</span>
           </el-descriptions-item>
+          <el-descriptions-item label="审核结果">
+            <div v-if="detailDialog.data.auditorResult">
+              {{ detailDialog.data.auditorResult }}
+            </div>
+            <span v-else>-</span>
+          </el-descriptions-item>
         </el-descriptions>
+        <div
+          v-if="isAdmin() && detailDialog.data?.status === 'pending'"
+          class="audit-action-area"
+        >
+          <el-input
+            v-model="detailDialog.audit.result"
+            type="textarea"
+            :rows="3"
+            maxlength="200"
+            show-word-limit
+            placeholder="请填写审核意见"
+          />
+          <div class="audit-action-buttons">
+            <el-button
+              type="danger"
+              :loading="detailDialog.audit.loading"
+              :icon="Close"
+              @click="handleDialogAudit('reject')"
+              >驳回</el-button
+            >
+            <el-button
+              type="success"
+              :loading="detailDialog.audit.loading"
+              :icon="Check"
+              @click="handleDialogAudit('approve')"
+              >批准</el-button
+            >
+          </div>
+        </div>
       </template>
     </el-skeleton>
     <template #footer>
@@ -241,5 +281,16 @@ onMounted(fetchApplications)
 .reason-block {
   white-space: pre-wrap;
   line-height: 1.6;
+}
+.audit-action-area {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.audit-action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>
