@@ -279,6 +279,7 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 			"id":       user.ID,
 			"nickname": user.NickName,
 			"email":    user.Email,
+			"phone":    user.Phone,
 			"role":     user.Role,
 		},
 	})
