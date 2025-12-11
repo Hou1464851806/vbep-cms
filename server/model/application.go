@@ -23,4 +23,5 @@ type Application struct {
 	Auditor        User              `gorm:"foreignKey:AuditorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
 	AuditorResult  *string
 	AuditedAt      *time.Time
+	Files          []File `gorm:"polymorphic:Owner;"`
 }

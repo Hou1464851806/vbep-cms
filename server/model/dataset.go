@@ -8,5 +8,5 @@ type Dataset struct {
 	CreatorID string `gorm:"not null;type:char(36)"`
 	Creator   User   `gorm:"foreignKey:CreatorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
-	Files []File `gorm:"foreignKey:DatasetID;references:ID"`
+	Files []File `gorm:"polymorphic:Owner;"`
 }
