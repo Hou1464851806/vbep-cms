@@ -29,5 +29,9 @@ func NewRouter() *gin.Engine {
 	fileRouter := new(router.FileRouter)
 	fileRouter.InitFileRouter(v1)
 
+	// application
+	applicationRouter := new(router.ApplicationRouter)
+	applicationRouter.InitApplicationRouter(v1)
+
 	return r
 }
