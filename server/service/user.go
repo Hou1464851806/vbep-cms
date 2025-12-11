@@ -54,6 +54,15 @@ func (s *UserService) GetUserByID(id string) (*model.User, error) {
 	return &user, nil
 }
 
+func (s *UserService) GetAllUsers() ([]*model.User, error) {
+	ctx := context.Background()
+	users, err := gorm.G[*model.User](global.DB).Find(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 func (s *UserService) DeleteUser(id string) error {
 	ctx := context.Background()
 	// 直接使用 GORM 的 Delete 方法，它会自动软删除

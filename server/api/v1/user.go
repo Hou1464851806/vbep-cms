@@ -286,7 +286,33 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 }
 
 func (u *UserApi) GetAllUsers(ctx *gin.Context) {
+	// 1. 调用 Service 获取数据
+	users, err := u.service.GetAllUsers()
+	if err != nil {
+		logger.Errorf("failed to query all users: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "failed to get user list",
+		})
+		return
+	}
+
+	// 2. 构建响应数据列表
+	// 我们需要手动构建切片，避免将密码等敏感字段返回给前端
+	var userList []gin.H
+	for _, user := range users {
+		userList = append(userList, gin.H{
+			"id":        user.ID,
+			"nickname":  user.NickName,
+			"email":     user.Email,
+			"phone":     user.Phone,
+			"role":      user.Role,
+			"createdAt": user.CreatedAt,
+		})
+	}
+
+	// 3. 返回 JSON
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "all users",
+		"message": "success",
+		"data":    userList, // 这里直接放入数组
 	})
 }

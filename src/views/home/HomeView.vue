@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, provide } from 'vue'
+import { ref, reactive, onMounted, provide, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { 
   Tickets, Memo, User, ArrowDown, Edit, SwitchButton, Key, 
@@ -24,7 +24,8 @@ const userInfo = reactive({
   nickname: '',
   email: '',
   phone: '', 
-  role: 'user'
+  // role: 'user',
+  roleId: 0 // 0 - 'user', 1 - 'admin', 2 - 'super_admin'
 })
 const isUserLoading = ref(true)
 
@@ -41,12 +42,18 @@ onMounted(async () => {
     const res = await fetchUserInfoAPI(storedUserId)
     if (res && res.data?.message === 'success' && res.data.data) {
       const { id, nickname, email, phone, role } = res.data.data
+      const roleNum = Number(role)
+      // let roleStr = 'user'
+      // if (roleNum === 1) roleStr = 'admin'
+      // if (roleNum === 2) roleStr = 'super_admin'
+
       Object.assign(userInfo, {
         id,
         nickname,
         email,
         phone, 
-        role: Number(role) === 1 ? 'admin' : 'user',
+        // role: roleStr,
+        roleId: roleNum
       })
     } else {
       ElMessage.error('用户信息异常')
@@ -60,7 +67,8 @@ onMounted(async () => {
 })
 
 provide('userInfo', userInfo)
-provide('isAdmin', () => userInfo.role === 'admin')
+// provide('isAdmin', () => ['admin', 'super_admin'].includes(userInfo.role))
+provide('isAdmin', () => userInfo.roleId > 0)
 
 // --- 登出逻辑 ---
 const handleLogout = async () => {
@@ -274,6 +282,36 @@ const submitPassword = async () => {
     }
   })
 }
+
+const roleLabel = computed(() => {
+  // const map = {
+  //   'user': '用户',
+  //   'admin': '管理员',
+  //   'super_admin': '超级管理员'
+  // }
+  // return map[userInfo.role] || '未知'
+  const map = {
+    0: '用户',
+    1: '管理员',
+    2: '超级管理员'
+  }
+  return map[userInfo.roleId] || '未知'
+})
+
+const roleTagType = computed(() => {
+  // const map = {
+  //   'user': 'info',
+  //   'admin': 'success',
+  //   'super_admin': 'warning' // 超管用醒目的颜色
+  // }
+  // return map[userInfo.role] || 'info'
+  const map = {
+    0: 'info',
+    1: 'success',
+    2: 'warning' // 超管用醒目的颜色
+  }
+  return map[userInfo.roleId] || 'info'
+})
 </script>
 
 <template>
@@ -288,6 +326,10 @@ const submitPassword = async () => {
         <el-menu-item index="/home/applications">
           <el-icon><Memo /></el-icon>
           <span>审批管理</span>
+        </el-menu-item>
+        <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">
+          <el-icon><User /></el-icon>
+          <span>用户管理</span>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -308,8 +350,9 @@ const submitPassword = async () => {
                   <el-icon class="el-icon--right"><arrow-down /></el-icon>
                   
                   <el-divider direction="vertical" />
-                  <el-tag :type="userInfo.role === 'admin' ? 'success' : 'info'" size="small">
-                    {{ userInfo.role === 'admin' ? '管理员' : '用户' }}
+                  
+                  <el-tag :type="roleTagType" size="small" effect="dark">
+                    {{ roleLabel }}
                   </el-tag>
                 </div>
 
@@ -335,7 +378,7 @@ const submitPassword = async () => {
       <div class="profile-list">
         
         <div class="profile-row">
-          <div class="row-label">昵称</div>
+          <div class="row-label">姓名</div>
           <div class="row-content">
             <span v-if="!editState.nickname">{{ userInfo.nickname }}</span>
             <el-input v-else v-model="tempProfile.nickname" size="small" />
@@ -345,7 +388,7 @@ const submitPassword = async () => {
               修改
             </el-button>
             <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('nickname', '昵称')">确定</el-button>
+              <el-button type="success" link :icon="Check" @click="saveField('nickname', '姓名')">确定</el-button>
               <el-button type="info" link :icon="Close" @click="cancelEdit('nickname')">取消</el-button>
             </template>
           </div>
