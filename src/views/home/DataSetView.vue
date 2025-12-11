@@ -733,68 +733,75 @@ const handleSubmitApplication = async () => {
           />
         </el-form-item>
         <el-form-item label="上传附件 (可选)">
-          <el-upload
-            ref="uploadRef"
-            action="#"
-            :show-file-list="false"
-            multiple
-            :before-upload="handleApplicationAttachmentBeforeUpload"
-            :http-request="handleQueueApplicationAttachment"
-            :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
-          >
-            <el-button
-              type="primary"
-              :icon="Upload"
-              :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
-              >选择文件</el-button
-            >
-            <template #tip>
-              <div class="el-upload__tip">
-                可上传项目计划书、需求文档等补充材料，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB
-              </div>
-            </template>
-          </el-upload>
-          <div v-if="applicationDialog.attachments.files.length" class="application-attachment-list">
-            <div
-              v-for="file in applicationDialog.attachments.files"
-              :key="file.uid"
-              class="application-attachment-item"
-            >
-              <div>
-                <div class="attachment-name">{{ file.name }}</div>
-                <div class="attachment-size">{{ formatFileSize(file.size) }}</div>
-              </div>
-              <el-button
-                text
-                type="danger"
-                size="small"
-                :disabled="applicationDialog.attachments.isUploading"
-                @click="handleRemoveQueuedAttachment(file)"
-                >移除</el-button
+          <div class="application-attachment-wrapper">
+            <div class="application-upload-controls">
+              <el-upload
+                ref="uploadRef"
+                action="#"
+                :show-file-list="false"
+                multiple
+                :before-upload="handleApplicationAttachmentBeforeUpload"
+                :http-request="handleQueueApplicationAttachment"
+                :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
               >
+                <el-button
+                  type="primary"
+                  :icon="Upload"
+                  :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
+                  >选择文件</el-button
+                >
+                <template #tip>
+                  <div class="el-upload__tip">
+                    可上传项目计划书、需求文档等补充材料，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB
+                  </div>
+                </template>
+              </el-upload>
             </div>
-          </div>
-          <div
-            v-if="applicationDialog.attachments.uploadTasks.length"
-            class="upload-progress-list"
-            style="margin-top: 12px"
-          >
-            <div
-              v-for="task in applicationDialog.attachments.uploadTasks"
-              :key="task.uid"
-              class="upload-progress-item"
-            >
-              <span class="upload-progress-name">{{ task.name }}</span>
-              <el-progress
-                :percentage="task.percentage"
-                :status="
-                  task.status === 'error'
-                    ? 'exception'
-                    : task.status === 'success'
-                      ? 'success'
-                      : undefined
-                "
+            <div class="application-attachment-info">
+              <el-empty
+                v-if="!applicationDialog.attachments.files.length"
+                description="尚未选择附件"
+                :image-size="100"
               />
+              <div v-else class="application-attachment-list">
+                <div
+                  v-for="file in applicationDialog.attachments.files"
+                  :key="file.uid"
+                  class="application-attachment-item"
+                >
+                  <div>
+                    <div class="attachment-name">{{ file.name }}</div>
+                    <div class="attachment-size">{{ formatFileSize(file.size) }}</div>
+                  </div>
+                  <el-button
+                    text
+                    type="danger"
+                    size="small"
+                    :disabled="applicationDialog.attachments.isUploading"
+                    @click="handleRemoveQueuedAttachment(file)"
+                    >移除</el-button
+                  >
+                </div>
+              </div>
+              <div v-if="applicationDialog.attachments.uploadTasks.length" class="upload-progress-list">
+                <div
+                  v-for="task in applicationDialog.attachments.uploadTasks"
+                  :key="task.uid"
+                  class="upload-progress-item"
+                >
+                  <span class="upload-progress-name">{{ task.name }}</span>
+                  <el-progress
+                    :percentage="task.percentage"
+                    :status="
+                      task.status === 'error'
+                        ? 'exception'
+                        : task.status === 'success'
+                          ? 'success'
+                          : undefined
+                    "
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </el-form-item>
@@ -839,16 +846,15 @@ const handleSubmitApplication = async () => {
   white-space: pre-wrap;
 }
 .upload-progress-list {
-  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
 }
 .upload-progress-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
-}
-.upload-progress-item:last-child {
-  margin-bottom: 0;
 }
 .upload-progress-name {
   flex: 0 0 220px;
@@ -861,8 +867,18 @@ const handleSubmitApplication = async () => {
 .upload-progress-item :deep(.el-progress) {
   flex: 1;
 }
+.application-attachment-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.application-attachment-info {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 12px;
+  background-color: #f9fafc;
+}
 .application-attachment-list {
-  margin-top: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -874,7 +890,7 @@ const handleSubmitApplication = async () => {
   padding: 8px 12px;
   border: 1px solid #ebeef5;
   border-radius: 6px;
-  background-color: #f7f9fc;
+  background-color: #fff;
 }
 .attachment-name {
   font-size: 14px;
@@ -888,6 +904,9 @@ const handleSubmitApplication = async () => {
 .el-upload__tip {
   color: #909399;
   font-size: 12px;
-  margin-left: 10px;
+  margin-left: 0;
+}
+.application-attachment-info :deep(.el-empty__description) {
+  color: #909399;
 }
 </style>
