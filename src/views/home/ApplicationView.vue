@@ -8,10 +8,13 @@ import apiClient from '../../request/axios.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
+const approveApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/approve`)
+const rejectApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/reject`)
 
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
 const isLoading = ref(true)
+const actionLoadingId = ref(null)
 const detailDialog = reactive({
   visible: false,
   loading: false,
@@ -95,13 +98,42 @@ const handleViewDetail = async (row) => {
   }
 }
 
-// Placeholder approve/reject handlers
-const handleApprove = (row) => {
-  ElMessage.info(`审批功能暂未实现 (申请: ${row.id})`)
+const updateApplicationEntry = (nextData) => {
+  const normalized = normalizeApplication(nextData)
+  const index = applicationList.value.findIndex((item) => item.id === normalized.id)
+  if (index !== -1) {
+    applicationList.value.splice(index, 1, normalized)
+  } else {
+    applicationList.value.unshift(normalized)
+  }
+
+  if (detailDialog.data && detailDialog.data.id === normalized.id) {
+    detailDialog.data = normalized
+  }
 }
-const handleReject = (row) => {
-  ElMessage.info(`驳回功能暂未实现 (申请: ${row.id})`)
+
+const processApplicationAction = async (row, action) => {
+  if (!row?.id) return
+  actionLoadingId.value = row.id
+  try {
+    const api = action === 'approve' ? approveApplicationAPI : rejectApplicationAPI
+    const res = await api(row.id)
+    if (res.data?.message === 'success' && res.data.application) {
+      updateApplicationEntry(res.data.application)
+      ElMessage.success(action === 'approve' ? '申请已批准' : '申请已驳回')
+    } else {
+      ElMessage.error(res.data?.message || '操作失败')
+    }
+  } catch (error) {
+    console.error('Failed to process application', error)
+    ElMessage.error('操作失败')
+  } finally {
+    actionLoadingId.value = null
+  }
 }
+
+const handleApprove = (row) => processApplicationAction(row, 'approve')
+const handleReject = (row) => processApplicationAction(row, 'reject')
 
 onMounted(fetchApplications)
 </script>
@@ -137,10 +169,20 @@ onMounted(fetchApplications)
               >查看详情</el-button
             >
             <template v-if="isAdmin() && scope.row.status === 'pending'">
-              <el-button size="small" type="success" :icon="Check" @click="handleApprove(scope.row)"
+              <el-button
+                size="small"
+                type="success"
+                :icon="Check"
+                :loading="actionLoadingId === scope.row.id"
+                @click="handleApprove(scope.row)"
                 >批准</el-button
               >
-              <el-button size="small" type="danger" :icon="Close" @click="handleReject(scope.row)"
+              <el-button
+                size="small"
+                type="danger"
+                :icon="Close"
+                :loading="actionLoadingId === scope.row.id"
+                @click="handleReject(scope.row)"
                 >驳回</el-button
               >
             </template>
