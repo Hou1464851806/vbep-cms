@@ -1,6 +1,6 @@
 <!-- src/views/dataset/DatasetList.vue -->
 <script setup>
-import { ref, onMounted, inject, reactive } from 'vue'
+import { ref, onMounted, inject, reactive, watch } from 'vue'
 import { Plus, Edit, Delete, Document, Upload, Download, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -27,6 +27,14 @@ const downloadDatasetFileAPI = (datasetId, fileId) =>
   apiClient.get(`/api/v1/datasets/${datasetId}/files/${fileId}`, { responseType: 'blob' })
 
 const submitApplicationAPI = (applicationData) => apiClient.post('/api/v1/applications', applicationData)
+const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.post(`/api/v1/applications/${applicationId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    ...config,
+  })
+}
 
 const FILE_SIZE_LIMIT_MB = 50
 const FILE_SIZE_LIMIT_BYTES = FILE_SIZE_LIMIT_MB * 1024 * 1024
@@ -62,6 +70,12 @@ const applicationDialog = reactive({
   dataset: null,
   form: { reason: '' },
   rules: { reason: [{ required: true, message: '申请理由不能为空', trigger: 'blur' }] },
+  attachments: {
+    files: [],
+    uploadTasks: [],
+    isUploading: false,
+    createdApplicationId: '',
+  },
 })
 
 const formatDateTime = (value) => {
@@ -172,6 +186,17 @@ const fetchDatasets = async () => {
 }
 // --- 生命周期钩子 ---
 onMounted(fetchDatasets)
+
+watch(
+  () => applicationDialog.visible,
+  (visible) => {
+    if (!visible) {
+      resetApplicationAttachments()
+      applicationDialog.dataset = null
+      applicationDialog.form.reason = ''
+    }
+  },
+)
 
 // --- 数据集 CRUD 事件处理 ---
 const handleAdd = () => {
@@ -377,33 +402,146 @@ const handleDeleteFile = (file) => {
 const handleApply = (row) => {
   applicationDialog.dataset = row
   applicationDialog.form.reason = ''
+  resetApplicationAttachments()
+  applicationDialog.visible = true
+}
+const resetApplicationAttachments = () => {
+  applicationDialog.attachments.files = []
+  applicationDialog.attachments.uploadTasks = []
+  applicationDialog.attachments.isUploading = false
+  applicationDialog.attachments.createdApplicationId = ''
   if (uploadRef.value) {
     uploadRef.value.clearFiles()
   }
-  applicationDialog.visible = true
+}
+const ensureApplicationAttachmentTask = (file) => {
+  const existing = applicationDialog.attachments.uploadTasks.find((task) => task.uid === file.uid)
+  if (existing) return existing
+  const task = {
+    uid: file.uid,
+    name: file.name,
+    percentage: 0,
+    status: 'pending',
+    uploaded: false,
+  }
+  applicationDialog.attachments.uploadTasks.push(task)
+  return task
+}
+const updateApplicationAttachmentTask = (uid, payload = {}) => {
+  const task = applicationDialog.attachments.uploadTasks.find((item) => item.uid === uid)
+  if (task) {
+    Object.assign(task, payload)
+  }
+}
+const handleApplicationAttachmentBeforeUpload = (rawFile) => {
+  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+    return false
+  }
+  return true
+}
+const handleQueueApplicationAttachment = (options) => {
+  const { file, onError, onSuccess } = options
+  if (!handleApplicationAttachmentBeforeUpload(file)) {
+    onError?.(new Error('文件大小超出限制'))
+    return
+  }
+  const exists = applicationDialog.attachments.files.some((item) => item.uid === file.uid)
+  if (!exists) {
+    applicationDialog.attachments.files.push({
+      uid: file.uid,
+      name: file.name,
+      size: file.size,
+      raw: file,
+    })
+    ensureApplicationAttachmentTask(file)
+    updateApplicationAttachmentTask(file.uid, { status: 'ready', percentage: 100, uploaded: false })
+  }
+  onSuccess?.({}, file)
+}
+const handleRemoveQueuedAttachment = (file) => {
+  if (applicationDialog.attachments.isUploading) return
+  const index = applicationDialog.attachments.files.findIndex((item) => item.uid === file.uid)
+  if (index !== -1) {
+    applicationDialog.attachments.files.splice(index, 1)
+  }
+  const taskIndex = applicationDialog.attachments.uploadTasks.findIndex((item) => item.uid === file.uid)
+  if (taskIndex !== -1) {
+    applicationDialog.attachments.uploadTasks.splice(taskIndex, 1)
+  }
+}
+const uploadAttachmentsForApplication = async (applicationId) => {
+  const pendingFiles = applicationDialog.attachments.files.filter((file) => {
+    const task = applicationDialog.attachments.uploadTasks.find((item) => item.uid === file.uid)
+    return !task || !task.uploaded
+  })
+  if (!pendingFiles.length) {
+    return { failed: false }
+  }
+  applicationDialog.attachments.isUploading = true
+  let hasError = false
+  for (const file of pendingFiles) {
+    updateApplicationAttachmentTask(file.uid, { status: 'uploading' })
+    try {
+      await uploadApplicationFileAPI(applicationId, file.raw)
+      updateApplicationAttachmentTask(file.uid, { status: 'success', uploaded: true })
+    } catch (error) {
+      console.error('Failed to upload application attachment', error)
+      updateApplicationAttachmentTask(file.uid, { status: 'error', uploaded: false })
+      hasError = true
+    }
+  }
+  applicationDialog.attachments.isUploading = false
+  if (!hasError) {
+    ElMessage.success('上传附件成功')
+  }
+  return { failed: hasError }
 }
 const handleSubmitApplication = async () => {
   if (!applicationFormRef.value) return
-  await applicationFormRef.value.validate(async (valid) => {
-    if (valid) {
-      applicationDialog.isSubmitting = true
-      try {
+  const submitAction = async () => {
+    applicationDialog.isSubmitting = true
+    try {
+      let applicationId = applicationDialog.attachments.createdApplicationId
+      if (!applicationId) {
         const res = await submitApplicationAPI({
           datasetId: applicationDialog.dataset.id,
           reason: applicationDialog.form.reason,
         })
-        if (res.data?.message === 'success') {
-          ElMessage.success('申请提交成功，请等待管理员审批')
-          applicationDialog.visible = false
+        if (res.data?.message === 'success' && res.data.id) {
+          applicationId = res.data.id
+          applicationDialog.attachments.createdApplicationId = res.data.id
         } else {
           ElMessage.error(res.data?.message || '申请提交失败')
+          return
         }
-      } catch (error) {
-        console.error('Application submission failed:', error)
-        ElMessage.error('提交申请时发生错误')
-      } finally {
-        applicationDialog.isSubmitting = false
       }
+
+      const { failed } = await uploadAttachmentsForApplication(applicationId)
+      if (failed) {
+        ElMessage.error('部分附件上传失败，请检查后重试')
+        return
+      }
+
+      ElMessage.success('申请提交成功，请等待管理员审批')
+      applicationDialog.visible = false
+      resetApplicationAttachments()
+    } catch (error) {
+      console.error('Application submission failed:', error)
+      ElMessage.error('提交申请时发生错误')
+    } finally {
+      applicationDialog.isSubmitting = false
+    }
+  }
+
+  if (applicationDialog.attachments.createdApplicationId) {
+    await submitAction()
+    return
+  }
+
+  await applicationFormRef.value.validate(async (valid) => {
+    if (valid) {
+      await submitAction()
     } else {
       ElMessage.warning('请填写必要的申请信息')
     }
@@ -597,29 +735,82 @@ const handleSubmitApplication = async () => {
         <el-form-item label="上传附件 (可选)">
           <el-upload
             ref="uploadRef"
-            class="upload-demo"
             action="#"
-            :auto-upload="false"
-            :http-request="() => {}"
+            :show-file-list="false"
+            multiple
+            :before-upload="handleApplicationAttachmentBeforeUpload"
+            :http-request="handleQueueApplicationAttachment"
+            :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
           >
-            <el-button type="primary" :icon="Upload">点击上传</el-button>
+            <el-button
+              type="primary"
+              :icon="Upload"
+              :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
+              >选择文件</el-button
+            >
             <template #tip>
-              <div class="el-upload__tip">可以上传项目计划书、需求文档等补充材料 (非必须)</div>
+              <div class="el-upload__tip">
+                可上传项目计划书、需求文档等补充材料，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB
+              </div>
             </template>
           </el-upload>
+          <div v-if="applicationDialog.attachments.files.length" class="application-attachment-list">
+            <div
+              v-for="file in applicationDialog.attachments.files"
+              :key="file.uid"
+              class="application-attachment-item"
+            >
+              <div>
+                <div class="attachment-name">{{ file.name }}</div>
+                <div class="attachment-size">{{ formatFileSize(file.size) }}</div>
+              </div>
+              <el-button
+                text
+                type="danger"
+                size="small"
+                :disabled="applicationDialog.attachments.isUploading"
+                @click="handleRemoveQueuedAttachment(file)"
+                >移除</el-button
+              >
+            </div>
+          </div>
+          <div
+            v-if="applicationDialog.attachments.uploadTasks.length"
+            class="upload-progress-list"
+            style="margin-top: 12px"
+          >
+            <div
+              v-for="task in applicationDialog.attachments.uploadTasks"
+              :key="task.uid"
+              class="upload-progress-item"
+            >
+              <span class="upload-progress-name">{{ task.name }}</span>
+              <el-progress
+                :percentage="task.percentage"
+                :status="
+                  task.status === 'error'
+                    ? 'exception'
+                    : task.status === 'success'
+                      ? 'success'
+                      : undefined
+                "
+              />
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button
           @click="applicationDialog.visible = false"
-          :disabled="applicationDialog.isSubmitting"
+          :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
           >取消</el-button
         >
         <el-button
           type="primary"
           @click="handleSubmitApplication"
           :loading="applicationDialog.isSubmitting"
-          >提交申请</el-button
+          :disabled="applicationDialog.attachments.isUploading"
+          >{{ applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请' }}</el-button
         >
       </template>
     </el-dialog>
@@ -669,6 +860,30 @@ const handleSubmitApplication = async () => {
 }
 .upload-progress-item :deep(.el-progress) {
   flex: 1;
+}
+.application-attachment-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.application-attachment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background-color: #f7f9fc;
+}
+.attachment-name {
+  font-size: 14px;
+  color: #303133;
+  word-break: break-all;
+}
+.attachment-size {
+  font-size: 12px;
+  color: #909399;
 }
 .el-upload__tip {
   color: #909399;

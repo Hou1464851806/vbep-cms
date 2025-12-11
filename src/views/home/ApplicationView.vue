@@ -1,7 +1,7 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
-import { ref, reactive, onMounted, inject, watch } from 'vue'
-import { Check, Close, View } from '@element-plus/icons-vue'
+import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
+import { Check, Close, View, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import apiClient from '../../request/axios.js'
@@ -10,6 +10,20 @@ const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
 const approveApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/approve`, data)
 const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
+const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
+const downloadApplicationFileAPI = (applicationId, fileId) =>
+  apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
+
+const readStoredUserId = () => {
+  if (typeof window === 'undefined') return ''
+  try {
+    return window.localStorage.getItem('user_id') || ''
+  } catch {
+    return ''
+  }
+}
+
+const currentUserId = ref(readStoredUserId())
 
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
@@ -21,6 +35,11 @@ const detailDialog = reactive({
   audit: {
     result: '',
     loading: false,
+  },
+  attachments: {
+    isLoading: false,
+    list: [],
+    currentApplicationId: '',
   },
 })
 
@@ -44,6 +63,19 @@ const formatDateTime = (value) => {
   } catch {
     return value
   }
+}
+const formatFileSize = (value) => {
+  const size = Number(value) || 0
+  if (size <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let idx = 0
+  let current = size
+  while (current >= 1024 && idx < units.length - 1) {
+    current /= 1024
+    idx += 1
+  }
+  const formatted = idx === 0 ? current.toFixed(0) : current.toFixed(2)
+  return `${formatted} ${units[idx]}`
 }
 
 const normalizeApplication = (item = {}) => ({
@@ -72,6 +104,73 @@ const normalizeApplication = (item = {}) => ({
   auditedAt: formatDateTime(item.auditedAt),
 })
 
+const normalizeApplicationFiles = (files = []) =>
+  files.map((item) => ({
+    id: item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
+    name: item.name || item.Name || '未命名文件',
+    size: Number(item.size ?? item.Size ?? 0),
+    createdAt: formatDateTime(item.createdAt || item.CreatedAt || item.Time?.CreatedAt),
+  }))
+
+const canViewApplicationAttachments = (application) => {
+  if (!application) return false
+  if (isAdmin()) return true
+  return application.applicant?.id === currentUserId.value
+}
+
+const canViewAttachments = computed(() => canViewApplicationAttachments(detailDialog.data))
+
+const resetAttachmentState = () => {
+  detailDialog.attachments.isLoading = false
+  detailDialog.attachments.list = []
+  detailDialog.attachments.currentApplicationId = ''
+}
+
+const loadApplicationFiles = async (applicationId) => {
+  if (!applicationId) return
+  detailDialog.attachments.isLoading = true
+  detailDialog.attachments.list = []
+  try {
+    const res = await fetchApplicationFilesAPI(applicationId)
+    if (res?.data?.message === 'success') {
+      detailDialog.attachments.list = normalizeApplicationFiles(res.data.files)
+      detailDialog.attachments.currentApplicationId = applicationId
+    } else if (res?.data?.message) {
+      ElMessage.error(res.data.message)
+    } else {
+      ElMessage.error('附件列表加载失败')
+    }
+  } catch (error) {
+    console.error('Failed to load application files', error)
+    ElMessage.error('附件列表加载失败')
+  } finally {
+    detailDialog.attachments.isLoading = false
+  }
+}
+
+const handleDownloadAttachment = async (file) => {
+  const applicationId = detailDialog.attachments.currentApplicationId
+  if (!applicationId) {
+    ElMessage.error('未找到对应的申请')
+    return
+  }
+  try {
+    const res = await downloadApplicationFileAPI(applicationId, file.id)
+    const blob = new Blob([res.data])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', file.name)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to download attachment', error)
+    ElMessage.error('下载附件失败')
+  }
+}
+
 const fetchApplications = async () => {
   isLoading.value = true
   try {
@@ -94,6 +193,7 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.audit.result = ''
+  resetAttachmentState()
   try {
     const res = await fetchApplicationDetailAPI(row.id)
     if (res.data?.message === 'success') {
@@ -155,6 +255,29 @@ watch(
   () => detailDialog.data,
   (value) => {
     detailDialog.audit.result = value?.auditorResult || ''
+    if (!value) {
+      resetAttachmentState()
+      return
+    }
+    if (canViewApplicationAttachments(value)) {
+      const shouldReload =
+        detailDialog.attachments.currentApplicationId !== value.id ||
+        detailDialog.attachments.list.length === 0
+      if (shouldReload && value.id) {
+        loadApplicationFiles(value.id)
+      }
+    } else {
+      resetAttachmentState()
+    }
+  },
+)
+
+watch(
+  () => detailDialog.visible,
+  (visible) => {
+    if (!visible) {
+      resetAttachmentState()
+    }
   },
 )
 
@@ -236,6 +359,30 @@ onMounted(fetchApplications)
             <span v-else>-</span>
           </el-descriptions-item>
         </el-descriptions>
+        <div v-if="canViewAttachments" class="attachment-section">
+          <div class="attachment-header">
+            <span>申请附件</span>
+          </div>
+          <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
+            <template #default>
+              <el-empty v-if="!detailDialog.attachments.list.length" description="暂无附件" />
+              <el-table v-else :data="detailDialog.attachments.list" size="small" class="attachment-table">
+                <el-table-column prop="name" label="文件名" min-width="200" show-overflow-tooltip />
+                <el-table-column label="大小" width="120">
+                  <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
+                </el-table-column>
+                <el-table-column prop="createdAt" label="上传时间" width="180" />
+                <el-table-column label="操作" width="200">
+                  <template #default="scope">
+                    <el-button text size="small" :icon="Download" @click="handleDownloadAttachment(scope.row)">
+                      下载
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </template>
+          </el-skeleton>
+        </div>
         <div
           v-if="isAdmin() && detailDialog.data?.status === 'pending'"
           class="audit-action-area"
@@ -281,6 +428,22 @@ onMounted(fetchApplications)
 .reason-block {
   white-space: pre-wrap;
   line-height: 1.6;
+}
+.attachment-section {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  background-color: #f9fafc;
+}
+.attachment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.attachment-table {
+  margin-top: 8px;
 }
 .audit-action-area {
   margin-top: 16px;
