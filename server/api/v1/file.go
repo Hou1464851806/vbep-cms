@@ -331,7 +331,7 @@ func (a *FileApi) DeleteFromApplication(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
 }
 
-func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*model.Application, bool) {
+func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*model.ApplicationListItem, bool) {
 	application, err := a.applicationService.GetApplicationByID(applicationID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -354,31 +354,31 @@ func getUserFromContext(ctx *gin.Context) (*model.User, bool) {
 	return user, ok
 }
 
-func canAccessApplicationFiles(user *model.User, application *model.Application) bool {
+func canAccessApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
 	if user == nil || application == nil {
 		return false
 	}
 	if user.Role >= model.Admin {
 		return true
 	}
-	return application.ApplicantID == user.ID
+	return application.Applicant.ID == user.ID
 }
 
-func canUploadApplicationFiles(user *model.User, application *model.Application) bool {
+func canUploadApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
 	if user == nil || application == nil {
 		return false
 	}
-	return application.ApplicantID == user.ID && application.Status == model.PENDING
+	return application.Applicant.ID == user.ID && application.Status == "pending"
 }
 
-func canDeleteApplicationFiles(user *model.User, application *model.Application) bool {
+func canDeleteApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
 	if user == nil || application == nil {
 		return false
 	}
 	if user.Role >= model.Admin {
 		return true
 	}
-	return application.ApplicantID == user.ID && application.Status == model.PENDING
+	return application.Applicant.ID == user.ID && application.Status == "pending"
 }
 
 func buildApplicationFileResponse(file model.File) applicationFileResponse {

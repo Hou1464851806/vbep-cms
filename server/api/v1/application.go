@@ -3,7 +3,6 @@ package v1
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -30,29 +29,6 @@ func NewApplicationApi() *ApplicationApi {
 type createApplicationParam struct {
 	DatasetID string `json:"datasetId" binding:"required"`
 	Reason    string `json:"reason" binding:"required"`
-}
-
-type userBrief struct {
-	ID       string `json:"id"`
-	Nickname string `json:"nickname"`
-	Email    string `json:"email"`
-}
-
-type datasetBrief struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-}
-
-type applicationResponse struct {
-	ID        string       `json:"id"`
-	Status    string       `json:"status"`
-	Reason    string       `json:"reason"`
-	Applicant userBrief    `json:"applicant"`
-	Dataset   datasetBrief `json:"dataset"`
-	Auditor   *userBrief   `json:"auditor,omitempty"`
-	Result    *string      `json:"auditorResult"`
-	AuditedAt *time.Time   `json:"auditedAt"`
-	CreatedAt time.Time    `json:"createdAt"`
 }
 
 type auditApplicationParam struct {
@@ -125,14 +101,9 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 		return
 	}
 
-	resp := make([]applicationResponse, 0, len(applications))
-	for _, application := range applications {
-		resp = append(resp, buildApplicationResponse(application))
-	}
-
 	ctx.JSON(http.StatusOK, gin.H{
 		"message":      "success",
-		"applications": resp,
+		"applications": applications,
 	})
 }
 
@@ -164,30 +135,30 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	}
 
 	// 3. 鉴权逻辑：如果是普通用户，且该申请的申请人不是当前用户 -> 403 Forbidden
-	if currentUser.Role == model.Common && application.ApplicantID != currentUser.ID {
+	if currentUser.Role == model.Common && application.Applicant.ID != currentUser.ID {
 		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied: you do not own this application"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"message":     "success",
-		"application": buildApplicationResponse(*application),
+		"application": *application,
 	})
 }
 
 func (a *ApplicationApi) Approve(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.Application, error) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
 		return a.service.ApproveApplication(id, auditorID, result)
 	}, "approve")
 }
 
 func (a *ApplicationApi) Reject(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.Application, error) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
 		return a.service.RejectApplication(id, auditorID, result)
 	}, "reject")
 }
 
-type auditActionFunc func(id, auditorID, result string) (*model.Application, error)
+type auditActionFunc func(id, auditorID, result string) (*model.ApplicationListItem, error)
 
 func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionFunc, actionName string) {
 	id := ctx.Param("id")
@@ -230,58 +201,8 @@ func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionF
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"message":     "success",
-		"application": buildApplicationResponse(*application),
+		"application": *application,
 	})
-}
-
-func buildApplicationResponse(app model.Application) applicationResponse {
-	var applicantEmail string
-	if app.Applicant.Email != nil {
-		applicantEmail = *app.Applicant.Email
-	}
-
-	resp := applicationResponse{
-		ID:        app.ID,
-		Status:    formatApplicationStatus(app.Status),
-		Reason:    app.Reason,
-		CreatedAt: app.CreatedAt,
-		AuditedAt: app.AuditedAt,
-		Applicant: userBrief{
-			ID:       app.Applicant.ID,
-			Nickname: app.Applicant.NickName,
-			Email:    applicantEmail,
-		},
-		Dataset: datasetBrief{
-			ID:    app.Dataset.ID,
-			Title: app.Dataset.Title,
-		},
-	}
-
-	if app.Auditor != nil {
-		var auditorEmail string
-		if app.Auditor.Email != nil {
-			auditorEmail = *app.Auditor.Email
-		}
-
-		resp.Auditor = &userBrief{
-			ID:       app.Auditor.ID,
-			Nickname: app.Auditor.NickName,
-			Email:    auditorEmail,
-		}
-	}
-	resp.Result = app.AuditorResult
-
-	return resp
-}
-func formatApplicationStatus(status model.ApplicationStatus) string {
-	switch status {
-	case model.APPROVED:
-		return "approved"
-	case model.DISAPPROVED:
-		return "disapproved"
-	default:
-		return "pending"
-	}
 }
 
 func getUserIDFromContext(ctx *gin.Context) (string, error) {

@@ -27,22 +27,27 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	return nil
 }
 
-func (s *DatasetService) GetAllDatasets() ([]model.Dataset, error) {
+func (s *DatasetService) GetAllDatasets() ([]model.DatasetListItem, error) {
 	ctx := context.Background()
-	var datasets []model.Dataset
+	var results []model.DatasetListItem
+
 	err := global.DB.WithContext(ctx).
-		Preload("Files").
-		Preload("Creator").
-		Find(&datasets).Error
+		Model(&model.Dataset{}).
+		Select(`
+            datasets.id, 
+            datasets.title, 
+            datasets.created_at, 
+            users.nick_name as creator, 
+            (SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets') as file_count
+        `).
+		Joins("LEFT JOIN users ON users.id = datasets.creator_id").
+		Scan(&results).Error
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all datasets: %w", err)
+		return nil, fmt.Errorf("failed to get dataset list: %w", err)
 	}
 
-	return datasets, nil
-}
-
-func (s *DatasetService) GetDatasets() {
-
+	return results, nil
 }
 
 func (s *DatasetService) UpdateDataset(id string, title, description string) (*model.Dataset, error) {

@@ -34,44 +34,100 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	return nil
 }
 
-func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Application, error) {
+func (s *ApplicationService) ListApplications(applicantID *string) ([]model.ApplicationListItem, error) {
 	ctx := context.Background()
-	var applications []model.Application
+	var apps []model.Application
 
 	db := global.DB.WithContext(ctx).
-		Preload("Applicant").
-		Preload("Dataset").
-		Preload("Auditor").
+		Model(&model.Application{}).
+		Select("id, status, reason, applicant_id, dataset_id, auditor_id, auditor_result, audited_at, created_at").
 		Order("created_at DESC")
 
-	// 如果是普通用户，只查询自己的申请
+	db = db.Preload("Applicant", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, nick_name, email")
+	}).Preload("Dataset", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, title")
+	}).Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+		return db.Select("id, nick_name, email")
+	})
+
+	// 只允许用户查询自己的申请
 	if applicantID != nil {
 		db = db.Where("applicant_id = ?", *applicantID)
 	}
 
-	err := db.Find(&applications).Error
-	if err != nil {
+	if err := db.Find(&apps).Error; err != nil {
 		return nil, fmt.Errorf("failed to query applications: %w", err)
 	}
-	return applications, nil
+
+	// 模型转换 (Model -> DTO)
+	result := make([]model.ApplicationListItem, len(apps))
+	for i, app := range apps {
+		item := model.ApplicationListItem{
+			ID:        app.ID,
+			Status:    app.Status.String(),
+			Reason:    app.Reason,
+			Applicant: app.Applicant.ToBrief(),
+			Dataset:   app.Dataset.ToBrief(),
+			Result:    app.AuditorResult,
+			AuditedAt: app.AuditedAt,
+			CreatedAt: app.CreatedAt,
+		}
+
+		if app.AuditorID != nil && app.Auditor != nil {
+			auditorBrief := app.Auditor.ToBrief()
+			item.Auditor = &auditorBrief
+		}
+
+		result[i] = item
+	}
+
+	return result, nil
 }
 
-func (s *ApplicationService) GetApplicationByID(id string) (*model.Application, error) {
+func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationListItem, error) {
 	ctx := context.Background()
-	var application model.Application
+	var app model.Application
+
 	err := global.DB.WithContext(ctx).
-		Preload("Applicant").
-		Preload("Dataset").
-		Preload("Auditor").
+		Model(&model.Application{}).
+		Select("id, status, reason, applicant_id, dataset_id, auditor_id, auditor_result, audited_at, created_at").
+		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, nick_name, email")
+		}).
+		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, title")
+		}).
+		Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, nick_name, email")
+		}).
 		Where("id = ?", id).
-		First(&application).Error
+		First(&app).Error
+
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to query application %s: %w", id, err)
 	}
-	return &application, nil
+
+	item := model.ApplicationListItem{
+		ID:        app.ID,
+		Status:    app.Status.String(),
+		Reason:    app.Reason,
+		Applicant: app.Applicant.ToBrief(),
+		Dataset:   app.Dataset.ToBrief(),
+		Result:    app.AuditorResult,
+		AuditedAt: app.AuditedAt,
+		CreatedAt: app.CreatedAt,
+	}
+
+	if app.AuditorID != nil && app.Auditor != nil {
+		auditorBrief := app.Auditor.ToBrief()
+		item.Auditor = &auditorBrief
+	}
+
+	return &item, nil
 }
 
 func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID string) error {
@@ -88,15 +144,15 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 	return nil
 }
 
-func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.Application, error) {
+func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.ApplicationListItem, error) {
 	return s.updateApplicationStatus(id, auditorID, result, model.APPROVED)
 }
 
-func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.Application, error) {
-	return s.updateApplicationStatus(id, auditorID, result, model.DISAPPROVED)
+func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.ApplicationListItem, error) {
+	return s.updateApplicationStatus(id, auditorID, result, model.REJECTED)
 }
 
-func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus) (*model.Application, error) {
+func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus) (*model.ApplicationListItem, error) {
 	ctx := context.Background()
 	updates := map[string]any{
 		"status":         status,

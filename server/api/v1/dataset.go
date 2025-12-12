@@ -24,7 +24,7 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 	if err != nil {
 		logger.Errorf("failed to get all datasets: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": err.Error(),
+			"message": "获取数据集列表失败", // 生产环境建议模糊错误信息
 		})
 	}
 
