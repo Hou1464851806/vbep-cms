@@ -1,10 +1,11 @@
 <script setup>
 import { ref, onMounted, inject, reactive, computed } from 'vue'
-import { Edit, Check, Close, GoldMedal } from '@element-plus/icons-vue'
-import { ElMessage} from 'element-plus'
+import { Edit, Check, Close } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 // 复用现有的 axios 实例
 import apiClient from '../../request/axios.js'
+import { formatDateTime, formatShortId } from '../../utils/format.js'
 
 // --- API 定义 ---
 // 获取所有用户列表 (假设后端支持该接口)
@@ -37,15 +38,6 @@ const isSuperAdmin = computed(() => {
 })
 
 // --- 数据格式化 ---
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return value
-  }
-}
-
 const getRoleTag = (roleVal) => {
   return ROLE_MAP[roleVal] || { label: '未知', type: 'danger' }
 }
@@ -144,13 +136,6 @@ const handleSave = async (originalRow) => {
     ElMessage.error(msg)
   }
 }
-
-// --- 辅助函数 ---
-
-const formatShortId = (id) => {
-  if (!id) return '-'
-  return String(id).substring(0, 8)
-}
 </script>
 
 <template>
@@ -158,9 +143,6 @@ const formatShortId = (id) => {
     <template #header>
       <div class="card-header">
         <span>用户管理</span>
-        <el-tag v-if="isSuperAdmin" type="warning" effect="dark">
-          <el-icon><GoldMedal /></el-icon> 超级管理员模式
-        </el-tag>
       </div>
     </template>
 
@@ -178,7 +160,7 @@ const formatShortId = (id) => {
             placement="top" 
             :show-after="500"
           >
-            <span style="cursor: pointer; font-family: monospace;">
+            <span style="cursor: pointer; font-family: monospace; color: #909399;">
               {{ formatShortId(row.id) }}
             </span>
           </el-tooltip>

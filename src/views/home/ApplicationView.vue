@@ -5,6 +5,7 @@ import { Check, Close, View, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import apiClient from '../../request/axios.js'
+import { formatDateTime, formatFileSize } from '../../utils/format.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
@@ -55,27 +56,6 @@ const getActionButtonLabel = (row) => {
     return row.status === 'pending' ? '审核' : '结果详情'
   }
   return row.status === 'pending' ? '申请详情' : '结果详情'
-}
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return value
-  }
-}
-const formatFileSize = (value) => {
-  const size = Number(value) || 0
-  if (size <= 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let idx = 0
-  let current = size
-  while (current >= 1024 && idx < units.length - 1) {
-    current /= 1024
-    idx += 1
-  }
-  const formatted = idx === 0 ? current.toFixed(0) : current.toFixed(2)
-  return `${formatted} ${units[idx]}`
 }
 
 const normalizeApplication = (item = {}) => ({

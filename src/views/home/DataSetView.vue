@@ -5,6 +5,7 @@ import { Plus, Edit, Delete, Document, Upload, Download, Promotion } from '@elem
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '../../request/axios.js'
+import { formatDateTime, formatShortId } from '../../utils/format.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -77,15 +78,6 @@ const applicationDialog = reactive({
     createdApplicationId: '',
   },
 })
-
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  try {
-    return new Date(value).toLocaleString()
-  } catch {
-    return value
-  }
-}
 
 const formatFileSize = (value) => {
   const size = Number(value) || 0
@@ -564,15 +556,27 @@ const handleSubmitApplication = async () => {
 
       <el-skeleton :rows="6" animated :loading="isDataLoading">
         <el-table :data="datasetList" stripe style="width: 100%">
-          <el-table-column v-if="isAdmin()" type="expand">
-            <template #default="props">
-              <div class="dataset-detail-description">
-                <p>{{ props.row.description }}</p>
-              </div>
+          <el-table-column label="内部ID" width="100">
+            <template #default="{ row }">
+              <el-tooltip 
+                effect="dark" 
+                :content="row.id" 
+                placement="top" 
+                :show-after="500"
+              >
+                <span style="cursor: pointer; font-family: monospace; color: #909399;">
+                  {{ formatShortId(row.id) }}
+                </span>
+              </el-tooltip>
             </template>
           </el-table-column>
-          <el-table-column prop="name" label="数据集名称" min-width="200" />
-          <el-table-column prop="description" label="描述" min-width="250" show-overflow-tooltip />
+
+          <el-table-column prop="name" label="数据集名称" min-width="300">
+             <template #default="{ row }">
+                <span style="font-weight: 500">{{ row.name }}</span>
+             </template>
+          </el-table-column>
+
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
           <el-table-column prop="creator" label="创建者" width="120" />
           <el-table-column prop="createdAt" label="创建时间" width="160" />

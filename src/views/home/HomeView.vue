@@ -284,12 +284,6 @@ const submitPassword = async () => {
 }
 
 const roleLabel = computed(() => {
-  // const map = {
-  //   'user': '用户',
-  //   'admin': '管理员',
-  //   'super_admin': '超级管理员'
-  // }
-  // return map[userInfo.role] || '未知'
   const map = {
     0: '用户',
     1: '管理员',
@@ -299,18 +293,28 @@ const roleLabel = computed(() => {
 })
 
 const roleTagType = computed(() => {
-  // const map = {
-  //   'user': 'info',
-  //   'admin': 'success',
-  //   'super_admin': 'warning' // 超管用醒目的颜色
-  // }
-  // return map[userInfo.role] || 'info'
   const map = {
     0: 'info',
     1: 'success',
     2: 'warning' // 超管用醒目的颜色
   }
   return map[userInfo.roleId] || 'info'
+})
+
+const currentPageTitle = computed(() => {
+  const roleId = userInfo.roleId
+
+  if (route.path.includes('/datasets')) {
+    return roleId > 0 ? '数据集管理' : '数据集浏览'
+  }
+  if (route.path.includes('/applications')) {
+    return roleId > 0 ? '审批管理' : '我的申请'
+  }
+  if (route.path.includes('/users')) {
+    return '用户管理'
+  }
+
+  return '系统面板' // 默认回退
 })
 </script>
 
@@ -321,12 +325,14 @@ const roleTagType = computed(() => {
       <el-menu :default-active="route.path" class="el-menu-vertical-demo" router>
         <el-menu-item index="/home/datasets">
           <el-icon><Tickets /></el-icon>
-          <span>数据集管理</span>
+          <span>{{ userInfo.roleId > 0 ? '数据集管理' : '数据集浏览' }}</span>
         </el-menu-item>
+
         <el-menu-item index="/home/applications">
           <el-icon><Memo /></el-icon>
-          <span>审批管理</span>
+          <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
         </el-menu-item>
+        
         <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
@@ -337,9 +343,7 @@ const roleTagType = computed(() => {
     <el-container>
       <el-header>
         <div class="header-content">
-          <span class="page-title">{{
-            route.name === 'dataset-list' ? '数据集列表' : '申请列表'
-          }}</span>
+          <span class="page-title">{{ currentPageTitle }}</span>
           
           <el-skeleton :rows="1" animated :loading="isUserLoading" style="width: 250px">
             <template #default>
