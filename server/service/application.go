@@ -63,23 +63,7 @@ func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Appl
 	// 模型转换 (Model -> DTO)
 	result := make([]model.ApplicationListItem, len(apps))
 	for i, app := range apps {
-		item := model.ApplicationListItem{
-			ID:        app.ID,
-			Status:    app.Status.String(),
-			Reason:    app.Reason,
-			Applicant: app.Applicant.ToBrief(),
-			Dataset:   app.Dataset.ToBrief(),
-			Result:    app.AuditorResult,
-			AuditedAt: app.AuditedAt,
-			CreatedAt: app.CreatedAt,
-		}
-
-		if app.AuditorID != nil && app.Auditor != nil {
-			auditorBrief := app.Auditor.ToBrief()
-			item.Auditor = &auditorBrief
-		}
-
-		result[i] = item
+		result[i] = app.ToListItem()
 	}
 
 	return result, nil
@@ -111,22 +95,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationLi
 		return nil, fmt.Errorf("failed to query application %s: %w", id, err)
 	}
 
-	item := model.ApplicationListItem{
-		ID:        app.ID,
-		Status:    app.Status.String(),
-		Reason:    app.Reason,
-		Applicant: app.Applicant.ToBrief(),
-		Dataset:   app.Dataset.ToBrief(),
-		Result:    app.AuditorResult,
-		AuditedAt: app.AuditedAt,
-		CreatedAt: app.CreatedAt,
-	}
-
-	if app.AuditorID != nil && app.Auditor != nil {
-		auditorBrief := app.Auditor.ToBrief()
-		item.Auditor = &auditorBrief
-	}
-
+	item := app.ToListItem()
 	return &item, nil
 }
 

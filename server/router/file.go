@@ -17,10 +17,10 @@ func (r *FileRouter) InitFileRouter(router *gin.RouterGroup) {
 	datasetFiles := router.Group("/datasets/:id/files")
 	datasetFiles.Use(middleware.JWTAuth())
 	{
-		datasetFiles.GET("", middleware.JWTAuth(), middleware.AuthRole(model.Common), fileApi.ListByDataset)
-		datasetFiles.POST("", middleware.JWTAuth(), middleware.AuthRole(model.Admin), fileApi.UploadToDataset)
-		datasetFiles.GET("/:fileID", middleware.JWTAuth(), middleware.AuthRole(model.Common), fileApi.DownloadByDataset)
-		datasetFiles.DELETE("/:fileID", middleware.JWTAuth(), middleware.AuthRole(model.Admin), fileApi.DeleteFromDataset)
+		datasetFiles.GET("", middleware.AuthRole(model.Common), fileApi.ListByDataset)
+		datasetFiles.POST("", middleware.AuthRole(model.Admin), fileApi.UploadToDataset)
+		datasetFiles.GET("/:fileID", middleware.AuthRole(model.Common), fileApi.DownloadByDataset)
+		datasetFiles.DELETE("/:fileID", middleware.AuthRole(model.Admin), fileApi.DeleteFromDataset)
 	}
 
 	applicationFiles := router.Group("/applications/:id/files")

@@ -49,3 +49,23 @@ func (s ApplicationStatus) String() string {
 		return "unknown"
 	}
 }
+
+func (app Application) ToListItem() ApplicationListItem {
+	item := ApplicationListItem{
+		ID:        app.ID,
+		Status:    app.Status.String(),
+		Reason:    app.Reason,
+		Applicant: app.Applicant.ToBrief(),
+		Dataset:   app.Dataset.ToBrief(),
+		Result:    app.AuditorResult,
+		AuditedAt: app.AuditedAt,
+		CreatedAt: app.CreatedAt,
+	}
+
+	if app.AuditorID != nil && app.Auditor != nil {
+		auditorBrief := app.Auditor.ToBrief()
+		item.Auditor = &auditorBrief
+	}
+
+	return item
+}
