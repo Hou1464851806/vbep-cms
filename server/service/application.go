@@ -34,15 +34,22 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	return nil
 }
 
-func (s *ApplicationService) ListApplications() ([]model.Application, error) {
+func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Application, error) {
 	ctx := context.Background()
 	var applications []model.Application
-	err := global.DB.WithContext(ctx).
+
+	db := global.DB.WithContext(ctx).
 		Preload("Applicant").
 		Preload("Dataset").
 		Preload("Auditor").
-		Order("created_at DESC").
-		Find(&applications).Error
+		Order("created_at DESC")
+
+	// 如果是普通用户，只查询自己的申请
+	if applicantID != nil {
+		db = db.Where("applicant_id = ?", *applicantID)
+	}
+
+	err := db.Find(&applications).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to query applications: %w", err)
 	}

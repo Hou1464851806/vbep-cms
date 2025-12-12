@@ -15,9 +15,9 @@ func (r *ApplicationRouter) InitApplicationRouter(router *gin.RouterGroup) {
 
 	applicationRouter := router.Group("/applications")
 	{
-		applicationRouter.GET("/", middleware.JWTAuth(), applicationApi.GetAll)
-		applicationRouter.GET("/:id", middleware.JWTAuth(), applicationApi.GetOne)
-		applicationRouter.POST("/", middleware.JWTAuth(), applicationApi.Create)
+		applicationRouter.GET("/", middleware.JWTAuth(), middleware.AuthRole(model.Common), applicationApi.GetAll)
+		applicationRouter.GET("/:id", middleware.JWTAuth(), middleware.AuthRole(model.Common), applicationApi.GetOne)
+		applicationRouter.POST("/", middleware.JWTAuth(), middleware.AuthRole(model.Common), applicationApi.Create)
 		applicationRouter.POST("/:id/approve", middleware.JWTAuth(), middleware.AuthRole(model.Admin), applicationApi.Approve)
 		applicationRouter.POST("/:id/reject", middleware.JWTAuth(), middleware.AuthRole(model.Admin), applicationApi.Reject)
 	}

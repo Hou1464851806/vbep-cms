@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"server/global"
 	"server/logger"
 	"server/model"
 	"server/service"
@@ -99,7 +100,25 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 }
 
 func (a *ApplicationApi) GetAll(ctx *gin.Context) {
-	applications, err := a.service.ListApplications()
+	// 1. 获取当前用户信息
+	userObj, exists := ctx.Get(global.CTXUserObj)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+	currentUser := userObj.(*model.User)
+
+	// 2. 决定查询范围
+	var filterID *string
+	// 假设 model.Common == 0, model.Admin == 1.
+	// 如果角色是 Common (0)，则传入当前用户ID进行筛选
+	if currentUser.Role == model.Common {
+		filterID = &currentUser.ID
+	}
+	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
+
+	// 3. 调用 Service
+	applications, err := a.service.ListApplications(filterID)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load applications"})
@@ -124,6 +143,15 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 		return
 	}
 
+	// 1. 获取当前用户信息
+	userObj, exists := ctx.Get(global.CTXUserObj)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+		return
+	}
+	currentUser := userObj.(*model.User)
+
+	// 2. 查询 Application
 	application, err := a.service.GetApplicationByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -132,6 +160,12 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 		}
 		logger.Errorf("failed to get application %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application"})
+		return
+	}
+
+	// 3. 鉴权逻辑：如果是普通用户，且该申请的申请人不是当前用户 -> 403 Forbidden
+	if currentUser.Role == model.Common && application.ApplicantID != currentUser.ID {
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied: you do not own this application"})
 		return
 	}
 
