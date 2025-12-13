@@ -11,6 +11,7 @@ import {
   Promotion,
   View,
 } from '@element-plus/icons-vue'
+import VuePdfEmbed from 'vue-pdf-embed'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
@@ -50,11 +51,13 @@ const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
 
 const FILE_SIZE_LIMIT_MB = 50
 const FILE_SIZE_LIMIT_BYTES = FILE_SIZE_LIMIT_MB * 1024 * 1024
+const AGREEMENT_PDF_STATIC_PATH = '/static/agreement.pdf'
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
 const datasetList = ref([])
 const isDataLoading = ref(true)
+const agreementPdfUrl = ref(AGREEMENT_PDF_STATIC_PATH)
 
 // 状态1: 新增/编辑数据集对话框
 const datasetFormDialog = reactive({
@@ -75,13 +78,21 @@ const fileDialog = reactive({
 
 // 状态3: 申请使用对话框
 const applicationFormRef = ref(null)
+const agreementUploadRef = ref(null)
 const uploadRef = ref(null)
 const applicationDialog = reactive({
   visible: false,
   isSubmitting: false,
+  currentStep: 1,
   dataset: null,
   form: { reason: '' },
   rules: { reason: [{ required: true, message: '申请理由不能为空', trigger: 'blur' }] },
+  agreement: {
+    files: [],
+    uploadTasks: [],
+    isUploading: false,
+    intendedUsage: '',
+  },
   attachments: {
     files: [],
     uploadTasks: [],
@@ -172,15 +183,22 @@ const fetchDatasets = async () => {
   }
 }
 // --- 生命周期钩子 ---
-onMounted(fetchDatasets)
+onMounted(() => {
+  fetchDatasets()
+  if (typeof window !== 'undefined') {
+    agreementPdfUrl.value = `${window.location.origin}${AGREEMENT_PDF_STATIC_PATH}`
+  }
+})
 
 watch(
   () => applicationDialog.visible,
   (visible) => {
     if (!visible) {
       resetApplicationAttachments()
+      resetAgreementUploads()
       applicationDialog.dataset = null
       applicationDialog.form.reason = ''
+      applicationDialog.currentStep = 1
     }
   },
 )
@@ -450,7 +468,9 @@ const handleApply = (row) => {
   applicationDialog.dataset = row
   applicationDialog.form.reason = ''
   resetApplicationAttachments()
+  resetAgreementUploads()
   applicationDialog.visible = true
+  applicationDialog.currentStep = 1
 }
 const resetApplicationAttachments = () => {
   applicationDialog.attachments.files = []
@@ -459,6 +479,20 @@ const resetApplicationAttachments = () => {
   applicationDialog.attachments.createdApplicationId = ''
   if (uploadRef.value) {
     uploadRef.value.clearFiles()
+  }
+}
+const resetAgreementUploads = () => {
+  applicationDialog.agreement.files.forEach((file) => {
+    if (file.preview) {
+      URL.revokeObjectURL(file.preview)
+    }
+  })
+  applicationDialog.agreement.files = []
+  applicationDialog.agreement.uploadTasks = []
+  applicationDialog.agreement.isUploading = false
+  applicationDialog.agreement.intendedUsage = ''
+  if (agreementUploadRef.value) {
+    agreementUploadRef.value.clearFiles()
   }
 }
 const ensureApplicationAttachmentTask = (file) => {
@@ -476,6 +510,25 @@ const ensureApplicationAttachmentTask = (file) => {
 }
 const updateApplicationAttachmentTask = (uid, payload = {}) => {
   const task = applicationDialog.attachments.uploadTasks.find((item) => item.uid === uid)
+  if (task) {
+    Object.assign(task, payload)
+  }
+}
+const ensureAgreementUploadTask = (file) => {
+  const existing = applicationDialog.agreement.uploadTasks.find((task) => task.uid === file.uid)
+  if (existing) return existing
+  const task = {
+    uid: file.uid,
+    name: file.name,
+    percentage: 100,
+    status: 'ready',
+    uploaded: false,
+  }
+  applicationDialog.agreement.uploadTasks.push(task)
+  return task
+}
+const updateAgreementUploadTask = (uid, payload = {}) => {
+  const task = applicationDialog.agreement.uploadTasks.find((item) => item.uid === uid)
   if (task) {
     Object.assign(task, payload)
   }
@@ -519,32 +572,119 @@ const handleRemoveQueuedAttachment = (file) => {
     applicationDialog.attachments.uploadTasks.splice(taskIndex, 1)
   }
 }
-const uploadAttachmentsForApplication = async (applicationId) => {
-  const pendingFiles = applicationDialog.attachments.files.filter((file) => {
-    const task = applicationDialog.attachments.uploadTasks.find((item) => item.uid === file.uid)
-    return !task || !task.uploaded
-  })
-  if (!pendingFiles.length) {
-    return { failed: false }
+const handleAgreementImageBeforeUpload = (rawFile) => {
+  if (!rawFile.type.startsWith('image/')) {
+    ElMessage.error('仅支持上传图片文件，请重新选择')
+    return false
   }
-  applicationDialog.attachments.isUploading = true
-  let hasError = false
-  for (const file of pendingFiles) {
-    updateApplicationAttachmentTask(file.uid, { status: 'uploading' })
-    try {
-      await uploadApplicationFileAPI(applicationId, file.raw)
-      updateApplicationAttachmentTask(file.uid, { status: 'success', uploaded: true })
-    } catch (error) {
-      console.error('Failed to upload application attachment', error)
-      updateApplicationAttachmentTask(file.uid, { status: 'error', uploaded: false })
-      hasError = true
+  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
+    ElMessage.error(`图片 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+    return false
+  }
+  return true
+}
+const handleQueueAgreementImage = (options) => {
+  const { file, onError, onSuccess } = options
+  if (!handleAgreementImageBeforeUpload(file)) {
+    onError?.(new Error('图片校验失败'))
+    return
+  }
+  const exists = applicationDialog.agreement.files.some((item) => item.uid === file.uid)
+  if (!exists) {
+    const previewUrl = URL.createObjectURL(file)
+    applicationDialog.agreement.files.push({
+      uid: file.uid,
+      name: file.name,
+      size: file.size,
+      raw: file,
+      preview: previewUrl,
+    })
+    ensureAgreementUploadTask(file)
+  }
+  onSuccess?.({}, file)
+}
+const handleRemoveAgreementImage = (file) => {
+  if (applicationDialog.agreement.isUploading) return
+  const index = applicationDialog.agreement.files.findIndex((item) => item.uid === file.uid)
+  if (index !== -1) {
+    const [removed] = applicationDialog.agreement.files.splice(index, 1)
+    if (removed?.preview) {
+      URL.revokeObjectURL(removed.preview)
     }
   }
-  applicationDialog.attachments.isUploading = false
-  if (!hasError) {
+  const taskIndex = applicationDialog.agreement.uploadTasks.findIndex(
+    (item) => item.uid === file.uid,
+  )
+  if (taskIndex !== -1) {
+    applicationDialog.agreement.uploadTasks.splice(taskIndex, 1)
+  }
+}
+const handleConfirmAgreementStep = () => {
+  if (!applicationDialog.agreement.intendedUsage.trim()) {
+    ElMessage.warning('请填写“仅将数据用于 XX 工作”的内容')
+    return
+  }
+  if (!applicationDialog.agreement.files.length) {
+    ElMessage.warning('请先上传个人签名图片')
+    return
+  }
+  applicationDialog.currentStep = 2
+}
+const handleBackToAgreementStep = () => {
+  if (applicationDialog.currentStep !== 1) {
+    applicationDialog.currentStep = 1
+  }
+}
+const uploadAttachmentsForApplication = async (applicationId) => {
+  const groups = [
+    {
+      group: applicationDialog.agreement,
+      updateTask: updateAgreementUploadTask,
+    },
+    {
+      group: applicationDialog.attachments,
+      updateTask: updateApplicationAttachmentTask,
+    },
+  ]
+
+  let hasError = false
+  let hasUploads = false
+
+  for (const { group, updateTask } of groups) {
+    const pendingFiles = group.files.filter((file) => {
+      const task = group.uploadTasks.find((item) => item.uid === file.uid)
+      return !task || !task.uploaded
+    })
+    if (!pendingFiles.length) continue
+    hasUploads = true
+    group.isUploading = true
+    for (const file of pendingFiles) {
+      updateTask(file.uid, { status: 'uploading' })
+      try {
+        await uploadApplicationFileAPI(applicationId, file.raw)
+        updateTask(file.uid, { status: 'success', uploaded: true })
+      } catch (error) {
+        console.error('Failed to upload application attachment', error)
+        updateTask(file.uid, { status: 'error', uploaded: false })
+        hasError = true
+      }
+    }
+    group.isUploading = false
+  }
+
+  if (!hasError && hasUploads) {
     ElMessage.success('上传附件成功')
   }
   return { failed: hasError }
+}
+const buildApplicationReason = () => {
+  const usage = applicationDialog.agreement.intendedUsage.trim()
+  const baseReason = applicationDialog.form.reason.trim()
+  const declaration = usage ? `承诺：仅将数据用于${usage}工作` : ''
+  if (declaration && baseReason) {
+    return `${declaration}\n${baseReason}`
+  }
+  return declaration || baseReason
 }
 const handleSubmitApplication = async () => {
   if (!applicationFormRef.value) return
@@ -555,7 +695,7 @@ const handleSubmitApplication = async () => {
       if (!applicationId) {
         const res = await submitApplicationAPI({
           datasetId: applicationDialog.dataset.id,
-          reason: applicationDialog.form.reason,
+          reason: buildApplicationReason(),
         })
         if (res.data?.message === 'success' && res.data.id) {
           applicationId = res.data.id
@@ -575,6 +715,7 @@ const handleSubmitApplication = async () => {
       ElMessage.success('申请提交成功，请等待管理员审批')
       applicationDialog.visible = false
       resetApplicationAttachments()
+      resetAgreementUploads()
     } catch (error) {
       console.error('Application submission failed:', error)
       ElMessage.error('提交申请时发生错误')
@@ -776,10 +917,100 @@ const handleSubmitApplication = async () => {
     <el-dialog
       v-model="applicationDialog.visible"
       :title="`申请使用数据集 - ${applicationDialog.dataset?.name}`"
-      width="600px"
+      width="720px"
       :close-on-click-modal="false"
     >
+      <div class="application-step-header">
+        <div class="application-step-progress">
+          <el-steps :active="applicationDialog.currentStep" align-center>
+            <el-step title="知情同意书" />
+            <el-step title="填写申请" />
+          </el-steps>
+        </div>
+        <el-button
+          v-if="applicationDialog.currentStep === 2"
+          type="primary"
+          link
+          class="step-return-button"
+          @click="handleBackToAgreementStep"
+        >
+          返回修改第一步
+        </el-button>
+      </div>
+
+      <div v-if="applicationDialog.currentStep === 1" class="agreement-step">
+        <div class="agreement-viewer-wrapper">
+          <vue-pdf-embed class="agreement-viewer-frame" :source="agreementPdfUrl" />
+        </div>
+        <div class="agreement-usage-section">
+          <div class="agreement-usage-title">承诺声明</div>
+          <div class="agreement-usage-box">
+            <span>本人承诺：仅将数据用于</span>
+            <el-input
+              v-model="applicationDialog.agreement.intendedUsage"
+              placeholder="请输入具体工作内容"
+              class="agreement-usage-input"
+              :disabled="applicationDialog.agreement.isUploading || applicationDialog.isSubmitting"
+            />
+            <span>工作。</span>
+          </div>
+          <div class="agreement-usage-tip">请在进入下一步前补充完整上述声明。</div>
+        </div>
+        <div class="agreement-upload-section">
+          <div class="agreement-upload-title">请上传个人手写签名照片</div>
+          <el-upload
+            ref="agreementUploadRef"
+            action="#"
+            accept="image/*"
+            :show-file-list="false"
+            multiple
+            :before-upload="handleAgreementImageBeforeUpload"
+            :http-request="handleQueueAgreementImage"
+            :disabled="applicationDialog.agreement.isUploading || applicationDialog.isSubmitting"
+          >
+            <el-button
+              type="primary"
+              :icon="Upload"
+              :disabled="applicationDialog.agreement.isUploading || applicationDialog.isSubmitting"
+              >选择图片</el-button
+            >
+            <template #tip>
+              <div class="el-upload__tip">
+                仅支持图片文件，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB。建议使用 JPG/PNG 格式。
+              </div>
+            </template>
+          </el-upload>
+          <el-empty
+            v-if="!applicationDialog.agreement.files.length"
+            description="尚未上传签名图片"
+            :image-size="100"
+            class="agreement-upload-empty"
+          />
+          <div v-else class="agreement-image-list">
+            <div
+              v-for="file in applicationDialog.agreement.files"
+              :key="file.uid"
+              class="agreement-image-item"
+            >
+              <img :src="file.preview" :alt="file.name" />
+              <div class="agreement-image-meta">
+                <div class="agreement-image-name">{{ file.name }}</div>
+                <div class="agreement-image-size">{{ formatFileSize(file.size) }}</div>
+              </div>
+              <el-button
+                text
+                type="danger"
+                size="small"
+                :disabled="applicationDialog.agreement.isUploading"
+                @click="handleRemoveAgreementImage(file)"
+                >移除</el-button
+              >
+            </div>
+          </div>
+        </div>
+      </div>
       <el-form
+        v-else
         ref="applicationFormRef"
         :model="applicationDialog.form"
         :rules="applicationDialog.rules"
@@ -795,7 +1026,7 @@ const handleSubmitApplication = async () => {
             placeholder="请详细说明您申请此数据集的用途、目的以及期望的使用方式。"
           />
         </el-form-item>
-        <el-form-item label="上传附件 (可选)">
+        <el-form-item label="上传附件 (可选)" class="application-attachment-form-item">
           <div class="application-attachment-wrapper">
             <div class="application-upload-controls">
               <el-upload
@@ -806,14 +1037,18 @@ const handleSubmitApplication = async () => {
                 :before-upload="handleApplicationAttachmentBeforeUpload"
                 :http-request="handleQueueApplicationAttachment"
                 :disabled="
-                  applicationDialog.isSubmitting || applicationDialog.attachments.isUploading
+                  applicationDialog.isSubmitting ||
+                  applicationDialog.attachments.isUploading ||
+                  applicationDialog.agreement.isUploading
                 "
               >
                 <el-button
                   type="primary"
                   :icon="Upload"
                   :disabled="
-                    applicationDialog.isSubmitting || applicationDialog.attachments.isUploading
+                    applicationDialog.isSubmitting ||
+                    applicationDialog.attachments.isUploading ||
+                    applicationDialog.agreement.isUploading
                   "
                   >选择文件</el-button
                 >
@@ -877,20 +1112,45 @@ const handleSubmitApplication = async () => {
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button
-          @click="applicationDialog.visible = false"
-          :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
-          >取消</el-button
-        >
-        <el-button
-          type="primary"
-          @click="handleSubmitApplication"
-          :loading="applicationDialog.isSubmitting"
-          :disabled="applicationDialog.attachments.isUploading"
-          >{{
-            applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请'
-          }}</el-button
-        >
+        <template v-if="applicationDialog.currentStep === 1">
+          <el-button
+            @click="applicationDialog.visible = false"
+            :disabled="applicationDialog.agreement.isUploading"
+            >取消</el-button
+          >
+          <el-button
+            type="primary"
+            @click="handleConfirmAgreementStep"
+            :disabled="
+              !applicationDialog.agreement.files.length ||
+              !applicationDialog.agreement.intendedUsage.trim() ||
+              applicationDialog.agreement.isUploading
+            "
+            >同意并继续</el-button
+          >
+        </template>
+        <template v-else>
+          <el-button
+            @click="applicationDialog.visible = false"
+            :disabled="
+              applicationDialog.isSubmitting ||
+              applicationDialog.attachments.isUploading ||
+              applicationDialog.agreement.isUploading
+            "
+            >取消</el-button
+          >
+          <el-button
+            type="primary"
+            @click="handleSubmitApplication"
+            :loading="applicationDialog.isSubmitting"
+            :disabled="
+              applicationDialog.attachments.isUploading || applicationDialog.agreement.isUploading
+            "
+            >{{
+              applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请'
+            }}</el-button
+          >
+        </template>
       </template>
     </el-dialog>
 
@@ -975,12 +1235,20 @@ const handleSubmitApplication = async () => {
 .upload-progress-item :deep(.el-progress) {
   flex: 1;
 }
+.application-attachment-form-item :deep(.el-form-item__content) {
+  width: 100%;
+}
 .application-attachment-wrapper {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+.application-upload-controls {
+  width: 100%;
+}
 .application-attachment-info {
+  width: 100%;
   border: 1px solid #ebeef5;
   border-radius: 8px;
   padding: 12px;
@@ -1015,6 +1283,110 @@ const handleSubmitApplication = async () => {
   margin-left: 0;
 }
 .application-attachment-info :deep(.el-empty__description) {
+  color: #909399;
+}
+.application-step-header {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.application-step-progress {
+  flex: 1;
+}
+.step-return-button {
+  flex-shrink: 0;
+}
+.agreement-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.agreement-viewer-wrapper {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  overflow: auto;
+  height: 360px;
+  background-color: #fff;
+}
+.agreement-viewer-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+.agreement-upload-section {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 16px;
+  background-color: #f9fafc;
+}
+.agreement-upload-title {
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.agreement-usage-section {
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  padding: 16px;
+  background-color: #fff;
+}
+.agreement-usage-title {
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.agreement-usage-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.agreement-usage-input {
+  flex: 1;
+}
+.agreement-usage-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 8px;
+}
+.agreement-image-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+.agreement-image-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background-color: #fff;
+}
+.agreement-image-item img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+.agreement-image-meta {
+  flex: 1;
+  overflow: hidden;
+}
+.agreement-image-name {
+  font-size: 14px;
+  color: #303133;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.agreement-image-size {
+  font-size: 12px;
+  color: #909399;
+}
+.agreement-upload-empty :deep(.el-empty__description) {
   color: #909399;
 }
 </style>
