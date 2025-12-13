@@ -12,10 +12,16 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import VuePdfEmbed from 'vue-pdf-embed'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
-import { formatDateTime, formatShortId, formatFileSize } from '@/utils/format.js'
+import {
+  formatDateTime,
+  formatShortId,
+  formatFileSize,
+  textToTransparentImage,
+} from '@/utils/format.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -92,6 +98,8 @@ const applicationDialog = reactive({
     uploadTasks: [],
     isUploading: false,
     intendedUsage: '',
+    generatedAttachmentUid: '',
+    isGeneratingPdf: false,
   },
   attachments: {
     files: [],
@@ -477,6 +485,7 @@ const resetApplicationAttachments = () => {
   applicationDialog.attachments.uploadTasks = []
   applicationDialog.attachments.isUploading = false
   applicationDialog.attachments.createdApplicationId = ''
+  applicationDialog.agreement.generatedAttachmentUid = ''
   if (uploadRef.value) {
     uploadRef.value.clearFiles()
   }
@@ -491,6 +500,8 @@ const resetAgreementUploads = () => {
   applicationDialog.agreement.uploadTasks = []
   applicationDialog.agreement.isUploading = false
   applicationDialog.agreement.intendedUsage = ''
+  applicationDialog.agreement.generatedAttachmentUid = ''
+  applicationDialog.agreement.isGeneratingPdf = false
   if (agreementUploadRef.value) {
     agreementUploadRef.value.clearFiles()
   }
@@ -548,19 +559,22 @@ const handleQueueApplicationAttachment = (options) => {
   }
   const exists = applicationDialog.attachments.files.some((item) => item.uid === file.uid)
   if (!exists) {
-    applicationDialog.attachments.files.push({
+    appendAttachmentEntry({
       uid: file.uid,
       name: file.name,
       size: file.size,
       raw: file,
+      locked: false,
     })
-    ensureApplicationAttachmentTask(file)
-    updateApplicationAttachmentTask(file.uid, { status: 'ready', percentage: 100, uploaded: false })
   }
   onSuccess?.({}, file)
 }
 const handleRemoveQueuedAttachment = (file) => {
   if (applicationDialog.attachments.isUploading) return
+  if (file.locked) {
+    ElMessage.warning('系统生成的知情同意书不可删除')
+    return
+  }
   const index = applicationDialog.attachments.files.findIndex((item) => item.uid === file.uid)
   if (index !== -1) {
     applicationDialog.attachments.files.splice(index, 1)
@@ -571,6 +585,41 @@ const handleRemoveQueuedAttachment = (file) => {
   if (taskIndex !== -1) {
     applicationDialog.attachments.uploadTasks.splice(taskIndex, 1)
   }
+}
+const removeGeneratedAgreementAttachment = () => {
+  const generatedUid = applicationDialog.agreement.generatedAttachmentUid
+  if (!generatedUid) return
+  const fileIndex = applicationDialog.attachments.files.findIndex(
+    (item) => item.uid === generatedUid,
+  )
+  if (fileIndex !== -1) {
+    applicationDialog.attachments.files.splice(fileIndex, 1)
+  }
+  const taskIndex = applicationDialog.attachments.uploadTasks.findIndex(
+    (item) => item.uid === generatedUid,
+  )
+  if (taskIndex !== -1) {
+    applicationDialog.attachments.uploadTasks.splice(taskIndex, 1)
+  }
+  applicationDialog.agreement.generatedAttachmentUid = ''
+}
+const appendAttachmentEntry = (entry) => {
+  applicationDialog.attachments.files.push(entry)
+  ensureApplicationAttachmentTask(entry)
+  updateApplicationAttachmentTask(entry.uid, { status: 'ready', percentage: 100, uploaded: false })
+}
+const addGeneratedAgreementAttachment = (file) => {
+  removeGeneratedAgreementAttachment()
+  const entry = {
+    uid: `agreement-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: file.name,
+    size: file.size,
+    raw: file,
+    locked: true,
+    systemGenerated: true,
+  }
+  appendAttachmentEntry(entry)
+  applicationDialog.agreement.generatedAttachmentUid = entry.uid
 }
 const handleAgreementImageBeforeUpload = (rawFile) => {
   if (!rawFile.type.startsWith('image/')) {
@@ -589,18 +638,19 @@ const handleQueueAgreementImage = (options) => {
     onError?.(new Error('图片校验失败'))
     return
   }
-  const exists = applicationDialog.agreement.files.some((item) => item.uid === file.uid)
-  if (!exists) {
-    const previewUrl = URL.createObjectURL(file)
-    applicationDialog.agreement.files.push({
-      uid: file.uid,
-      name: file.name,
-      size: file.size,
-      raw: file,
-      preview: previewUrl,
-    })
-    ensureAgreementUploadTask(file)
-  }
+  applicationDialog.agreement.files.forEach((item) => {
+    if (item.preview) URL.revokeObjectURL(item.preview)
+  })
+  applicationDialog.agreement.files = []
+  const previewUrl = URL.createObjectURL(file)
+  applicationDialog.agreement.files.push({
+    uid: file.uid,
+    name: file.name,
+    size: file.size,
+    raw: file,
+    preview: previewUrl,
+  })
+  ensureAgreementUploadTask(file)
   onSuccess?.({}, file)
 }
 const handleRemoveAgreementImage = (file) => {
@@ -619,7 +669,142 @@ const handleRemoveAgreementImage = (file) => {
     applicationDialog.agreement.uploadTasks.splice(taskIndex, 1)
   }
 }
-const handleConfirmAgreementStep = () => {
+const generateSignedAgreementPdf = async () => {
+  if (!agreementPdfUrl.value) {
+    throw new Error('无法读取知情同意书模板')
+  }
+  const usage = applicationDialog.agreement.intendedUsage.trim()
+  const signatureEntry = applicationDialog.agreement.files[0]
+  if (!signatureEntry?.raw) {
+    throw new Error('未找到签名图片')
+  }
+  const response = await fetch(agreementPdfUrl.value, { cache: 'no-store' })
+  if (!response.ok) {
+    throw new Error('加载知情同意书模板失败')
+  }
+  const pdfBytes = await response.arrayBuffer()
+  const pdfDoc = await PDFDocument.load(pdfBytes)
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const pages = pdfDoc.getPages()
+  if (!pages.length) {
+    throw new Error('知情同意书模板内容异常')
+  }
+
+  const scale = 3
+  const usageImageBuffer = await textToTransparentImage(usage, { scale: scale })
+  const usageImage = await pdfDoc.embedPng(usageImageBuffer)
+  const usageImageWidth = usageImage.width / scale
+  const usageImageHeight = usageImage.height / scale
+
+  const formatter = new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    timeZone: 'Asia/Shanghai',
+  })
+  const now = new Date()
+  const parts = formatter.formatToParts(now)
+  const year = parts.find((part) => part.type === 'year')?.value
+  const month = parts.find((part) => part.type === 'month')?.value
+  const day = parts.find((part) => part.type === 'day')?.value
+  const yearText = `${year}`
+  const monthText = `${month}`
+  const dayText = `${day}`
+
+  const coordinates = {
+    usage: { x: 215, y: 350 },
+    signature: { x: 420, y: 120 },
+    year2: { x: 360, y: 99 },
+    month2: { x: 406, y: 99 },
+    day2: { x: 436, y: 99 },
+    year1: { x: 129, y: 263 },
+    month1: { x: 170, y: 263 },
+    day1: { x: 198, y: 263 },
+  }
+
+  const page = pages[0]
+  const page2 = pages[1]
+
+  page.drawImage(usageImage, {
+    x: coordinates.usage.x,
+    y: coordinates.usage.y,
+    width: usageImageWidth,
+    height: usageImageHeight,
+  })
+
+  page2.drawText(yearText, {
+    x: coordinates.year1.x,
+    y: coordinates.year1.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+  page2.drawText(monthText, {
+    x: coordinates.month1.x,
+    y: coordinates.month1.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+  page2.drawText(dayText, {
+    x: coordinates.day1.x,
+    y: coordinates.day1.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+  page2.drawText(yearText, {
+    x: coordinates.year2.x,
+    y: coordinates.year2.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+  page2.drawText(monthText, {
+    x: coordinates.month2.x,
+    y: coordinates.month2.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+  page2.drawText(dayText, {
+    x: coordinates.day2.x,
+    y: coordinates.day2.y,
+    size: 12,
+    font,
+    color: rgb(0, 0, 0),
+  })
+
+  const signatureFile = signatureEntry.raw
+  const signatureBuffer = await signatureFile.arrayBuffer()
+  const lowerType = signatureFile.type?.toLowerCase() || ''
+  const signatureImage = lowerType.includes('png')
+    ? await pdfDoc.embedPng(signatureBuffer)
+    : await pdfDoc.embedJpg(signatureBuffer)
+  // 签名的显示区域最大值
+  const maxWidth = 80
+  const maxHeight = 20
+  // 等比例缩放
+  let signatureWidth = maxWidth
+  let signatureHeight = (signatureImage.height / signatureImage.width) * signatureWidth
+  if (signatureHeight > maxHeight) {
+    const ratio = maxHeight / signatureHeight
+    signatureWidth *= ratio
+    signatureHeight = maxHeight
+  }
+  page2.drawImage(signatureImage, {
+    x: coordinates.signature.x,
+    y: coordinates.signature.y,
+    width: signatureWidth,
+    height: signatureHeight,
+  })
+
+  const modifiedBytes = await pdfDoc.save()
+  const fileName = `知情同意书-${new Date().toISOString().slice(0, 10)}.pdf`
+  return new File([modifiedBytes], fileName, { type: 'application/pdf' })
+}
+const handleConfirmAgreementStep = async () => {
+  if (applicationDialog.agreement.isGeneratingPdf) return
   if (!applicationDialog.agreement.intendedUsage.trim()) {
     ElMessage.warning('请填写“仅将数据用于 XX 工作”的内容')
     return
@@ -628,10 +813,21 @@ const handleConfirmAgreementStep = () => {
     ElMessage.warning('请先上传个人签名图片')
     return
   }
-  applicationDialog.currentStep = 2
+  applicationDialog.agreement.isGeneratingPdf = true
+  try {
+    const generatedFile = await generateSignedAgreementPdf()
+    addGeneratedAgreementAttachment(generatedFile)
+    applicationDialog.currentStep = 2
+  } catch (error) {
+    console.error('Failed to generate agreement PDF', error)
+    ElMessage.error(error.message || '生成知情同意书失败，请重试')
+  } finally {
+    applicationDialog.agreement.isGeneratingPdf = false
+  }
 }
 const handleBackToAgreementStep = () => {
   if (applicationDialog.currentStep !== 1) {
+    removeGeneratedAgreementAttachment()
     applicationDialog.currentStep = 1
   }
 }
@@ -678,13 +874,10 @@ const uploadAttachmentsForApplication = async (applicationId) => {
   return { failed: hasError }
 }
 const buildApplicationReason = () => {
-  const usage = applicationDialog.agreement.intendedUsage.trim()
+  // const usage = applicationDialog.agreement.intendedUsage.trim()
   const baseReason = applicationDialog.form.reason.trim()
-  const declaration = usage ? `承诺：仅将数据用于${usage}工作` : ''
-  if (declaration && baseReason) {
-    return `${declaration}\n${baseReason}`
-  }
-  return declaration || baseReason
+  // const declaration = usage ? `承诺：仅将数据用于${usage}工作` : ''
+  return baseReason
 }
 const handleSubmitApplication = async () => {
   if (!applicationFormRef.value) return
@@ -1072,10 +1265,21 @@ const handleSubmitApplication = async () => {
                   class="application-attachment-item"
                 >
                   <div>
-                    <div class="attachment-name">{{ file.name }}</div>
+                    <div class="attachment-name">
+                      {{ file.name }}
+                      <el-tag
+                        v-if="file.locked"
+                        type="success"
+                        size="small"
+                        class="attachment-badge"
+                        effect="light"
+                        >系统生成</el-tag
+                      >
+                    </div>
                     <div class="attachment-size">{{ formatFileSize(file.size) }}</div>
                   </div>
                   <el-button
+                    v-if="!file.locked"
                     text
                     type="danger"
                     size="small"
@@ -1124,8 +1328,10 @@ const handleSubmitApplication = async () => {
             :disabled="
               !applicationDialog.agreement.files.length ||
               !applicationDialog.agreement.intendedUsage.trim() ||
-              applicationDialog.agreement.isUploading
+              applicationDialog.agreement.isUploading ||
+              applicationDialog.agreement.isGeneratingPdf
             "
+            :loading="applicationDialog.agreement.isGeneratingPdf"
             >同意并继续</el-button
           >
         </template>
@@ -1272,6 +1478,9 @@ const handleSubmitApplication = async () => {
   font-size: 14px;
   color: #303133;
   word-break: break-all;
+}
+.attachment-badge {
+  margin-left: 8px;
 }
 .attachment-size {
   font-size: 12px;
