@@ -4,13 +4,13 @@ import "time"
 
 type Dataset struct {
 	Base
-	Title       string `gorm:"not null"`
-	Description string
+	Title       string `json:"title" gorm:"not null"`
+	Description string `json:"description"`
 
-	CreatorID string `gorm:"not null;type:char(36)"`
-	Creator   User   `gorm:"foreignKey:CreatorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
+	CreatorID string `json:"creatorId" gorm:"not null;type:char(36)"`
+	Creator   User   `json:"creator" gorm:"foreignKey:CreatorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
 
-	Files []File `gorm:"polymorphic:Owner;"`
+	Files []File `json:"files" gorm:"polymorphic:Owner;"`
 }
 
 type DatasetListItem struct {
@@ -18,7 +18,8 @@ type DatasetListItem struct {
 	Title     string    `json:"title"`
 	Creator   string    `json:"creator"`
 	FileCount int64     `json:"fileCount"`
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"createdAt"`
+	HasAccess bool      `json:"hasAccess"`
 }
 
 type DatasetBrief struct {

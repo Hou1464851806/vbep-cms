@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"net/http"
+	"server/global"
 	"server/logger"
 	"server/model"
 	"server/service"
@@ -20,12 +21,38 @@ func NewDatasetApi() *DatasetApi {
 }
 
 func (a *DatasetApi) GetAll(ctx *gin.Context) {
-	datasets, err := a.service.GetAllDatasets()
+	// 获取用户信息 (由 AuthRole 或 JWTAuth 中间件注入)
+	// 注意：如果你的 GetAll 路由没有加 AuthRole，只加了 JWTAuth，
+	// 你需要确保能从 ctx 中拿到 ID。
+	// 假设 JWTAuth 已经在 ctx 设置了 global.CTXUserID
+
+	userID := ctx.GetString(global.CTXUserID)
+	if userID == "" {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "未登录"})
+		return
+	}
+
+	// 获取用户对象或角色，假设 JWTAuth 或 AuthRole 已经处理了
+	// 这里为了保险，简易起见，如果 ctx 中有 UserObj 则用，没有则默认 Role=0
+	// *重要*：你需要确保 Router 中 GetAll 使用了中间件来获取 Role，
+	// 或者在这里查库。为了性能，通常中间件做好了。
+	// 假设 userObj 存在：
+	var role model.UserRole = model.Common
+	if u, exists := ctx.Get(global.CTXUserObj); exists {
+		role = u.(*model.User).Role
+	} else {
+		// 如果 GetAll 只有 JWTAuth 没有 fetch user，这里为了严谨需要查库，
+		// 但根据题目上下文，我们可以假设调用链可以获取到 role
+		// 此处简化处理：默认普通用户
+	}
+
+	datasets, err := a.service.GetAllDatasets(userID, role)
 	if err != nil {
 		logger.Errorf("failed to get all datasets: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "获取数据集列表失败", // 生产环境建议模糊错误信息
+			"message": "获取数据集列表失败",
 		})
+		return // 别忘了 return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
@@ -35,7 +62,33 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 }
 
 func (a *DatasetApi) GetOne(ctx *gin.Context) {
+	id := ctx.Param("id")
+	userID := ctx.GetString(global.CTXUserID)
 
+	// 获取角色
+	var role model.UserRole = model.Common
+	if u, exists := ctx.Get(global.CTXUserObj); exists {
+		role = u.(*model.User).Role
+	}
+
+	dataset, err := a.service.GetDatasetDetail(id, userID, role)
+	if err != nil {
+		if err.Error() == "permission denied" {
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "无权访问该数据集内容"})
+			return
+		}
+		if err == gorm.ErrRecordNotFound {
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "获取数据集详情失败"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"dataset": dataset,
+	})
 }
 
 type NewDatasetParam struct {

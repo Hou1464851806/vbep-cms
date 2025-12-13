@@ -27,27 +27,81 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	return nil
 }
 
-func (s *DatasetService) GetAllDatasets() ([]model.DatasetListItem, error) {
+func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]model.DatasetListItem, error) {
 	ctx := context.Background()
 	var results []model.DatasetListItem
 
-	err := global.DB.WithContext(ctx).
+	db := global.DB.WithContext(ctx).
 		Model(&model.Dataset{}).
-		Select(`
-            datasets.id, 
-            datasets.title, 
-            datasets.created_at, 
-            users.nick_name as creator, 
-            (SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets') as file_count
-        `).
-		Joins("LEFT JOIN users ON users.id = datasets.creator_id").
-		Scan(&results).Error
+		Joins("LEFT JOIN users ON users.id = datasets.creator_id")
 
+	selectQuery := `
+		datasets.id, 
+		datasets.title, 
+		datasets.created_at, 
+		users.nick_name as creator, 
+		(SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets') as file_count
+	`
+
+	if role > model.Common {
+		// 管理员：默认拥有所有权限
+		selectQuery += ", 1 as has_access"
+	} else {
+		// 普通用户：检查是否存在已通过的申请
+		selectQuery += fmt.Sprintf(`, 
+			(SELECT COUNT(*) FROM applications 
+			 WHERE applications.dataset_id = datasets.id 
+			 AND applications.applicant_id = '%s' 
+			 AND applications.status = %d) > 0 as has_access`, userID, model.APPROVED)
+	}
+
+	err := db.Select(selectQuery).Scan(&results).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dataset list: %w", err)
 	}
-
 	return results, nil
+}
+
+// GetDatasetDetail 获取详情，管理员直接返回，普通用户需鉴权
+func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.UserRole) (*model.Dataset, error) {
+	var dataset model.Dataset
+	ctx := context.Background()
+
+	// 1. 查数据
+	err := global.DB.WithContext(ctx).
+		Preload("Files").
+		Preload("Creator").
+		Where("id = ?", id).
+		First(&dataset).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("failed to query dataset: %w", err)
+	}
+
+	// 2. 权限判定
+	if role > model.Common {
+		// 管理员：直接通过，不仅用于查看详情，也用于编辑回显
+		return &dataset, nil
+	}
+
+	// 普通用户：必须有 Approved 的申请
+	var count int64
+	err = global.DB.WithContext(ctx).
+		Model(&model.Application{}).
+		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.APPROVED).
+		Count(&count).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify permission: %w", err)
+	}
+	if count == 0 {
+		return nil, fmt.Errorf("permission denied")
+	}
+
+	return &dataset, nil
 }
 
 func (s *DatasetService) UpdateDataset(id string, title, description string) (*model.Dataset, error) {
