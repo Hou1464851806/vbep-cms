@@ -29,7 +29,8 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 
 func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]model.DatasetListItem, error) {
 	ctx := context.Background()
-	var results []model.DatasetListItem
+	// var results []model.DatasetListItem
+	results := make([]model.DatasetListItem, 0)
 
 	db := global.DB.WithContext(ctx).
 		Model(&model.Dataset{}).
@@ -40,7 +41,7 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]m
 		datasets.title, 
 		datasets.created_at, 
 		users.nick_name as creator, 
-		(SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets') as file_count
+		(SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets' AND files.deleted_at IS NULL) as file_count
 	`
 
 	if role > model.Common {
