@@ -1,11 +1,20 @@
 <!-- src/views/dataset/DatasetList.vue -->
 <script setup>
 import { ref, onMounted, inject, reactive, watch } from 'vue'
-import { Plus, Edit, Delete, Document, Upload, Download, Promotion, View } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Edit,
+  Delete,
+  Document,
+  Upload,
+  Download,
+  Promotion,
+  View,
+} from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import apiClient from '../../request/axios.js'
-import { formatDateTime, formatShortId, formatFileSize } from '../../utils/format.js'
+import apiClient from '@/request/axios.js'
+import { formatDateTime, formatShortId, formatFileSize } from '@/utils/format.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -28,7 +37,8 @@ const deleteDatasetFileAPI = (datasetId, fileId) =>
 const downloadDatasetFileAPI = (datasetId, fileId) =>
   apiClient.get(`/api/v1/datasets/${datasetId}/files/${fileId}`, { responseType: 'blob' })
 
-const submitApplicationAPI = (applicationData) => apiClient.post('/api/v1/applications', applicationData)
+const submitApplicationAPI = (applicationData) =>
+  apiClient.post('/api/v1/applications', applicationData)
 const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -85,7 +95,7 @@ const detailDialog = reactive({
   visible: false,
   loading: false,
   data: null,
-  files: []
+  files: [],
 })
 
 const normalizeDatasets = (datasets = []) =>
@@ -94,7 +104,7 @@ const normalizeDatasets = (datasets = []) =>
     name: item.title,
     fileCount: item.fileCount,
     creator: item.creator,
-    createdAt: formatDateTime(item.createdAt || item.created_at), 
+    createdAt: formatDateTime(item.createdAt || item.created_at),
     hasAccess: item.hasAccess,
     raw: item,
   }))
@@ -188,7 +198,7 @@ const handleEdit = async (row) => {
   datasetFormDialog.loading = true
   // 先重置表单防止闪烁，保留 ID 和 Name (列表里有) 作为占位
   datasetFormDialog.form = { id: row.id, name: row.name, description: '' }
-  
+
   try {
     // 调用 GetOne 获取完整信息 (包含 Description)
     const res = await fetchDatasetDetailAPI(row.id)
@@ -197,7 +207,7 @@ const handleEdit = async (row) => {
       datasetFormDialog.form = {
         id: detail.id,
         name: detail.title,
-        description: detail.description || ''
+        description: detail.description || '',
       }
     } else {
       ElMessage.error('获取详情失败，无法编辑完整信息')
@@ -273,7 +283,7 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.files = []
-  
+
   try {
     const res = await fetchDatasetDetailAPI(row.id)
     if (res.data?.message === 'success') {
@@ -317,6 +327,7 @@ const loadFilesForDataset = async (datasetId) => {
   fileDialog.isLoading = true
   fileDialog.list = []
   try {
+    console.log('文件列表', datasetId)
     const res = await fetchFilesForDatasetAPI(datasetId)
     if (res?.data?.message === 'success') {
       fileDialog.list = normalizeDatasetFiles(res.data.files)
@@ -333,6 +344,7 @@ const handleViewFiles = (row) => {
   fileDialog.currentDataset = row
   fileDialog.visible = true
   fileDialog.uploadTasks = []
+  console.log(row.id)
   loadFilesForDataset(row.id)
 }
 const handleDatasetFileUpload = async (options) => {
@@ -355,7 +367,7 @@ const handleDatasetFileUpload = async (options) => {
     })
     if (res?.data?.message === 'success') {
       ElMessage.success(`${file.name} 上传成功`)
-      await loadFilesForDataset(fileDialog.currentDataset)
+      await loadFilesForDataset(fileDialog.currentDataset.id)
       onSuccess?.(res.data)
       updateUploadTask(task.uid, { status: 'success', percentage: 100 })
       updateUploadingState()
@@ -391,7 +403,7 @@ const handleDownloadFile = async (datasetId, file) => {
 
   try {
     const res = await downloadDatasetFileAPI(datasetId, file.id)
-    
+
     // 创建 Blob URL 并触发下载
     const blob = new Blob([res.data])
     const url = window.URL.createObjectURL(blob)
@@ -400,7 +412,7 @@ const handleDownloadFile = async (datasetId, file) => {
     link.setAttribute('download', file.name)
     document.body.appendChild(link)
     link.click()
-    
+
     // 清理资源
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
@@ -421,7 +433,7 @@ const handleDeleteFile = (file) => {
         const res = await deleteDatasetFileAPI(fileDialog.currentDataset.id, file.id)
         if (res?.data?.message === 'success') {
           ElMessage.success('文件已删除')
-          await loadFilesForDataset(fileDialog.currentDataset)
+          await loadFilesForDataset(fileDialog.currentDataset.id)
         } else {
           ElMessage.error(res?.data?.message || '删除失败')
         }
@@ -500,7 +512,9 @@ const handleRemoveQueuedAttachment = (file) => {
   if (index !== -1) {
     applicationDialog.attachments.files.splice(index, 1)
   }
-  const taskIndex = applicationDialog.attachments.uploadTasks.findIndex((item) => item.uid === file.uid)
+  const taskIndex = applicationDialog.attachments.uploadTasks.findIndex(
+    (item) => item.uid === file.uid,
+  )
   if (taskIndex !== -1) {
     applicationDialog.attachments.uploadTasks.splice(taskIndex, 1)
   }
@@ -601,13 +615,8 @@ const handleSubmitApplication = async () => {
         <el-table :data="datasetList" stripe style="width: 100%">
           <el-table-column label="内部ID" width="100">
             <template #default="{ row }">
-              <el-tooltip 
-                effect="dark" 
-                :content="row.id" 
-                placement="top" 
-                :show-after="500"
-              >
-                <span style="cursor: pointer; font-family: monospace; color: #909399;">
+              <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
+                <span style="cursor: pointer; font-family: monospace; color: #909399">
                   {{ formatShortId(row.id) }}
                 </span>
               </el-tooltip>
@@ -615,9 +624,9 @@ const handleSubmitApplication = async () => {
           </el-table-column>
 
           <el-table-column prop="name" label="数据集名称" min-width="300">
-             <template #default="{ row }">
-                <span style="font-weight: 500">{{ row.name }}</span>
-             </template>
+            <template #default="{ row }">
+              <span style="font-weight: 500">{{ row.name }}</span>
+            </template>
           </el-table-column>
 
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
@@ -643,18 +652,16 @@ const handleSubmitApplication = async () => {
               </template>
               <!-- 普通用户操作 -->
               <template v-else>
-                <el-button 
+                <el-button
                   v-if="scope.row.hasAccess"
-                  type="success" 
-                  :icon="View" 
+                  type="success"
+                  :icon="View"
                   @click="handleViewDetail(scope.row)"
-                >查看详情</el-button>
-                <el-button 
-                  v-else
-                  type="primary" 
-                  :icon="Promotion" 
-                  @click="handleApply(scope.row)"
-                >申请使用</el-button>
+                  >查看详情</el-button
+                >
+                <el-button v-else type="primary" :icon="Promotion" @click="handleApply(scope.row)"
+                  >申请使用</el-button
+                >
               </template>
             </template>
           </el-table-column>
@@ -798,12 +805,16 @@ const handleSubmitApplication = async () => {
                 multiple
                 :before-upload="handleApplicationAttachmentBeforeUpload"
                 :http-request="handleQueueApplicationAttachment"
-                :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
+                :disabled="
+                  applicationDialog.isSubmitting || applicationDialog.attachments.isUploading
+                "
               >
                 <el-button
                   type="primary"
                   :icon="Upload"
-                  :disabled="applicationDialog.isSubmitting || applicationDialog.attachments.isUploading"
+                  :disabled="
+                    applicationDialog.isSubmitting || applicationDialog.attachments.isUploading
+                  "
                   >选择文件</el-button
                 >
                 <template #tip>
@@ -839,7 +850,10 @@ const handleSubmitApplication = async () => {
                   >
                 </div>
               </div>
-              <div v-if="applicationDialog.attachments.uploadTasks.length" class="upload-progress-list">
+              <div
+                v-if="applicationDialog.attachments.uploadTasks.length"
+                class="upload-progress-list"
+              >
                 <div
                   v-for="task in applicationDialog.attachments.uploadTasks"
                   :key="task.uid"
@@ -873,31 +887,43 @@ const handleSubmitApplication = async () => {
           @click="handleSubmitApplication"
           :loading="applicationDialog.isSubmitting"
           :disabled="applicationDialog.attachments.isUploading"
-          >{{ applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请' }}</el-button
+          >{{
+            applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请'
+          }}</el-button
         >
       </template>
     </el-dialog>
 
     <!-- 对话框4：查看信息 (普通用户) -->
-     <el-dialog v-model="detailDialog.visible" title="数据集详情" width="60%">
+    <el-dialog v-model="detailDialog.visible" title="数据集详情" width="60%">
       <el-skeleton :rows="5" animated :loading="detailDialog.loading">
         <div v-if="detailDialog.data">
           <el-descriptions border :column="1">
-             <el-descriptions-item label="名称">{{ detailDialog.data.title }}</el-descriptions-item>
-             <el-descriptions-item label="创建时间">{{ formatDateTime(detailDialog.data.created_at) }}</el-descriptions-item>
-             <el-descriptions-item label="描述">
-               <div style="white-space: pre-wrap;">{{ detailDialog.data.description || '暂无描述' }}</div>
-             </el-descriptions-item>
+            <el-descriptions-item label="名称">{{ detailDialog.data.title }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{
+              formatDateTime(detailDialog.data.created_at)
+            }}</el-descriptions-item>
+            <el-descriptions-item label="描述">
+              <div style="white-space: pre-wrap">
+                {{ detailDialog.data.description || '暂无描述' }}
+              </div>
+            </el-descriptions-item>
           </el-descriptions>
-          <div style="margin-top: 20px; font-weight: bold;">文件列表</div>
+          <div style="margin-top: 20px; font-weight: bold">文件列表</div>
           <el-table :data="detailDialog.files" stripe border height="300px">
             <el-table-column prop="name" label="文件名" />
             <el-table-column prop="size" label="大小" width="120">
-               <template #default="{row}">{{ formatFileSize(row.size) }}</template>
+              <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
             </el-table-column>
             <el-table-column label="操作" width="100" align="center">
               <template #default="{ row }">
-                <el-button type="primary" link :icon="Download" @click="handleDownloadFile(detailDialog.data.id, row)">下载</el-button>
+                <el-button
+                  type="primary"
+                  link
+                  :icon="Download"
+                  @click="handleDownloadFile(detailDialog.data.id, row)"
+                  >下载</el-button
+                >
               </template>
             </el-table-column>
           </el-table>
