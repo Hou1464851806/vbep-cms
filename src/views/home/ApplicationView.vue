@@ -4,12 +4,13 @@ import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
 import { Check, Close, View, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
-import apiClient from '../../request/axios.js'
-import { formatDateTime, formatFileSize } from '../../utils/format.js'
+import apiClient from '@/request/axios.js'
+import { formatDateTime, formatFileSize } from '@/utils/format.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
-const approveApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/approve`, data)
+const approveApplicationAPI = (id, data) =>
+  apiClient.post(`/api/v1/applications/${id}/approve`, data)
 const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
 const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
 const downloadApplicationFileAPI = (applicationId, fileId) =>
@@ -275,7 +276,9 @@ onMounted(fetchApplications)
         <el-table-column label="申请人">
           <template #default="scope">
             <div>{{ scope.row.applicant.nickname }}</div>
-            <small v-if="scope.row.applicant.email" class="table-sub-text">{{ scope.row.applicant.email }}</small>
+            <small v-if="scope.row.applicant.email" class="table-sub-text">{{
+              scope.row.applicant.email
+            }}</small>
           </template>
         </el-table-column>
         <el-table-column label="申请的数据集">
@@ -309,7 +312,9 @@ onMounted(fetchApplications)
           </el-descriptions-item>
           <el-descriptions-item label="申请人">
             {{ detailDialog.data.applicant.nickname }}
-            <span v-if="detailDialog.data.applicant.email" class="table-sub-text">({{ detailDialog.data.applicant.email }})</span>
+            <span v-if="detailDialog.data.applicant.email" class="table-sub-text"
+              >({{ detailDialog.data.applicant.email }})</span
+            >
           </el-descriptions-item>
           <el-descriptions-item label="申请状态">
             <el-tag :type="detailDialog.data.statusMeta.type">{{
@@ -328,7 +333,9 @@ onMounted(fetchApplications)
           <el-descriptions-item label="审核人">
             <template v-if="detailDialog.data.auditor">
               {{ detailDialog.data.auditor.nickname }}
-              <span v-if="detailDialog.data.auditor.email" class="table-sub-text">({{ detailDialog.data.auditor.email }})</span>
+              <span v-if="detailDialog.data.auditor.email" class="table-sub-text"
+                >({{ detailDialog.data.auditor.email }})</span
+              >
             </template>
             <span v-else>-</span>
           </el-descriptions-item>
@@ -346,7 +353,12 @@ onMounted(fetchApplications)
           <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
             <template #default>
               <el-empty v-if="!detailDialog.attachments.list.length" description="暂无附件" />
-              <el-table v-else :data="detailDialog.attachments.list" size="small" class="attachment-table">
+              <el-table
+                v-else
+                :data="detailDialog.attachments.list"
+                size="small"
+                class="attachment-table"
+              >
                 <el-table-column prop="name" label="文件名" min-width="200" show-overflow-tooltip />
                 <el-table-column label="大小" width="120">
                   <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
@@ -354,7 +366,12 @@ onMounted(fetchApplications)
                 <el-table-column prop="createdAt" label="上传时间" width="180" />
                 <el-table-column label="操作" width="200">
                   <template #default="scope">
-                    <el-button text size="small" :icon="Download" @click="handleDownloadAttachment(scope.row)">
+                    <el-button
+                      text
+                      size="small"
+                      :icon="Download"
+                      @click="handleDownloadAttachment(scope.row)"
+                    >
                       下载
                     </el-button>
                   </template>
@@ -363,10 +380,7 @@ onMounted(fetchApplications)
             </template>
           </el-skeleton>
         </div>
-        <div
-          v-if="isAdmin() && detailDialog.data?.status === 'pending'"
-          class="audit-action-area"
-        >
+        <div v-if="isAdmin() && detailDialog.data?.status === 'pending'" class="audit-action-area">
           <el-input
             v-model="detailDialog.audit.result"
             type="textarea"

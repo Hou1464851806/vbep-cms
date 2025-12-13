@@ -4,8 +4,8 @@ import { Edit, Check, Close } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 // 复用现有的 axios 实例
-import apiClient from '../../request/axios.js'
-import { formatDateTime, formatShortId } from '../../utils/format.js'
+import apiClient from '@/request/axios.js'
+import { formatDateTime, formatShortId } from '@/utils/format.js'
 
 // --- API 定义 ---
 // 获取所有用户列表 (假设后端支持该接口)
@@ -25,7 +25,7 @@ const editMap = reactive({})
 const ROLE_MAP = {
   0: { label: '普通用户', type: 'info', value: 0 },
   1: { label: '管理员', type: 'success', value: 1 },
-  2: { label: '超级管理员', type: 'warning', value: 2 }
+  2: { label: '超级管理员', type: 'warning', value: 2 },
 }
 
 // --- 计算属性 ---
@@ -48,14 +48,12 @@ const fetchUsers = async () => {
   try {
     const res = await fetchUserListAPI()
     if (res && res.data?.message === 'success' && Array.isArray(res.data.data)) {
-      
       // 直接赋值，后端 GORM 已经过滤了软删除用户，这里不需要再前端 filter
-      userList.value = res.data.data.map(item => ({
+      userList.value = res.data.data.map((item) => ({
         ...item,
         // 做一个简单的兼容，防止后端字段首字母大小写不一致
-        createdAt: item.createdAt || item.CreatedAt || item.created_at
+        createdAt: item.createdAt || item.CreatedAt || item.created_at,
       }))
-
     } else {
       ElMessage.error(res?.data?.message || '用户列表加载失败')
     }
@@ -106,7 +104,7 @@ const handleSave = async (originalRow) => {
   if (draft.nickname !== originalRow.nickname) changes.nickname = draft.nickname
   if (draft.email !== originalRow.email) changes.email = draft.email
   if (draft.phone !== originalRow.phone) changes.phone = draft.phone
-  
+
   // 仅超级管理员可以修改权限组
   if (isSuperAdmin.value && Number(draft.role) !== Number(originalRow.role)) {
     changes.role = Number(draft.role)
@@ -146,21 +144,11 @@ const handleSave = async (originalRow) => {
       </div>
     </template>
 
-    <el-table 
-      :data="userList" 
-      stripe 
-      style="width: 100%" 
-      v-loading="isLoading"
-    >
+    <el-table :data="userList" stripe style="width: 100%" v-loading="isLoading">
       <el-table-column label="内部ID" width="100">
         <template #default="{ row }">
-          <el-tooltip 
-            effect="dark" 
-            :content="row.id" 
-            placement="top" 
-            :show-after="500"
-          >
-            <span style="cursor: pointer; font-family: monospace; color: #909399;">
+          <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
+            <span style="cursor: pointer; font-family: monospace; color: #909399">
               {{ formatShortId(row.id) }}
             </span>
           </el-tooltip>
@@ -169,33 +157,21 @@ const handleSave = async (originalRow) => {
 
       <el-table-column label="姓名" min-width="120">
         <template #default="{ row }">
-          <el-input 
-            v-if="isEditing(row.id)" 
-            v-model="editMap[row.id].nickname" 
-            size="small" 
-          />
+          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].nickname" size="small" />
           <span v-else>{{ row.nickname }}</span>
         </template>
       </el-table-column>
 
       <el-table-column label="邮箱" min-width="180">
         <template #default="{ row }">
-          <el-input 
-            v-if="isEditing(row.id)" 
-            v-model="editMap[row.id].email" 
-            size="small" 
-          />
+          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].email" size="small" />
           <span v-else>{{ row.email || '-' }}</span>
         </template>
       </el-table-column>
 
       <el-table-column label="手机号" width="140">
         <template #default="{ row }">
-          <el-input 
-            v-if="isEditing(row.id)" 
-            v-model="editMap[row.id].phone" 
-            size="small" 
-          />
+          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].phone" size="small" />
           <span v-else>{{ row.phone || '-' }}</span>
         </template>
       </el-table-column>
@@ -208,16 +184,16 @@ const handleSave = async (originalRow) => {
 
       <el-table-column label="权限组" width="140" align="center">
         <template #default="{ row }">
-          <el-select 
-            v-if="isEditing(row.id) && isSuperAdmin" 
-            v-model="editMap[row.id].role" 
+          <el-select
+            v-if="isEditing(row.id) && isSuperAdmin"
+            v-model="editMap[row.id].role"
             size="small"
           >
             <el-option label="普通用户" :value="0" />
             <el-option label="管理员" :value="1" />
             <el-option label="超级管理员" :value="2" />
           </el-select>
-          
+
           <el-tag v-else :type="getRoleTag(row.role).type">
             {{ getRoleTag(row.role).label }}
           </el-tag>
@@ -227,31 +203,15 @@ const handleSave = async (originalRow) => {
       <el-table-column label="操作" width="150" fixed="right" align="center">
         <template #default="{ row }">
           <template v-if="isEditing(row.id)">
-            <el-button 
-              type="success" 
-              link 
-              :icon="Check" 
-              @click="handleSave(row)"
-            >确定</el-button>
-            <el-button 
-              type="info" 
-              link 
-              :icon="Close" 
-              @click="handleCancel(row.id)"
-            >取消</el-button>
+            <el-button type="success" link :icon="Check" @click="handleSave(row)">确定</el-button>
+            <el-button type="info" link :icon="Close" @click="handleCancel(row.id)">取消</el-button>
           </template>
-          
+
           <template v-else>
-            <el-button 
-              type="primary" 
-              link 
-              :icon="Edit" 
-              @click="handleEdit(row)"
-            >修改</el-button>
+            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
           </template>
         </template>
       </el-table-column>
-
     </el-table>
   </el-card>
 </template>

@@ -1,14 +1,21 @@
 <script setup>
 import { ref, reactive, onMounted, provide, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { 
-  Tickets, Memo, User, ArrowDown, Edit, SwitchButton, Key, 
-  Check, Close 
+import {
+  Tickets,
+  Memo,
+  User,
+  ArrowDown,
+  Edit,
+  SwitchButton,
+  Key,
+  Check,
+  Close,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 引入 axios 实例和清除 token 的方法
-import apiClient, { clearAuthToken } from '../../request/axios.js'
+import apiClient, { clearAuthToken } from '@/request/axios.js'
 
 // --- API 定义 ---
 const fetchUserInfoAPI = (userId) => apiClient.get(`/api/v1/users/${userId}`)
@@ -23,9 +30,9 @@ const userInfo = reactive({
   id: '',
   nickname: '',
   email: '',
-  phone: '', 
+  phone: '',
   // role: 'user',
-  roleId: 0 // 0 - 'user', 1 - 'admin', 2 - 'super_admin'
+  roleId: 0, // 0 - 'user', 1 - 'admin', 2 - 'super_admin'
 })
 const isUserLoading = ref(true)
 
@@ -51,9 +58,9 @@ onMounted(async () => {
         id,
         nickname,
         email,
-        phone, 
+        phone,
         // role: roleStr,
-        roleId: roleNum
+        roleId: roleNum,
       })
     } else {
       ElMessage.error('用户信息异常')
@@ -78,7 +85,7 @@ const handleLogout = async () => {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    
+
     try {
       await logoutAPI()
     } catch (e) {
@@ -109,14 +116,14 @@ const profileDialogVisible = ref(false)
 const editState = reactive({
   nickname: false,
   email: false,
-  phone: false
+  phone: false,
 })
 
 // 临时存储正在编辑的值
 const tempProfile = reactive({
   nickname: '',
   email: '',
-  phone: ''
+  phone: '',
 })
 
 const openProfileDialog = () => {
@@ -161,7 +168,7 @@ const saveField = async (field, labelName) => {
   // 注意处理 null/undefined 和空字符串的比较
   const safeNew = newValue || ''
   const safeOld = oldValue || ''
-  
+
   if (safeNew === safeOld) {
     editState[field] = false
     return
@@ -196,14 +203,14 @@ const handleDeleteAccount = () => {
       cancelButtonText: '取消',
       type: 'error', // 使用 error 类型显示红色图标
       confirmButtonClass: 'el-button--danger', // 确认按钮变红
-      showClose: false
-    }
+      showClose: false,
+    },
   )
     .then(async () => {
       try {
         // 2. 调用后端接口
         const res = await deleteUserAPI(userInfo.id)
-        
+
         // 3. 处理响应
         if (res.status === 200) {
           ElMessage.success('账户已注销')
@@ -229,7 +236,7 @@ const passwordDialogVisible = ref(false)
 const passwordFormRef = ref(null)
 const passwordForm = reactive({
   password: '',
-  confirmPassword: ''
+  confirmPassword: '',
 })
 
 const validatePass2 = (rule, value, callback) => {
@@ -245,13 +252,13 @@ const validatePass2 = (rule, value, callback) => {
 const passwordRules = {
   // 加上 required: true 会自动显示红星
   password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' }, 
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' }
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
   ],
   confirmPassword: [
     { required: true, message: '请再次输入密码', trigger: 'blur' }, // 这里加了 required
-    { validator: validatePass2, trigger: 'blur' }
-  ]
+    { validator: validatePass2, trigger: 'blur' },
+  ],
 }
 
 const openPasswordDialog = () => {
@@ -267,7 +274,7 @@ const submitPassword = async () => {
       try {
         const payload = { password: passwordForm.password }
         const res = await updateUserAPI(userInfo.id, payload)
-        
+
         if (res.status === 200) {
           ElMessage.success('密码修改成功，请重新登录')
           passwordDialogVisible.value = false
@@ -287,7 +294,7 @@ const roleLabel = computed(() => {
   const map = {
     0: '用户',
     1: '管理员',
-    2: '超级管理员'
+    2: '超级管理员',
   }
   return map[userInfo.roleId] || '未知'
 })
@@ -296,7 +303,7 @@ const roleTagType = computed(() => {
   const map = {
     0: 'info',
     1: 'success',
-    2: 'warning' // 超管用醒目的颜色
+    2: 'warning', // 超管用醒目的颜色
   }
   return map[userInfo.roleId] || 'info'
 })
@@ -332,7 +339,7 @@ const currentPageTitle = computed(() => {
           <el-icon><Memo /></el-icon>
           <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
         </el-menu-item>
-        
+
         <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
@@ -344,7 +351,7 @@ const currentPageTitle = computed(() => {
       <el-header>
         <div class="header-content">
           <span class="page-title">{{ currentPageTitle }}</span>
-          
+
           <el-skeleton :rows="1" animated :loading="isUserLoading" style="width: 250px">
             <template #default>
               <el-dropdown trigger="click" @command="handleCommand">
@@ -352,9 +359,9 @@ const currentPageTitle = computed(() => {
                   <el-icon><User /></el-icon>
                   <span class="nickname">{{ userInfo.nickname }}</span>
                   <el-icon class="el-icon--right"><arrow-down /></el-icon>
-                  
+
                   <el-divider direction="vertical" />
-                  
+
                   <el-tag :type="roleTagType" size="small" effect="dark">
                     {{ roleLabel }}
                   </el-tag>
@@ -364,7 +371,9 @@ const currentPageTitle = computed(() => {
                   <el-dropdown-menu>
                     <el-dropdown-item command="profile" :icon="Edit">个人信息</el-dropdown-item>
                     <el-dropdown-item command="password" :icon="Key">修改密码</el-dropdown-item>
-                    <el-dropdown-item command="logout" divided :icon="SwitchButton">退出登录</el-dropdown-item>
+                    <el-dropdown-item command="logout" divided :icon="SwitchButton"
+                      >退出登录</el-dropdown-item
+                    >
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -378,9 +387,8 @@ const currentPageTitle = computed(() => {
       </el-main>
     </el-container>
 
-<el-dialog v-model="profileDialogVisible" title="个人信息" width="500px">
+    <el-dialog v-model="profileDialogVisible" title="个人信息" width="500px">
       <div class="profile-list">
-        
         <div class="profile-row">
           <div class="row-label">姓名</div>
           <div class="row-content">
@@ -388,12 +396,22 @@ const currentPageTitle = computed(() => {
             <el-input v-else v-model="tempProfile.nickname" size="small" />
           </div>
           <div class="row-action">
-            <el-button v-if="!editState.nickname" type="primary" link :icon="Edit" @click="startEdit('nickname')">
+            <el-button
+              v-if="!editState.nickname"
+              type="primary"
+              link
+              :icon="Edit"
+              @click="startEdit('nickname')"
+            >
               修改
             </el-button>
             <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('nickname', '姓名')">确定</el-button>
-              <el-button type="info" link :icon="Close" @click="cancelEdit('nickname')">取消</el-button>
+              <el-button type="success" link :icon="Check" @click="saveField('nickname', '姓名')"
+                >确定</el-button
+              >
+              <el-button type="info" link :icon="Close" @click="cancelEdit('nickname')"
+                >取消</el-button
+              >
             </template>
           </div>
         </div>
@@ -405,12 +423,22 @@ const currentPageTitle = computed(() => {
             <el-input v-else v-model="tempProfile.email" size="small" />
           </div>
           <div class="row-action">
-            <el-button v-if="!editState.email" type="primary" link :icon="Edit" @click="startEdit('email')">
+            <el-button
+              v-if="!editState.email"
+              type="primary"
+              link
+              :icon="Edit"
+              @click="startEdit('email')"
+            >
               修改
             </el-button>
             <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('email', '邮箱')">确定</el-button>
-              <el-button type="info" link :icon="Close" @click="cancelEdit('email')">取消</el-button>
+              <el-button type="success" link :icon="Check" @click="saveField('email', '邮箱')"
+                >确定</el-button
+              >
+              <el-button type="info" link :icon="Close" @click="cancelEdit('email')"
+                >取消</el-button
+              >
             </template>
           </div>
         </div>
@@ -422,12 +450,22 @@ const currentPageTitle = computed(() => {
             <el-input v-else v-model="tempProfile.phone" size="small" />
           </div>
           <div class="row-action">
-            <el-button v-if="!editState.phone" type="primary" link :icon="Edit" @click="startEdit('phone')">
+            <el-button
+              v-if="!editState.phone"
+              type="primary"
+              link
+              :icon="Edit"
+              @click="startEdit('phone')"
+            >
               修改
             </el-button>
             <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('phone', '手机号')">确定</el-button>
-              <el-button type="info" link :icon="Close" @click="cancelEdit('phone')">取消</el-button>
+              <el-button type="success" link :icon="Check" @click="saveField('phone', '手机号')"
+                >确定</el-button
+              >
+              <el-button type="info" link :icon="Close" @click="cancelEdit('phone')"
+                >取消</el-button
+              >
             </template>
           </div>
         </div>
@@ -445,7 +483,6 @@ const currentPageTitle = computed(() => {
             </el-button>
           </div>
         </div>
-
       </div>
 
       <template #footer>
@@ -456,7 +493,13 @@ const currentPageTitle = computed(() => {
     </el-dialog>
 
     <el-dialog v-model="passwordDialogVisible" title="修改密码" width="400px">
-      <el-form :model="passwordForm" :rules="passwordRules" ref="passwordFormRef" label-width="100px" status-icon>
+      <el-form
+        :model="passwordForm"
+        :rules="passwordRules"
+        ref="passwordFormRef"
+        label-width="100px"
+        status-icon
+      >
         <el-form-item label="新密码" prop="password">
           <el-input v-model="passwordForm.password" type="password" show-password />
         </el-form-item>
@@ -464,7 +507,7 @@ const currentPageTitle = computed(() => {
           <el-input v-model="passwordForm.confirmPassword" type="password" show-password />
         </el-form-item>
       </el-form>
-      
+
       <div class="password-warning">
         <el-icon><Key /></el-icon> 注意：修改密码后，你将会被要求重新登录
       </div>
@@ -476,7 +519,6 @@ const currentPageTitle = computed(() => {
         </span>
       </template>
     </el-dialog>
-
   </el-container>
 </template>
 

@@ -2,7 +2,7 @@
 import { Lock, User } from '@element-plus/icons-vue'
 import { reactive, ref } from 'vue'
 import axios from 'axios'
-import logoSrc from '../assets/img/logo.png'
+import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 

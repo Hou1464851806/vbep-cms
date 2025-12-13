@@ -2,7 +2,7 @@
 
 /**
  * 截取ID前8位
- * @param {string|number} id 
+ * @param {string|number} id
  * @returns {string}
  */
 export const formatShortId = (id) => {

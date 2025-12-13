@@ -41,7 +41,7 @@ const router = createRouter({
           path: 'users',
           name: 'user-list',
           component: UserView,
-        }
+        },
       ],
     },
   ],

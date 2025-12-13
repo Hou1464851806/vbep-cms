@@ -2,14 +2,14 @@
 import { Lock, User } from '@element-plus/icons-vue'
 import { reactive, ref } from 'vue'
 
-import logoSrc from '../assets/img/logo.png'
-import qrCodeSrc from '../assets/img/QRcode.jpg'
+import logoSrc from '@/assets/img/logo.png'
+import qrCodeSrc from '@/assets/img/QRcode.jpg'
 
-import thirdPartyQrSrc from '../assets/img/qr-code.svg'
-import thirdPartyChatSrc from '../assets/img/wechat.png'
+import thirdPartyQrSrc from '@/assets/img/qr-code.svg'
+import thirdPartyChatSrc from '@/assets/img/wechat.png'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import apiClient, { setAuthToken } from '../request/axios.js'
+import apiClient, { setAuthToken } from '@/request/axios.js'
 
 const router = useRouter()
 
