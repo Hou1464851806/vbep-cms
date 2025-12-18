@@ -1,5 +1,5 @@
 <script setup>
-import { Lock, User } from '@element-plus/icons-vue'
+import { Lock, User, Iphone, Message } from '@element-plus/icons-vue'
 import { reactive, ref } from 'vue'
 import axios from 'axios'
 import logoSrc from '@/assets/img/logo.png'
@@ -10,14 +10,13 @@ const router = useRouter()
 
 const registerFormRef = ref()
 const registerForm = reactive({
-  userInfo: '',
+  nickname: '',
+  phone: '',
+  email: '',
   password: '',
 })
 
 const validatePassword = (rule, value, callback) => {
-  // if (!value) {
-  //   return callback(new Error('密码不能为空'));
-  // }
   if (value.length < 6 || value.length > 20) {
     return callback(new Error('密码长度不符合要求'))
   }
@@ -47,7 +46,14 @@ const validatePassword = (rule, value, callback) => {
 }
 
 const registerFormRules = reactive({
-  userInfo: [
+  nickname: [
+    { required: true, message: '真实姓名不能为空', trigger: 'blur' }
+  ],
+  phone: [
+    { required: true, message: '手机号不能为空', trigger: 'blur' },
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' }
+  ],
+  email: [
     { required: true, message: '邮箱不能为空', trigger: 'change' },
     { type: 'email', message: '请输入正确的邮箱格式', trigger: 'change' },
   ],
@@ -67,7 +73,9 @@ const submitRegisterForm = async () => {
     console.log('表单校验通过，发送请求')
     isLoading.value = true
     const requestData = {
-      email: registerForm.userInfo,
+      email: registerForm.email,
+      phone: registerForm.phone,
+      nickname: registerForm.nickname,
       password: registerForm.password,
     }
     const response = await axios.post('/api/v1/users/', requestData)
@@ -113,7 +121,6 @@ const submitRegisterForm = async () => {
       </div>
       <div class="login-container">
         <div class="login-panel">
-          <!-- 对齐label -->
           <el-form
             ref="registerFormRef"
             class="login-form"
@@ -122,18 +129,45 @@ const submitRegisterForm = async () => {
             label-width="auto"
             status-icon
           >
-            <el-form-item class="login-group" label="邮箱名" prop="userInfo">
+            <el-form-item class="login-group" label="真实姓名" prop="nickname">
               <el-input
                 class="login-info"
                 size="large"
-                v-model="registerForm.userInfo"
-                placeholder="请输入邮箱"
+                v-model="registerForm.nickname"
+                placeholder="请输入真实姓名"
               >
                 <template #prefix>
                   <el-icon><User /></el-icon>
                 </template>
               </el-input>
             </el-form-item>
+
+            <el-form-item class="login-group" label="手机号" prop="phone">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.phone"
+                placeholder="请输入手机号"
+              >
+                <template #prefix>
+                  <el-icon><Iphone /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+
+            <el-form-item class="login-group" label="邮箱名" prop="email">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.email"
+                placeholder="请输入邮箱"
+              >
+                <template #prefix>
+                  <el-icon><Message /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+
             <el-form-item class="login-group" label="密码" prop="password">
               <el-input
                 class="login-info"
@@ -148,6 +182,7 @@ const submitRegisterForm = async () => {
                 </template>
               </el-input>
             </el-form-item>
+            
             <div class="footer-links">
               <p class="forgot-password">
                 密码长度应该为6到20个字符，且需包含大写字母、小写字母、数字、特殊字符中的至少3项
@@ -164,8 +199,8 @@ const submitRegisterForm = async () => {
     </div>
   </div>
 </template>
+
 <style>
-/* 全局背景和居中 */
 .main-container {
   display: flex;
   justify-content: center;
@@ -173,32 +208,29 @@ const submitRegisterForm = async () => {
   min-height: 100vh;
   margin: 0;
   background-color: #ffffff;
-  overflow: hidden; /* 防止注册按钮溢出时的滚动条 */
+  overflow: hidden; 
 }
-/* 整个白色卡片的容器，为了更好地控制注册按钮的定位 */
 .login-card-wrapper {
   background-color: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 800px; /* 根据图片估算宽度 */
-  /* height: 500px; 可以设置固定高度或让内容撑开 */
-  padding-bottom: 30px; /* 留出底部空间 */
-  position: relative; /* For sso-banner content positioning */
+  width: 800px; 
+  padding-bottom: 30px; 
+  position: relative; 
   box-sizing: border-box;
 }
-/* 注册按钮及对角线背景 */
 .register-button-wrapper {
   position: absolute;
   top: 0;
   right: 0;
-  width: 120px; /* 按钮区域的宽度 */
-  height: 120px; /* 按钮区域的高度 */
+  width: 120px; 
+  height: 120px; 
   overflow: hidden;
 }
 .register-button {
   position: absolute;
-  top: 15px; /* 根据图片调整文字位置 */
-  right: 15px; /* 根据图片调整文字位置 */
+  top: 15px; 
+  right: 15px; 
   font-size: 14px;
   text-decoration: none;
   color: #181818;
@@ -207,122 +239,76 @@ const submitRegisterForm = async () => {
   color: #4292c3;
   text-decoration: underline;
 }
-/* SSO Banner - 包含 Logo */
 .sso-banner {
-  padding: 30px 40px 0; /* 根据图片调整内边距 */
-  display: flex; /* 让 logo 更好地定位 */
+  padding: 30px 40px 0; 
+  display: flex; 
   align-items: center;
-  margin-bottom: 20px; /* 与标题的间距 */
+  margin-bottom: 20px; 
 }
 .sso-logo img {
-  height: 80px; /* 根据图片调整 logo 大小 */
+  height: 80px; 
 }
-/* SSO Header - 欢迎语 */
 .sso-header {
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
-  margin-bottom: 40px; /* 与登录区域的间距 */
+  margin-bottom: 40px; 
 }
 .sso-header .heading {
   font-size: 24px;
   font-weight: bold;
   color: #181818;
 }
-/* Login Container - 左右布局的核心区域 */
 .login-container {
   display: flex;
-  justify-content: center; /* 确保内部内容居中，如果卡片区域小 */
-  padding: 0 40px; /* 左右内边距 */
-  gap: 60px; /* 二维码和表单之间的间距 */
+  justify-content: center; 
+  padding: 0 40px; 
+  gap: 60px; 
 }
-/* QR Code Display Area */
-.login-left-QR-code {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  position: relative;
-  width: 260px; /* 固定宽度 */
-  padding-right: 30px; /* 与右侧表单的间距 */
-}
-.qr-code-img {
-  width: 180px; /* 根据图片调整二维码大小 */
-  height: 180px;
-  background-color: #f0f0f0; /* 占位背景 */
-  border: 1px solid #eee;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-.qr-code-text {
-  font-size: 14px;
-  color: #181818;
-  margin-bottom: 8px;
-  text-align: center;
-}
-.qr-code-subtext {
-  font-size: 12px;
-  color: #181818;
-  text-align: center;
-  line-height: 1.5;
-}
-.qr-code-line {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 75%; /* 与内容等高 */
-  width: 1px;
-  background-color: #eee;
-}
-/* Login Form Panel */
+
+/* Form Styles */
 .login-panel {
-  flex-grow: 1; /* 占据剩余空间 */
-  width: 300px; /* 估算宽度，flex-grow会使其适应 */
+  flex-grow: 1; 
+  width: 300px; 
   display: flex;
   flex-direction: column;
-  padding-left: 30px; /* 补偿 qr-code-line */
+  padding-left: 30px; 
 }
 .login-form {
   width: 100%;
 }
 
-/* 悬停时的样式调整：边框变亮，阴影更明显 */
 :deep(.login-info.el-input .el-input__wrapper:hover) {
-  border-color: #a4cef8; /* 悬停时边框变浅蓝 */
+  border-color: #a4cef8; 
 }
-/* 聚焦时的样式调整：使用 Element Plus 的主色强调聚焦，阴影更深 */
 :deep(.login-info.el-input.is-focused .el-input__wrapper) {
-  border-color: #409eff; /* 聚焦时边框变为 Element Plus 的主蓝色 */
+  border-color: #409eff; 
 }
-/* 针对输入框内部的文字区域 */
 :deep(.login-info.el-input .el-input__inner) {
-  color: #333; /* 文本颜色，保持深色可见性 */
-  padding-left: 10px; /* 图标与文本的间距 */
+  color: #333; 
+  padding-left: 10px; 
 }
-/* 针对 placeholder 文字的颜色：比图片中更深，更清晰 */
 :deep(.login-info.el-input .el-input__inner::placeholder) {
-  color: #808080; /* 中灰色，比 #999 更显眼，但又不是纯黑 */
+  color: #808080; 
 }
-/* 针对前缀图标的样式：颜色与 placeholder 保持一致，更清晰 */
 :deep(.login-info.el-input .el-input__prefix) {
-  color: #808080; /* 图标颜色，与占位符颜色一致 */
-  font-size: 18px; /* 图标大小 */
-  margin-right: 8px; /* 图标与文本的间距 */
-  display: flex; /* 确保图标垂直居中 */
-  align-items: center; /* 确保图标垂直居中 */
+  color: #808080; 
+  font-size: 18px; 
+  margin-right: 8px; 
+  display: flex; 
+  align-items: center; 
 }
-
 :deep(.login-info.el-input .el-input__suffix) {
-  color: #808080; /* 图标颜色，与占位符颜色一致 */
-  font-size: 18px; /* 图标大小 */
-  display: flex; /* 确保图标垂直居中 */
-  align-items: center; /* 确保图标垂直居中 */
+  color: #808080; 
+  font-size: 18px; 
+  display: flex; 
+  align-items: center; 
 }
 
 .login-button-item {
-  margin-top: 30px; /* 登录按钮与输入框的额外间距 */
+  margin-top: 30px; 
 }
-
 .login-btn {
   --el-color-primary: #ef1c23;
   width: 100%;
@@ -336,7 +322,6 @@ const submitRegisterForm = async () => {
   cursor: pointer;
   transition: all 0.3s ease;
 }
-
 .login-btn:hover {
   --el-button-hover-bg-color: #d1181f;
 }
@@ -348,35 +333,5 @@ const submitRegisterForm = async () => {
 .forgot-password {
   font-size: 12px;
   color: #f32b2b;
-}
-/* 其他方式分隔线 */
-.other-methods {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 15px;
-  margin-bottom: 30px;
-}
-.other-methods .line {
-  flex-grow: 1;
-  height: 1px;
-  background-color: #eee;
-  max-width: 100px;
-}
-.other-methods .text {
-  font-size: 14px;
-  color: #181818;
-  white-space: nowrap;
-}
-/* 第三方登录图标 */
-.third-login {
-  display: flex;
-  justify-content: center;
-  gap: 30px; /* 图标间距 */
-}
-.third-login-icon {
-  width: 30px; /* 图标大小 */
-  height: 30px;
-  cursor: pointer;
 }
 </style>
