@@ -525,25 +525,6 @@ const updateApplicationAttachmentTask = (uid, payload = {}) => {
     Object.assign(task, payload)
   }
 }
-const ensureAgreementUploadTask = (file) => {
-  const existing = applicationDialog.agreement.uploadTasks.find((task) => task.uid === file.uid)
-  if (existing) return existing
-  const task = {
-    uid: file.uid,
-    name: file.name,
-    percentage: 100,
-    status: 'ready',
-    uploaded: false,
-  }
-  applicationDialog.agreement.uploadTasks.push(task)
-  return task
-}
-const updateAgreementUploadTask = (uid, payload = {}) => {
-  const task = applicationDialog.agreement.uploadTasks.find((item) => item.uid === uid)
-  if (task) {
-    Object.assign(task, payload)
-  }
-}
 const handleApplicationAttachmentBeforeUpload = (rawFile) => {
   if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
     ElMessage.error(`文件 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
@@ -650,7 +631,6 @@ const handleQueueAgreementImage = (options) => {
     raw: file,
     preview: previewUrl,
   })
-  ensureAgreementUploadTask(file)
   onSuccess?.({}, file)
 }
 const handleRemoveAgreementImage = (file) => {
@@ -661,12 +641,6 @@ const handleRemoveAgreementImage = (file) => {
     if (removed?.preview) {
       URL.revokeObjectURL(removed.preview)
     }
-  }
-  const taskIndex = applicationDialog.agreement.uploadTasks.findIndex(
-    (item) => item.uid === file.uid,
-  )
-  if (taskIndex !== -1) {
-    applicationDialog.agreement.uploadTasks.splice(taskIndex, 1)
   }
 }
 const generateSignedAgreementPdf = async () => {
@@ -833,10 +807,6 @@ const handleBackToAgreementStep = () => {
 }
 const uploadAttachmentsForApplication = async (applicationId) => {
   const groups = [
-    {
-      group: applicationDialog.agreement,
-      updateTask: updateAgreementUploadTask,
-    },
     {
       group: applicationDialog.attachments,
       updateTask: updateApplicationAttachmentTask,

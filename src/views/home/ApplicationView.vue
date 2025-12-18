@@ -48,7 +48,7 @@ const detailDialog = reactive({
 const statusMetaMap = {
   pending: { label: '待审批', type: 'warning' },
   approved: { label: '已批准', type: 'success' },
-  disapproved: { label: '已驳回', type: 'danger' },
+  rejected: { label: '已驳回', type: 'danger' },
 }
 
 const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
