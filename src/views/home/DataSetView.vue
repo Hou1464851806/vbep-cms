@@ -140,16 +140,19 @@ const detailDialog = reactive({
   files: [],
 })
 
-const normalizeDatasets = (datasets = []) =>
-  datasets.map((item) => ({
+const normalizeOneDataset = (item) => {
+  return {
     id: item.id,
     name: item.title,
-    fileCount: item.fileCount,
+    description: item.description,
+    fileCount: item.fileCount || (item.files ? item.files.length : 0),
     creator: item.creator,
     createdAt: formatDateTime(item.createdAt || item.created_at),
     hasAccess: item.hasAccess,
     raw: item,
-  }))
+  }
+}
+const normalizeDatasets = (datasets = []) => datasets.map(normalizeOneDataset)
 
 const normalizeDatasetFiles = (files = []) =>
   files.map((item) => ({
@@ -335,24 +338,40 @@ const handleViewDetail = async (row) => {
 
   try {
     const res = await fetchDatasetDetailAPI(row.id)
+    // 后端现在返回结构为: { message: "success", dataset: {...}, hasAccess: true/false }
     if (res.data?.message === 'success') {
       const data = res.data.dataset
-      detailDialog.data = data
-      detailDialog.files = normalizeDatasetFiles(data.files)
+      
+      // 关键：将后端返回的 hasAccess 状态合并到 dialog 数据中
+      const accessStatus = res.data.hasAccess !== undefined ? res.data.hasAccess : row.hasAccess
+      
+      detailDialog.data = { ...data, hasAccess: accessStatus }
+      
+      // 只有有权限时才处理文件列表
+      if (accessStatus) {
+        detailDialog.files = normalizeDatasetFiles(data.files)
+      } else {
+        detailDialog.files = []
+      }
     } else {
       ElMessage.error(res.data?.message || '获取详情失败')
     }
   } catch (error) {
-    if (error.response?.status === 403) {
-      ElMessage.error('权限验证失败，请刷新列表重试')
-      fetchDatasets()
-    } else {
-      ElMessage.error('获取详情失败')
-    }
+    console.error(error)
+    ElMessage.error('获取详情失败')
     detailDialog.visible = false
   } finally {
     detailDialog.loading = false
   }
+}
+const handleApplyFromDetail = () => {
+  if (!detailDialog.data) return
+  
+  // 1. 关闭详情弹窗
+  detailDialog.visible = false
+  
+  // 2. 打开申请弹窗（复用已有的逻辑）
+  handleApply(normalizeOneDataset(detailDialog.data))
 }
 
 // --- 文件管理事件处理 ---
@@ -973,7 +992,6 @@ const handleSubmitApplication = async () => {
           <el-table-column prop="createdAt" label="创建时间" width="160" />
           <el-table-column label="操作" width="280" fixed="right" align="center">
             <template #default="scope">
-              <!-- 管理员操作 -->
               <template v-if="isAdmin()">
                 <el-button size="small" :icon="Document" @click="handleViewFiles(scope.row)"
                   >管理文件</el-button
@@ -989,18 +1007,38 @@ const handleSubmitApplication = async () => {
                   >删除</el-button
                 >
               </template>
-              <!-- 普通用户操作 -->
+
               <template v-else>
                 <el-button
                   v-if="scope.row.hasAccess"
                   type="success"
-                  :icon="View"
+                  :icon="Download"
+                  size="small"
                   @click="handleViewDetail(scope.row)"
-                  >查看详情</el-button
                 >
-                <el-button v-else type="primary" :icon="Promotion" @click="handleApply(scope.row)"
-                  >申请使用</el-button
-                >
+                  下载文件
+                </el-button>
+
+                <template v-else>
+                  <el-button
+                    type="primary"
+                    link
+                    :icon="View"
+                    size="small"
+                    @click="handleViewDetail(scope.row)"
+                  >
+                    查看详情
+                  </el-button>
+                  
+                  <el-button 
+                    type="primary" 
+                    :icon="Promotion" 
+                    size="small"
+                    @click="handleApply(scope.row)"
+                  >
+                    申请使用
+                  </el-button>
+                </template>
               </template>
             </template>
           </el-table-column>
@@ -1388,33 +1426,53 @@ const handleSubmitApplication = async () => {
         <div v-if="detailDialog.data">
           <el-descriptions border :column="1">
             <el-descriptions-item label="名称">{{ detailDialog.data.title }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{
-              formatDateTime(detailDialog.data.created_at)
-            }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ formatDateTime(detailDialog.data.created_at) }}</el-descriptions-item>
             <el-descriptions-item label="描述">
               <div style="white-space: pre-wrap">
                 {{ detailDialog.data.description || '暂无描述' }}
               </div>
             </el-descriptions-item>
           </el-descriptions>
-          <div style="margin-top: 20px; font-weight: bold">文件列表</div>
-          <el-table :data="detailDialog.files" stripe border height="300px">
-            <el-table-column prop="name" label="文件名" />
-            <el-table-column prop="size" label="大小" width="120">
-              <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" align="center">
-              <template #default="{ row }">
-                <el-button
-                  type="primary"
-                  link
-                  :icon="Download"
-                  @click="handleDownloadFile(detailDialog.data.id, row)"
-                  >下载</el-button
-                >
+
+          <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px;">文件列表</div>
+
+          <div v-if="detailDialog.data.hasAccess">
+            <el-table :data="detailDialog.files" stripe border height="300px">
+              <el-table-column prop="name" label="文件名" />
+              <el-table-column prop="size" label="大小" width="120">
+                <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="100" align="center">
+                <template #default="{ row }">
+                  <el-button
+                    type="primary"
+                    link
+                    :icon="Download"
+                    @click="handleDownloadFile(detailDialog.data.id, row)"
+                  >下载</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div v-else class="no-access-placeholder">
+            <el-empty description="您暂时没有权限查看或下载该数据集的文件内容。" :image-size="80">
+              <template #default>
+                <div class="no-access-actions">
+                  <p class="no-access-tip">请提交申请，通过审批后即可访问所有文件。</p>
+                  <el-button 
+                    type="primary" 
+                    :icon="Promotion" 
+                    size="large"
+                    @click="handleApplyFromDetail"
+                  >
+                    发起申请
+                  </el-button>
+                </div>
               </template>
-            </el-table-column>
-          </el-table>
+            </el-empty>
+          </div>
+
         </div>
       </el-skeleton>
     </el-dialog>
@@ -1619,5 +1677,27 @@ const handleSubmitApplication = async () => {
 }
 .agreement-upload-empty :deep(.el-empty__description) {
   color: #909399;
+}
+.no-access-placeholder {
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  background-color: #fafafa;
+  height: 300px; /* 保持和有权限时的表格高度一致，避免弹窗抖动 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.no-access-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.no-access-tip {
+  color: #909399;
+  font-size: 14px;
+  margin: 0;
 }
 </style>

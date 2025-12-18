@@ -71,12 +71,8 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 		role = u.(*model.User).Role
 	}
 
-	dataset, err := a.service.GetDatasetDetail(id, userID, role)
+	dataset, hasAccess, err := a.service.GetDatasetDetail(id, userID, role)
 	if err != nil {
-		if err.Error() == "permission denied" {
-			ctx.JSON(http.StatusForbidden, gin.H{"message": "无权访问该数据集内容"})
-			return
-		}
 		if err == gorm.ErrRecordNotFound {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
@@ -85,9 +81,14 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 		return
 	}
 
+	if !hasAccess {
+		dataset.Files = []model.File{} // 如果没权限，连文件列表都不给看
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"dataset": dataset,
+		"message":   "success",
+		"dataset":   dataset,
+		"hasAccess": hasAccess,
 	})
 }
 

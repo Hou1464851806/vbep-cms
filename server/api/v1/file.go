@@ -122,14 +122,28 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 		return
 	}
 
+	// 获取当前用户
+	userObj, exists := ctx.Get(global.CTXUserObj)
+	if !exists {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
+		return
+	}
+	user := userObj.(*model.User)
+
+	// 执行权限检查
+	if !a.checkDatasetDownloadPermission(datasetID, user.ID, user.Role) {
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "您没有权限下载此文件，请先申请并等待审批通过"})
+		return
+	}
+
 	file, err := a.service.GetDatasetFile(datasetID, fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to get file %s for dataset %s: %v", fileID, datasetID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to download file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载失败"})
 		return
 	}
 
@@ -352,6 +366,26 @@ func getUserFromContext(ctx *gin.Context) (*model.User, bool) {
 	}
 	user, ok := userObj.(*model.User)
 	return user, ok
+}
+
+func (a *FileApi) checkDatasetDownloadPermission(datasetID string, userID string, role model.UserRole) bool {
+	// 管理员直接通过
+	if role > model.Common {
+		return true
+	}
+
+	// 普通用户：检查是否有 Approved 的申请
+	var count int64
+	err := global.DB.Model(&model.Application{}).
+		Where("dataset_id = ? AND applicant_id = ? AND status = ?", datasetID, userID, model.APPROVED).
+		Count(&count).Error
+
+	if err != nil {
+		logger.Errorf("failed to check permission: %v", err)
+		return false
+	}
+
+	return count > 0
 }
 
 func canAccessApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {

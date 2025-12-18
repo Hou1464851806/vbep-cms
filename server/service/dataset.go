@@ -63,12 +63,11 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]m
 	return results, nil
 }
 
-// GetDatasetDetail 获取详情，管理员直接返回，普通用户需鉴权
-func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.UserRole) (*model.Dataset, error) {
+func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.UserRole) (*model.Dataset, bool, error) {
 	var dataset model.Dataset
 	ctx := context.Background()
 
-	// 1. 查数据
+	// 1. 查数据 (包含关联的文件列表)
 	err := global.DB.WithContext(ctx).
 		Preload("Files").
 		Preload("Creator").
@@ -77,18 +76,18 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, gorm.ErrRecordNotFound
+			return nil, false, gorm.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("failed to query dataset: %w", err)
+		return nil, false, fmt.Errorf("failed to query dataset: %w", err)
 	}
 
 	// 2. 权限判定
+	// 如果是管理员，直接拥有权限
 	if role > model.Common {
-		// 管理员：直接通过，不仅用于查看详情，也用于编辑回显
-		return &dataset, nil
+		return &dataset, true, nil
 	}
 
-	// 普通用户：必须有 Approved 的申请
+	// 3. 普通用户查申请记录
 	var count int64
 	err = global.DB.WithContext(ctx).
 		Model(&model.Application{}).
@@ -96,13 +95,13 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 		Count(&count).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify permission: %w", err)
-	}
-	if count == 0 {
-		return nil, fmt.Errorf("permission denied")
+		return nil, false, fmt.Errorf("failed to verify permission: %w", err)
 	}
 
-	return &dataset, nil
+	// 关键修改：不再报错，而是通过布尔值告知是否有权
+	hasAccess := count > 0
+
+	return &dataset, hasAccess, nil
 }
 
 func (s *DatasetService) UpdateDataset(id string, title, description string) (*model.Dataset, error) {
