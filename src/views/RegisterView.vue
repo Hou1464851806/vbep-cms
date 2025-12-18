@@ -1,5 +1,5 @@
 <script setup>
-import { Lock, User, Iphone, Message } from '@element-plus/icons-vue'
+import { Lock, User, Iphone, Message, CircleCheckFilled } from '@element-plus/icons-vue'
 import { reactive, ref } from 'vue'
 import axios from 'axios'
 import logoSrc from '@/assets/img/logo.png'
@@ -15,6 +15,7 @@ const registerForm = reactive({
   email: '',
   password: '',
 })
+const isRegisterSuccess = ref(false)
 
 const validatePassword = (rule, value, callback) => {
   if (value.length < 6 || value.length > 20) {
@@ -34,7 +35,7 @@ const validatePassword = (rule, value, callback) => {
     complexity++
   }
   // 特殊字符
-  if (/[~!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(value)) {
+  if (/[~!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(value)) {
     complexity++
   }
 
@@ -54,12 +55,12 @@ const registerFormRules = reactive({
     { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' }
   ],
   email: [
-    { required: true, message: '邮箱不能为空', trigger: 'change' },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'change' },
+    { required: true, message: '邮箱不能为空', trigger: 'blur' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '密码不能为空', trigger: 'change' },
-    { validator: validatePassword, trigger: 'change' },
+    { validator: validatePassword, trigger: 'blur' },
   ],
 })
 
@@ -78,13 +79,9 @@ const submitRegisterForm = async () => {
       nickname: registerForm.nickname,
       password: registerForm.password,
     }
-    const response = await axios.post('/api/v1/users/', requestData)
-    console.log('注册成功: ', response.data)
-    ElMessage({
-      message: '注册成功',
-      type: 'success',
-      duration: 2000,
-    })
+    await axios.post('/api/v1/users/', requestData)
+    isLoading.value = false 
+    isRegisterSuccess.value = true
     registerFormRef.value.resetFields()
     setTimeout(() => {
       router.replace({ name: 'login' })
@@ -105,6 +102,7 @@ const submitRegisterForm = async () => {
   }
 }
 </script>
+
 <template>
   <div class="main-container">
     <div class="login-card-wrapper">
@@ -120,79 +118,60 @@ const submitRegisterForm = async () => {
         <span class="heading">VBEP数据平台注册</span>
       </div>
       <div class="login-container">
-        <div class="login-panel">
+        <div class="login-content"> 
+          
+          <div v-if="isRegisterSuccess" class="success-state">
+            <el-icon class="success-icon" color="#67C23A"><CircleCheckFilled /></el-icon>
+            <h3 class="success-title">注册成功！</h3>
+            <p class="success-desc">账号已创建，2秒后自动跳转登录...</p>
+            <el-button type="primary" @click="router.replace({ name: 'login' })">
+              立即登录
+            </el-button>
+          </div>
+
           <el-form
+            v-else 
             ref="registerFormRef"
             class="login-form"
             :model="registerForm"
             :rules="registerFormRules"
-            label-width="auto"
+            label-width="80px"
+            label-position="right"
             status-icon
           >
-            <el-form-item class="login-group" label="真实姓名" prop="nickname">
-              <el-input
-                class="login-info"
-                size="large"
-                v-model="registerForm.nickname"
-                placeholder="请输入真实姓名"
-              >
-                <template #prefix>
-                  <el-icon><User /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
+             <el-form-item class="login-group" label="真实姓名" prop="nickname">
+                <el-input class="login-info" size="large" v-model="registerForm.nickname" placeholder="请输入真实姓名">
+                  <template #prefix><el-icon><User /></el-icon></template>
+                </el-input>
+              </el-form-item>
 
-            <el-form-item class="login-group" label="手机号" prop="phone">
-              <el-input
-                class="login-info"
-                size="large"
-                v-model="registerForm.phone"
-                placeholder="请输入手机号"
-              >
-                <template #prefix>
-                  <el-icon><Iphone /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
+              <el-form-item class="login-group" label="手机号" prop="phone">
+                <el-input class="login-info" size="large" v-model="registerForm.phone" placeholder="请输入手机号">
+                  <template #prefix><el-icon><Iphone /></el-icon></template>
+                </el-input>
+              </el-form-item>
 
-            <el-form-item class="login-group" label="邮箱名" prop="email">
-              <el-input
-                class="login-info"
-                size="large"
-                v-model="registerForm.email"
-                placeholder="请输入邮箱"
-              >
-                <template #prefix>
-                  <el-icon><Message /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
+              <el-form-item class="login-group" label="邮箱" prop="email">
+                <el-input class="login-info" size="large" v-model="registerForm.email" placeholder="请输入邮箱">
+                  <template #prefix><el-icon><Message /></el-icon></template>
+                </el-input>
+              </el-form-item>
 
-            <el-form-item class="login-group" label="密码" prop="password">
-              <el-input
-                class="login-info"
-                size="large"
-                v-model="registerForm.password"
-                placeholder="请输入密码"
-                type="password"
-                show-password
-              >
-                <template #prefix>
-                  <el-icon><Lock /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            
-            <div class="footer-links">
-              <p class="forgot-password">
-                密码长度应该为6到20个字符，且需包含大写字母、小写字母、数字、特殊字符中的至少3项
-              </p>
-            </div>
-            <el-form-item class="login-group login-button-item">
-              <el-button class="login-btn" type="primary" @click="submitRegisterForm"
-                >立刻注册</el-button
-              >
-            </el-form-item>
+              <el-form-item class="login-group" label="密码" prop="password">
+                <el-input class="login-info" size="large" v-model="registerForm.password" placeholder="请输入密码" type="password" show-password>
+                  <template #prefix><el-icon><Lock /></el-icon></template>
+                </el-input>
+              </el-form-item>
+              
+              <div class="footer-links" style="padding-left: 80px;">
+                <p class="forgot-password">
+                  密码需包含大写、小写、数字、特殊字符中的至少3项 (6-20位)
+                </p>
+              </div>
+              
+              <el-form-item class="login-group login-button-item">
+                <el-button class="login-btn" type="primary" @click="submitRegisterForm">立刻注册</el-button>
+              </el-form-item>
           </el-form>
         </div>
       </div>
@@ -214,7 +193,7 @@ const submitRegisterForm = async () => {
   background-color: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 800px; 
+  width: 800px;
   padding-bottom: 30px; 
   position: relative; 
   box-sizing: border-box;
@@ -264,17 +243,14 @@ const submitRegisterForm = async () => {
   display: flex;
   justify-content: center; 
   padding: 0 40px; 
-  gap: 60px; 
 }
 
-/* Form Styles */
-.login-panel {
-  flex-grow: 1; 
-  width: 300px; 
-  display: flex;
-  flex-direction: column;
-  padding-left: 30px; 
+/* 保持内容宽度限制 */
+.login-content {
+  width: 380px; /* 稍微增加一点宽度以容纳 label + input */
+  margin: 0 auto; 
 }
+
 .login-form {
   width: 100%;
 }
@@ -306,6 +282,12 @@ const submitRegisterForm = async () => {
   align-items: center; 
 }
 
+/* 调整 label 的样式，使其更对齐 */
+:deep(.el-form-item__label) {
+  color: #181818;
+  font-weight: 500;
+}
+
 .login-button-item {
   margin-top: 30px; 
 }
@@ -328,10 +310,41 @@ const submitRegisterForm = async () => {
 
 .footer-links {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  margin-bottom: 20px;
 }
 .forgot-password {
   font-size: 12px;
   color: #f32b2b;
+  margin: 0;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.success-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  animation: fadeIn 0.5s ease;
+}
+.success-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+.success-title {
+  font-size: 24px;
+  color: #303133;
+  margin: 0 0 10px 0;
+}
+.success-desc {
+  color: #909399;
+  margin-bottom: 30px;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
