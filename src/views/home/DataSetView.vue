@@ -55,9 +55,32 @@ const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
   })
 }
 
-const FILE_SIZE_LIMIT_MB = 50
-const FILE_SIZE_LIMIT_BYTES = FILE_SIZE_LIMIT_MB * 1024 * 1024
+const DATASET_FILE_LIMIT_MB = 500
+const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
+
+const APPLICATION_FILE_LIMIT_MB = 20
+const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
 const AGREEMENT_PDF_STATIC_PATH = '/static/agreement.pdf'
+
+const ALLOWED_EXTENSIONS = [
+  // Documents
+  '.pdf', '.txt', '.md', '.rtf', '.tex',
+  '.doc', '.docx', '.wps', '.odt',
+  '.ppt', '.pptx', '.dps', '.ods',
+  '.xls', '.xlsx', '.et', '.odp',
+  // Images
+  '.jpg', '.jpeg', '.png', '.gif', '.svg', '.bmp', '.tiff',
+  // Compressed Files
+  '.zip', '.rar', '.7z', '.tar', '.gz', '.tgz'
+]
+
+const DENIED_EXTENSIONS = [
+  '.exe', '.msi', '.bat', '.cmd', '.sh', '.ps1',
+  '.js', '.vbs', '.jar', '.dll', '.sys',
+  '.app', '.dmg', '.pkg',
+  '.scr', '.com', '.cpl', '.inf',
+  '.lnk', '.reg', '.hta', '.msc'
+];
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
@@ -334,8 +357,8 @@ const handleViewDetail = async (row) => {
 
 // --- 文件管理事件处理 ---
 const handleBeforeUpload = (rawFile) => {
-  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+  if (rawFile.size > DATASET_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${DATASET_FILE_LIMIT_MB}MB 限制，无法上传`)
     return false
   }
   return true
@@ -526,10 +549,25 @@ const updateApplicationAttachmentTask = (uid, payload = {}) => {
   }
 }
 const handleApplicationAttachmentBeforeUpload = (rawFile) => {
-  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${APPLICATION_FILE_LIMIT_MB}MB 限制，无法上传`)
     return false
   }
+
+  const fileName = rawFile.name.toLowerCase()
+
+  const isDenied = DENIED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+  if (isDenied) {
+    ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
+    return false
+  }
+
+  const isAllowed = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+  if (!isAllowed) {
+    ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
+    return false
+  }
+
   return true
 }
 const handleQueueApplicationAttachment = (options) => {
@@ -607,8 +645,8 @@ const handleAgreementImageBeforeUpload = (rawFile) => {
     ElMessage.error('仅支持上传图片文件，请重新选择')
     return false
   }
-  if (rawFile.size > FILE_SIZE_LIMIT_BYTES) {
-    ElMessage.error(`图片 "${rawFile.name}" 超过 ${FILE_SIZE_LIMIT_MB}MB 限制，无法上传`)
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`图片 "${rawFile.name}" 超过 ${APPLICATION_FILE_LIMIT_MB}MB 限制，无法上传`)
     return false
   }
   return true
@@ -1016,6 +1054,11 @@ const handleSubmitApplication = async () => {
           <el-button type="primary" :icon="Upload" :loading="fileDialog.isUploading"
             >上传文件</el-button
           >
+          <template #tip>
+            <div class="el-upload__tip">
+              单个文件不超过 {{ DATASET_FILE_LIMIT_MB }}MB
+            </div>
+          </template>
         </el-upload>
       </div>
       <div v-if="fileDialog.uploadTasks.length" class="upload-progress-list">
@@ -1126,7 +1169,6 @@ const handleSubmitApplication = async () => {
             action="#"
             accept="image/*"
             :show-file-list="false"
-            multiple
             :before-upload="handleAgreementImageBeforeUpload"
             :http-request="handleQueueAgreementImage"
             :disabled="applicationDialog.agreement.isUploading || applicationDialog.isSubmitting"
@@ -1139,7 +1181,7 @@ const handleSubmitApplication = async () => {
             >
             <template #tip>
               <div class="el-upload__tip">
-                仅支持图片文件，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB。建议使用 JPG/PNG 格式。
+                仅支持单个不超过{{ APPLICATION_FILE_LIMIT_MB }}MB的图片文件。建议使用 JPG/PNG 格式。
               </div>
             </template>
           </el-upload>
@@ -1217,7 +1259,7 @@ const handleSubmitApplication = async () => {
                 >
                 <template #tip>
                   <div class="el-upload__tip">
-                    可上传项目计划书、需求文档等补充材料，单个文件不超过 {{ FILE_SIZE_LIMIT_MB }}MB
+                    仅支持常见文件格式；单个文件不得超过 {{ APPLICATION_FILE_LIMIT_MB }}MB。
                   </div>
                 </template>
               </el-upload>

@@ -21,7 +21,7 @@ import (
 const (
 	datasetUploadRoot     = "uploads/datasets"
 	applicationUploadRoot = "uploads/applications"
-	maxUploadSize         = 50 * 1024 * 1024
+	maxUploadSize         = 500 * 1024 * 1024
 	datasetOwnerType      = "datasets"
 	applicationOwnerType  = "applications"
 )
