@@ -913,10 +913,7 @@ const handleSubmitApplication = async () => {
         return
       }
 
-      ElMessage.success('申请提交成功，请等待管理员审批')
-      applicationDialog.visible = false
-      resetApplicationAttachments()
-      resetAgreementUploads()
+      applicationDialog.currentStep = 3
     } catch (error) {
       console.error('Application submission failed:', error)
       ElMessage.error('提交申请时发生错误')
@@ -1130,18 +1127,10 @@ const handleSubmitApplication = async () => {
         <div class="application-step-progress">
           <el-steps :active="applicationDialog.currentStep" align-center>
             <el-step title="知情同意书" />
-            <el-step title="填写申请" />
+            <el-step title="补充资料" />
+            <el-step title="提交成功" />
           </el-steps>
         </div>
-        <el-button
-          v-if="applicationDialog.currentStep === 2"
-          type="primary"
-          link
-          class="step-return-button"
-          @click="handleBackToAgreementStep"
-        >
-          返回修改第一步
-        </el-button>
       </div>
 
       <div v-if="applicationDialog.currentStep === 1" class="agreement-step">
@@ -1154,13 +1143,13 @@ const handleSubmitApplication = async () => {
             <span>本人承诺：仅将数据用于</span>
             <el-input
               v-model="applicationDialog.agreement.intendedUsage"
-              placeholder="请输入具体工作内容"
+              placeholder="请输入简要数据用途"
               class="agreement-usage-input"
               :disabled="applicationDialog.agreement.isUploading || applicationDialog.isSubmitting"
             />
             <span>工作。</span>
           </div>
-          <div class="agreement-usage-tip">请在进入下一步前补充完整上述声明。</div>
+          <div class="agreement-usage-tip">你可以在下一步中详细阐述数据用途。</div>
         </div>
         <div class="agreement-upload-section">
           <div class="agreement-upload-title">请上传个人手写签名照片</div>
@@ -1215,7 +1204,7 @@ const handleSubmitApplication = async () => {
         </div>
       </div>
       <el-form
-        v-else
+        v-else-if="applicationDialog.currentStep === 2"
         ref="applicationFormRef"
         :model="applicationDialog.form"
         :rules="applicationDialog.rules"
@@ -1327,6 +1316,14 @@ const handleSubmitApplication = async () => {
           </div>
         </el-form-item>
       </el-form>
+      <div v-else-if="applicationDialog.currentStep === 3" class="result-step">
+        <el-result
+          icon="success"
+          title="申请已提交"
+          sub-title="请等待1至5个工作日查看结果"
+        >
+        </el-result>
+      </div>
       <template #footer>
         <template v-if="applicationDialog.currentStep === 1">
           <el-button
@@ -1347,7 +1344,7 @@ const handleSubmitApplication = async () => {
             >同意并继续</el-button
           >
         </template>
-        <template v-else>
+        <template v-else-if="applicationDialog.currentStep === 2">
           <el-button
             @click="applicationDialog.visible = false"
             :disabled="
@@ -1357,6 +1354,16 @@ const handleSubmitApplication = async () => {
             "
             >取消</el-button
           >
+          <el-button
+            @click="handleBackToAgreementStep"
+            :disabled="
+              applicationDialog.isSubmitting ||
+              applicationDialog.attachments.isUploading ||
+              applicationDialog.agreement.isUploading
+            "
+          >
+            上一步
+          </el-button>
           <el-button
             type="primary"
             @click="handleSubmitApplication"
@@ -1368,6 +1375,9 @@ const handleSubmitApplication = async () => {
               applicationDialog.attachments.createdApplicationId ? '继续上传附件' : '提交申请'
             }}</el-button
           >
+        </template>
+        <template v-else-if="applicationDialog.currentStep === 3">
+          <el-button type="primary" @click="applicationDialog.visible = false">确定</el-button>
         </template>
       </template>
     </el-dialog>

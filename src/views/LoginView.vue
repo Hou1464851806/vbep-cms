@@ -30,7 +30,7 @@ const loginForm = reactive({
 const isLoading = ref(false)
 
 const loginRules = reactive({
-  userInfo: [{ required: true, message: '请输入邮箱或电话或登录名', trigger: 'blur' }],
+  userInfo: [{ required: true, message: '请输入邮箱或电话', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 })
 
@@ -110,7 +110,7 @@ const submitLoginFrom = async () => {
                 class="login-info"
                 size="large"
                 v-model="loginForm.userInfo"
-                placeholder="邮箱或电话或登录名"
+                placeholder="邮箱或电话"
               >
                 <template #prefix>
                   <el-icon><User /></el-icon>
