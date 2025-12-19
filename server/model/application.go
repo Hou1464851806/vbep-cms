@@ -8,21 +8,22 @@ const (
 	PENDING ApplicationStatus = iota
 	APPROVED
 	REJECTED
+	RETURNED
 )
 
+// Application 申请信息
+// 申请的状态需要根据审批操作进行改变，用户可进行的操作也根据申请状态进行变化
 type Application struct {
 	Base
-	ApplicantID   string            `gorm:"not null;type:char(36)"` // 申请人
-	Applicant     User              `gorm:"foreignKey:ApplicantID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	DatasetID     string            `gorm:"not null;type:char(36)"` // 申请的目标数据集
-	Dataset       Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Status        ApplicationStatus `gorm:"not null;default:0"` // 申请的处理状态
-	Reason        string            `gorm:"not null"`           // 申请的理由
-	AuditorID     *string           `gorm:"type:char(36)"`      // 审批者
-	Auditor       *User             `gorm:"foreignKey:AuditorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
-	AuditorResult *string
-	AuditedAt     *time.Time
-	Files         []File `gorm:"polymorphic:Owner;"` // 申请的附件
+	ApplicantID string            `gorm:"not null;type:char(36)"`                                                             // 申请人
+	Applicant   User              `gorm:"foreignKey:ApplicantID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"` // 申请人用户信息
+	DatasetID   string            `gorm:"not null;type:char(36)"`                                                             // 申请的目标数据集
+	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
+	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
+	Reason      string            `gorm:"not null"`                                                                           // 申请的理由
+
+	Audits []Audit // 申请的审批记录历史
+	Files  []File  `gorm:"polymorphic:Owner;"` // 申请的附件
 }
 
 type ApplicationListItem struct {
