@@ -1,6 +1,4 @@
 # docker-compose.yml
-version: '3.8'
-
 services:
   frontend:
     build:
@@ -9,14 +7,69 @@ services:
     image: vbep-cms/frontend:latest # 构建后的镜像名称及标签
     container_name: vbep-cms-frontend # 容器名称
     ports:
-      - "8080:80"        # 主机端口:容器端口
+      - "9999:80"        # 主机端口:容器端口
     restart: always    # 容器意外退出时，总是尝试重启
+    depends_on:
+      - backend
     # environment:       # 如果有需要注入到容器的环境变量，可以在这里定义
     #   - VITE_API_BASE_URL=http://your-backend-api.com
     # volumes:           # 如果需要持久化数据或进行实时开发调试，可以挂载卷
     #   - ./your-app-logs:/var/log/nginx # 挂载 Nginx 日志
 
-networks:
-  default:
-    # 对于多服务（如前后端分离），建议使用自定义网络以便服务间通信
-    driver: bridge
+  backend:
+    build:
+      context: ./server   # Dockerfile 在 backend 文件夹内
+      dockerfile: Dockerfile
+    image: vbep-cms/backend:latest
+    container_name: vbep-cms-backend
+    ports:
+      - "8080:8080"      # 主机 8080 端口映射到容器 Go 应用的 8080 端口
+    restart: always
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+    depends_on: # 依赖数据库和 Redis，确保它们先启动（为健康状态）
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: vbep-cms-postgres
+    restart: always
+    environment:
+      # 这些环境变量会用于初始化数据库
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD} # 密码与后端使用的保持一致
+      - POSTGRES_DB=vbep_cms
+      - PGDATA=/var/lib/postgresql/data/pgdata # 建议指定数据目录
+    volumes:
+      # 使用命名卷来持久化数据库数据，即使容器被删除，数据也不会丢失
+      - postgres_data:/var/lib/postgresql/data/pgdata
+    ports:
+      # 将数据库端口暴露到主机，方便使用 Navicat、DBeaver 等工具连接调试
+      # 如果不需要从主机访问，可以注释掉这行
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${DB_USER} -d vbep_cms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine  # 使用官方的、较小的 alpine 版本 redis 镜像
+    container_name: vbep-cms-redis
+    restart: always
+    volumes:
+      # 使用命名卷来持久化 Redis 数据 (如果需要)
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
