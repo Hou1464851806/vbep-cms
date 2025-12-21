@@ -9,7 +9,25 @@ const (
 	ActionApprove
 	ActionReturn
 	ActionReject
+	ActionReSubmit // 还是加一个操作，用于和初次提交区分
 )
+
+func (a ActionType) String() string {
+	switch a {
+	case ActionSubmit:
+		return "submit"
+	case ActionApprove:
+		return "approve"
+	case ActionReturn:
+		return "return"
+	case ActionReject:
+		return "reject"
+	case ActionReSubmit:
+		return "resubmit"
+	default:
+		return "unknown"
+	}
+}
 
 // Audit History 用于记录申请的历史
 // 1. 用户第一次申请提交后，需要产生一条为SUBMIT的审批记录，申请状态为pending
@@ -27,4 +45,30 @@ type Audit struct {
 
 	ApplicationID string      `gorm:"not null;type:char(36)"`                                                             // 审批属于的申请ID
 	Application   Application `gorm:"foreignKey:ApplicationID;reference:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"` // 审批历史属于申请，删除申请应该级联删除审批历史
+}
+
+type AuditListItem struct {
+	ID        string     `json:"id"`
+	Action    string     `json:"action"`
+	Result    *string    `json:"result,omitempty"`
+	Operator  *UserBrief `json:"operator,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	AuditedAt *time.Time `json:"auditedAt,omitempty"`
+}
+
+func (a Audit) ToListItem() AuditListItem {
+	item := AuditListItem{
+		ID:        a.ID,
+		Action:    a.Action.String(),
+		Result:    a.AuditorResult,
+		CreatedAt: a.CreatedAt,
+		AuditedAt: a.AuditedAt,
+	}
+
+	if a.Auditor != nil {
+		operator := a.Auditor.ToBrief()
+		item.Operator = &operator
+	}
+
+	return item
 }

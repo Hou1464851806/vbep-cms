@@ -22,8 +22,8 @@ type Application struct {
 	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
 	Reason      string            `gorm:"not null"`                                                                           // 申请的理由
 
-	Audits []Audit // 申请的审批记录历史
-	Files  []File  `gorm:"polymorphic:Owner;"` // 申请的附件
+	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"` // 申请的审批记录历史
+	Files  []File  `gorm:"polymorphic:Owner;"`                     // 申请的附件
 }
 
 type ApplicationListItem struct {
@@ -46,6 +46,8 @@ func (s ApplicationStatus) String() string {
 		return "approved" // 或 "已通过"
 	case REJECTED:
 		return "rejected" // 或 "已拒绝"
+	case RETURNED:
+		return "returned" // 或 "已退回"
 	default:
 		return "unknown"
 	}
@@ -58,15 +60,32 @@ func (app Application) ToListItem() ApplicationListItem {
 		Reason:    app.Reason,
 		Applicant: app.Applicant.ToBrief(),
 		Dataset:   app.Dataset.ToBrief(),
-		Result:    app.AuditorResult,
-		AuditedAt: app.AuditedAt,
 		CreatedAt: app.CreatedAt,
 	}
 
-	if app.AuditorID != nil && app.Auditor != nil {
-		auditorBrief := app.Auditor.ToBrief()
-		item.Auditor = &auditorBrief
+	if latest := app.latestAudit(); latest != nil {
+		if latest.Auditor != nil {
+			auditorBrief := latest.Auditor.ToBrief()
+			item.Auditor = &auditorBrief
+		}
+		item.Result = latest.AuditorResult
+		item.AuditedAt = latest.AuditedAt
 	}
 
 	return item
+}
+
+func (app Application) latestAudit() *Audit {
+	if len(app.Audits) == 0 {
+		return nil
+	}
+
+	var latest *Audit
+	for i := range app.Audits {
+		if latest == nil || app.Audits[i].CreatedAt.After(latest.CreatedAt) {
+			latest = &app.Audits[i]
+		}
+	}
+
+	return latest
 }

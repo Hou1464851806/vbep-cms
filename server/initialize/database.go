@@ -58,6 +58,6 @@ func NewDB() *gorm.DB {
 }
 
 func autoMigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&model.User{}, &model.Dataset{}, &model.File{}, &model.Application{})
+	err := db.AutoMigrate(&model.User{}, &model.Dataset{}, &model.File{}, &model.Application{}, &model.Audit{})
 	return err
 }
