@@ -1,7 +1,7 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
-import { Check, Close, View, Download } from '@element-plus/icons-vue'
+import { Check, Close, View, Download, RefreshLeft } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
@@ -12,6 +12,10 @@ const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${
 const approveApplicationAPI = (id, data) =>
   apiClient.post(`/api/v1/applications/${id}/approve`, data)
 const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
+const returnApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/return`, data)
+const resubmitApplicationAPI = (id, data) =>
+  apiClient.post(`/api/v1/applications/${id}/resubmit`, data)
+const fetchApplicationAuditsAPI = (id) => apiClient.get(`/api/v1/applications/${id}/audits`)
 const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
@@ -43,12 +47,25 @@ const detailDialog = reactive({
     list: [],
     currentApplicationId: '',
   },
+  resubmit: {
+    reason: '',
+    loading: false,
+  },
+})
+
+const auditDialog = reactive({
+  visible: false,
+  loading: false,
+  list: [],
+  title: '',
+  currentApplicationId: '',
 })
 
 const statusMetaMap = {
   pending: { label: '待审批', type: 'warning' },
   approved: { label: '已批准', type: 'success' },
   rejected: { label: '已驳回', type: 'danger' },
+  returned: { label: '待修改', type: 'warning' },
 }
 
 const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
@@ -56,7 +73,11 @@ const getActionButtonLabel = (row) => {
   if (isAdmin()) {
     return row.status === 'pending' ? '审核' : '结果详情'
   }
-  return row.status === 'pending' ? '申请详情' : '结果详情'
+  if (row.status === 'pending') return '申请详情'
+  if (row.status === 'returned' && row.applicant?.id === currentUserId.value) {
+    return '重新编辑'
+  }
+  return '结果详情'
 }
 
 const normalizeApplication = (item = {}) => ({
@@ -85,6 +106,33 @@ const normalizeApplication = (item = {}) => ({
   auditedAt: formatDateTime(item.auditedAt),
 })
 
+const auditActionMeta = {
+  submit: { label: '提交申请', color: '#409EFF' },
+  approve: { label: '审批通过', color: '#67C23A' },
+  reject: { label: '审批驳回', color: '#F56C6C' },
+  return: { label: '退回修改', color: '#E6A23C' },
+  resubmit: { label: '发起者修改', color: '#409EFF' },
+}
+
+const normalizeAudit = (item = {}) => {
+  const meta = auditActionMeta[item.action] || { label: '未知操作', color: '#909399' }
+  return {
+    id: item.id,
+    action: item.action || 'unknown',
+    label: meta.label,
+    color: meta.color,
+    operator: item.operator
+      ? {
+          id: item.operator.id,
+          nickname: item.operator.nickname,
+          email: item.operator.email,
+        }
+      : null,
+    result: item.result || '',
+    time: formatDateTime(item.auditedAt || item.createdAt),
+  }
+}
+
 const normalizeApplicationFiles = (files = []) =>
   files.map((item) => ({
     id: item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
@@ -100,11 +148,28 @@ const canViewApplicationAttachments = (application) => {
 }
 
 const canViewAttachments = computed(() => canViewApplicationAttachments(detailDialog.data))
+const canResubmitApplication = computed(() => {
+  const data = detailDialog.data
+  if (!data) return false
+  return data.status === 'returned' && data.applicant?.id === currentUserId.value
+})
 
 const resetAttachmentState = () => {
   detailDialog.attachments.isLoading = false
   detailDialog.attachments.list = []
   detailDialog.attachments.currentApplicationId = ''
+}
+
+const resetAuditDialog = () => {
+  auditDialog.loading = false
+  auditDialog.list = []
+  auditDialog.title = ''
+  auditDialog.currentApplicationId = ''
+}
+
+const resetResubmitState = () => {
+  detailDialog.resubmit.reason = ''
+  detailDialog.resubmit.loading = false
 }
 
 const loadApplicationFiles = async (applicationId) => {
@@ -174,6 +239,7 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.audit.result = ''
+  detailDialog.resubmit.reason = ''
   resetAttachmentState()
   try {
     const res = await fetchApplicationDetailAPI(row.id)
@@ -187,6 +253,29 @@ const handleViewDetail = async (row) => {
     ElMessage.error('获取申请详情失败')
   } finally {
     detailDialog.loading = false
+  }
+}
+
+const handleViewAuditLog = async (row) => {
+  if (!row?.id) return
+  auditDialog.visible = true
+  auditDialog.loading = true
+  auditDialog.list = []
+  auditDialog.currentApplicationId = row.id
+  const dialogSuffix = row.dataset?.title ? ` - ${row.dataset.title}` : ` - ${row.id}`
+  auditDialog.title = `审批日志${dialogSuffix}`
+  try {
+    const res = await fetchApplicationAuditsAPI(row.id)
+    if (res.data?.message === 'success') {
+      auditDialog.list = (res.data.audits || []).map((item) => normalizeAudit(item))
+    } else {
+      ElMessage.error(res.data?.message || '审批日志加载失败')
+    }
+  } catch (error) {
+    console.error('Failed to load application audits', error)
+    ElMessage.error('审批日志加载失败')
+  } finally {
+    auditDialog.loading = false
   }
 }
 
@@ -204,6 +293,18 @@ const updateApplicationEntry = (nextData) => {
   }
 }
 
+const auditActionAPIMap = {
+  approve: approveApplicationAPI,
+  reject: rejectApplicationAPI,
+  return: returnApplicationAPI,
+}
+
+const auditActionSuccessMessage = {
+  approve: '申请已批准',
+  reject: '申请已驳回',
+  return: '申请已退回',
+}
+
 const handleDialogAudit = async (action) => {
   const current = detailDialog.data
   if (!current?.id) return
@@ -212,15 +313,18 @@ const handleDialogAudit = async (action) => {
     ElMessage.warning('请填写审核结果')
     return
   }
+
+  const api = auditActionAPIMap[action]
+  if (!api) return
+
   detailDialog.audit.loading = true
   try {
-    const api = action === 'approve' ? approveApplicationAPI : rejectApplicationAPI
     const res = await api(current.id, { result })
     if (res.data?.message === 'success' && res.data.application) {
       const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
       detailDialog.audit.result = normalized.auditorResult
-      ElMessage.success(action === 'approve' ? '申请已批准' : '申请已驳回')
+      ElMessage.success(auditActionSuccessMessage[action] || '操作成功')
     } else {
       ElMessage.error(res.data?.message || '操作失败')
     }
@@ -232,12 +336,40 @@ const handleDialogAudit = async (action) => {
   }
 }
 
+const handleResubmitApplication = async () => {
+  const current = detailDialog.data
+  if (!current?.id) return
+  const reason = detailDialog.resubmit.reason.trim()
+  if (!reason) {
+    ElMessage.warning('请填写修改后的申请理由')
+    return
+  }
+  detailDialog.resubmit.loading = true
+  try {
+    const res = await resubmitApplicationAPI(current.id, { reason })
+    if (res.data?.message === 'success' && res.data.application) {
+      updateApplicationEntry(res.data.application)
+      detailDialog.resubmit.reason = reason
+      ElMessage.success('申请已重新提交')
+    } else {
+      ElMessage.error(res.data?.message || '重新提交失败')
+    }
+  } catch (error) {
+    console.error('Failed to resubmit application', error)
+    ElMessage.error('重新提交失败')
+  } finally {
+    detailDialog.resubmit.loading = false
+  }
+}
+
 watch(
   () => detailDialog.data,
   (value) => {
     detailDialog.audit.result = value?.auditorResult || ''
+    detailDialog.resubmit.reason = value?.reason || ''
     if (!value) {
       resetAttachmentState()
+      resetResubmitState()
       return
     }
     if (canViewApplicationAttachments(value)) {
@@ -258,6 +390,16 @@ watch(
   (visible) => {
     if (!visible) {
       resetAttachmentState()
+      resetResubmitState()
+    }
+  },
+)
+
+watch(
+  () => auditDialog.visible,
+  (visible) => {
+    if (!visible) {
+      resetAuditDialog()
     }
   },
 )
@@ -297,11 +439,44 @@ onMounted(fetchApplications)
             <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
               {{ getActionButtonLabel(scope.row) }}
             </el-button>
+            <el-button type="primary" text :icon="View" @click="handleViewAuditLog(scope.row)">
+              审批日志
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
     </el-skeleton>
   </el-card>
+
+  <el-dialog v-model="auditDialog.visible" :title="auditDialog.title || '审批日志'" width="600px">
+    <el-skeleton :rows="4" animated :loading="auditDialog.loading">
+      <template #default>
+        <el-empty v-if="!auditDialog.list.length" description="暂无审批记录" />
+        <el-timeline v-else class="audit-log-steps">
+          <el-timeline-item
+            v-for="item in auditDialog.list"
+            :key="item.id"
+            :timestamp="item.time"
+            :color="item.color"
+          >
+            <div class="audit-step">
+              <div class="audit-step-label">{{ item.label }}</div>
+              <div class="audit-step-operator">
+                <template v-if="item.operator">
+                  操作人：{{ item.operator.nickname }}
+                  <span v-if="item.operator.email" class="table-sub-text"
+                    >({{ item.operator.email }})</span
+                  >
+                </template>
+                <template v-else>操作人：系统</template>
+              </div>
+              <div v-if="item.result" class="audit-step-result">备注：{{ item.result }}</div>
+            </div>
+          </el-timeline-item>
+        </el-timeline>
+      </template>
+    </el-skeleton>
+  </el-dialog>
 
   <el-dialog v-model="detailDialog.visible" title="申请详情" width="600px">
     <el-skeleton :rows="5" animated :loading="detailDialog.loading">
@@ -380,6 +555,30 @@ onMounted(fetchApplications)
             </template>
           </el-skeleton>
         </div>
+        <div v-if="canResubmitApplication" class="resubmit-area">
+          <el-alert
+            type="warning"
+            :closable="false"
+            show-icon
+            title="申请已被退回，请根据意见修改信息后重新提交"
+          />
+          <el-input
+            v-model="detailDialog.resubmit.reason"
+            type="textarea"
+            :rows="4"
+            maxlength="200"
+            show-word-limit
+            placeholder="请填写修改后的申请理由"
+          />
+          <div class="resubmit-buttons">
+            <el-button
+              type="primary"
+              :loading="detailDialog.resubmit.loading"
+              @click="handleResubmitApplication"
+              >重新提交审核</el-button
+            >
+          </div>
+        </div>
         <div v-if="isAdmin() && detailDialog.data?.status === 'pending'" class="audit-action-area">
           <el-input
             v-model="detailDialog.audit.result"
@@ -390,6 +589,13 @@ onMounted(fetchApplications)
             placeholder="请填写审核意见"
           />
           <div class="audit-action-buttons">
+            <el-button
+              type="warning"
+              :loading="detailDialog.audit.loading"
+              :icon="RefreshLeft"
+              @click="handleDialogAudit('return')"
+              >退回</el-button
+            >
             <el-button
               type="danger"
               :loading="detailDialog.audit.loading"
@@ -449,5 +655,41 @@ onMounted(fetchApplications)
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+.resubmit-area {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border: 1px dashed #f3d19e;
+  border-radius: 8px;
+  background-color: #fff7e6;
+}
+.resubmit-buttons {
+  display: flex;
+  justify-content: flex-end;
+}
+.audit-log-steps {
+  max-height: 420px;
+  padding-right: 8px;
+  overflow-y: auto;
+}
+.audit-step {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  line-height: 1.6;
+}
+.audit-step-label {
+  font-weight: 600;
+  color: #303133;
+}
+.audit-step-operator {
+  color: #909399;
+  font-size: 13px;
+}
+.audit-step-result {
+  color: #606266;
 }
 </style>
