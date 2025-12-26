@@ -122,7 +122,7 @@ const auditActionMeta = {
     label: '管理员审批',
     color: '#409EFF',
     operatorLabel: '审批人',
-    actionDetail: '审批通过',
+    actionDetail: '通过',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
@@ -130,7 +130,7 @@ const auditActionMeta = {
     label: '管理员审批',
     color: '#409EFF',
     operatorLabel: '审批人',
-    actionDetail: '审批驳回',
+    actionDetail: '驳回',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
@@ -138,7 +138,7 @@ const auditActionMeta = {
     label: '管理员审批',
     color: '#409EFF',
     operatorLabel: '审批人',
-    actionDetail: '退回修改',
+    actionDetail: '退回',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
@@ -600,28 +600,34 @@ onMounted(fetchApplications)
           >
             <div class="audit-step">
               <div class="audit-step-label">{{ item.label }}</div>
-              <template v-if="item.isPlaceholder || item.isFinal">
-                <div class="audit-step-placeholder">
-                  {{ item.placeholderText || '等待处理' }}
-                </div>
-              </template>
-              <template v-else>
-                <div class="audit-step-operator">
-                  <template v-if="item.operator">
-                    {{ item.operatorLabel }}：{{ item.operator.nickname }}
-                    <span v-if="item.operator.email" class="table-sub-text"
-                      >({{ item.operator.email }})</span
-                    >
-                  </template>
-                  <template v-else>{{ item.operatorLabel }}：系统</template>
-                </div>
-                <div v-if="item.showActionDetail" class="audit-step-action">
-                  操作类型：{{ item.actionDetail }}
-                </div>
-                <div v-if="item.result" class="audit-step-result">
-                  {{ item.resultLabel }}：{{ item.result }}
-                </div>
-              </template>
+              <el-card
+                class="audit-step-card"
+                shadow="never"
+                :body-style="{ padding: '12px 12px' }"
+              >
+                <template v-if="item.isPlaceholder || item.isFinal">
+                  <div class="audit-step-placeholder">
+                    {{ item.placeholderText || '等待处理' }}
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="audit-step-operator">
+                    <template v-if="item.operator">
+                      {{ item.operatorLabel }}：<span class="audit-step-bold-text">{{ item.operator.nickname }}</span>
+                      <span v-if="item.operator.email" class="table-sub-text"
+                        > ({{ item.operator.email }})</span
+                      >
+                    </template>
+                    <template v-else>{{ item.operatorLabel }}：<span class="audit-step-bold-text">系统</span></template>
+                  </div>
+                  <div v-if="item.showActionDetail" class="audit-step-action">
+                    审批操作：<span class="audit-step-bold-text">{{ item.actionDetail }}</span>
+                  </div>
+                  <div v-if="item.result" class="audit-step-result">
+                    {{ item.resultLabel }}：<span class="audit-step-bold-text">{{ item.result }}</span>
+                  </div>
+                </template>
+              </el-card>
             </div>
           </el-timeline-item>
         </el-timeline>
@@ -829,16 +835,24 @@ onMounted(fetchApplications)
 .audit-step {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   line-height: 1.6;
+}
+.audit-step-card {
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  background-color: #f8fafc;
+}
+.audit-step-bold-text {
+  color: #000000;
 }
 .audit-step-label {
   font-weight: 600;
   color: #303133;
+  font-size: 15px;
 }
 .audit-step-operator {
-  color: #909399;
-  font-size: 13px;
+  color: #606266;
 }
 .audit-step-action {
   color: #606266;
@@ -847,7 +861,6 @@ onMounted(fetchApplications)
   color: #606266;
 }
 .audit-step-placeholder {
-  color: #909399;
-  font-size: 13px;
+  color: #606266;
 }
 </style>
