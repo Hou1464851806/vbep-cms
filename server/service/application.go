@@ -38,12 +38,10 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 		}
 
 		now := time.Now()
-		auditorID := app.ApplicantID
 		audit := &model.Audit{
 			Action:        model.ActionSubmit,
 			ApplicationID: app.ID,
 			AuditedAt:     &now,
-			AuditorID:     &auditorID,
 		}
 
 		if err := tx.Create(audit).Error; err != nil {
@@ -211,6 +209,12 @@ func (s *ApplicationService) GetApplicationAudits(applicationID string) ([]model
 		Preload("Auditor", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
+		Preload("Application", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, applicant_id").
+				Preload("Applicant", func(appDB *gorm.DB) *gorm.DB {
+					return appDB.Select("id, nick_name, email")
+				})
+		}).
 		Find(&audits).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to query audits for application %s: %w", applicationID, err)
@@ -256,12 +260,10 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string)
 		}
 
 		now := time.Now()
-		auditorID := applicantID
 		audit := &model.Audit{
 			Action:        model.ActionReSubmit,
 			ApplicationID: id,
 			AuditedAt:     &now,
-			AuditorID:     &auditorID,
 		}
 		if err := tx.Create(audit).Error; err != nil {
 			return fmt.Errorf("failed to create resubmit audit for application %s: %w", id, err)

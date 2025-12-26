@@ -65,9 +65,17 @@ func (a Audit) ToListItem() AuditListItem {
 		AuditedAt: a.AuditedAt,
 	}
 
-	if a.Auditor != nil {
-		operator := a.Auditor.ToBrief()
-		item.Operator = &operator
+	switch a.Action {
+	case ActionSubmit, ActionReSubmit:
+		if a.Application.Applicant.ID != "" {
+			operator := a.Application.Applicant.ToBrief()
+			item.Operator = &operator
+		}
+	default:
+		if a.Auditor != nil {
+			operator := a.Auditor.ToBrief()
+			item.Operator = &operator
+		}
 	}
 
 	return item

@@ -1,7 +1,7 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
-import { Check, Close, View, Download, RefreshLeft } from '@element-plus/icons-vue'
+import { Check, Close, View, Download, RefreshLeft, Memo } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
@@ -107,11 +107,32 @@ const normalizeApplication = (item = {}) => ({
 })
 
 const auditActionMeta = {
-  submit: { label: '提交申请', color: '#409EFF' },
-  approve: { label: '审批通过', color: '#67C23A' },
-  reject: { label: '审批驳回', color: '#F56C6C' },
-  return: { label: '退回修改', color: '#E6A23C' },
-  resubmit: { label: '发起者修改', color: '#409EFF' },
+  submit: { label: '申请提交', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
+  approve: {
+    label: '管理员审批',
+    color: '#67C23A',
+    operatorLabel: '审批人',
+    actionDetail: '审批通过',
+    resultLabel: '审批理由',
+    showActionDetail: true,
+  },
+  reject: {
+    label: '管理员审批',
+    color: '#F56C6C',
+    operatorLabel: '审批人',
+    actionDetail: '审批驳回',
+    resultLabel: '审批理由',
+    showActionDetail: true,
+  },
+  return: {
+    label: '管理员审批',
+    color: '#E6A23C',
+    operatorLabel: '审批人',
+    actionDetail: '退回修改',
+    resultLabel: '审批理由',
+    showActionDetail: true,
+  },
+  resubmit: { label: '发起者修改', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
 }
 
 const normalizeAudit = (item = {}) => {
@@ -121,6 +142,10 @@ const normalizeAudit = (item = {}) => {
     action: item.action || 'unknown',
     label: meta.label,
     color: meta.color,
+    operatorLabel: meta.operatorLabel || '操作人',
+    resultLabel: meta.resultLabel || '备注',
+    actionDetail: meta.actionDetail || '',
+    showActionDetail: Boolean(meta.showActionDetail && meta.actionDetail),
     operator: item.operator
       ? {
           id: item.operator.id,
@@ -436,12 +461,14 @@ onMounted(fetchApplications)
         </el-table-column>
         <el-table-column label="操作" width="140">
           <template #default="scope">
-            <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
-              {{ getActionButtonLabel(scope.row) }}
-            </el-button>
-            <el-button type="primary" text :icon="View" @click="handleViewAuditLog(scope.row)">
-              审批日志
-            </el-button>
+            <el-space direction="vertical" :size="0" alignment="start">
+              <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
+                {{ getActionButtonLabel(scope.row) }}
+              </el-button>
+              <el-button type="primary" text :icon="Memo" @click="handleViewAuditLog(scope.row)">
+                审批日志
+              </el-button>
+            </el-space>
           </template>
         </el-table-column>
       </el-table>
@@ -457,20 +484,25 @@ onMounted(fetchApplications)
             v-for="item in auditDialog.list"
             :key="item.id"
             :timestamp="item.time"
-            :color="item.color"
+              :color="item.color"
           >
             <div class="audit-step">
               <div class="audit-step-label">{{ item.label }}</div>
               <div class="audit-step-operator">
                 <template v-if="item.operator">
-                  操作人：{{ item.operator.nickname }}
+                  {{ item.operatorLabel }}：{{ item.operator.nickname }}
                   <span v-if="item.operator.email" class="table-sub-text"
                     >({{ item.operator.email }})</span
                   >
                 </template>
-                <template v-else>操作人：系统</template>
+                <template v-else>{{ item.operatorLabel }}：系统</template>
               </div>
-              <div v-if="item.result" class="audit-step-result">备注：{{ item.result }}</div>
+              <div v-if="item.showActionDetail" class="audit-step-action">
+                操作类型：{{ item.actionDetail }}
+              </div>
+              <div v-if="item.result" class="audit-step-result">
+                {{ item.resultLabel }}：{{ item.result }}
+              </div>
             </div>
           </el-timeline-item>
         </el-timeline>
@@ -688,6 +720,9 @@ onMounted(fetchApplications)
 .audit-step-operator {
   color: #909399;
   font-size: 13px;
+}
+.audit-step-action {
+  color: #606266;
 }
 .audit-step-result {
   color: #606266;
