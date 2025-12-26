@@ -1,7 +1,16 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
-import { Check, Close, View, Download, RefreshLeft, Memo } from '@element-plus/icons-vue'
+import {
+  Check,
+  Close,
+  View,
+  Download,
+  RefreshLeft,
+  Memo,
+  Clock,
+  Aim,
+} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
@@ -59,6 +68,7 @@ const auditDialog = reactive({
   list: [],
   title: '',
   currentApplicationId: '',
+  currentStatus: '',
 })
 
 const statusMetaMap = {
@@ -110,7 +120,7 @@ const auditActionMeta = {
   submit: { label: '申请提交', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
   approve: {
     label: '管理员审批',
-    color: '#67C23A',
+    color: '#409EFF',
     operatorLabel: '审批人',
     actionDetail: '审批通过',
     resultLabel: '审批理由',
@@ -118,7 +128,7 @@ const auditActionMeta = {
   },
   reject: {
     label: '管理员审批',
-    color: '#F56C6C',
+    color: '#409EFF',
     operatorLabel: '审批人',
     actionDetail: '审批驳回',
     resultLabel: '审批理由',
@@ -126,13 +136,45 @@ const auditActionMeta = {
   },
   return: {
     label: '管理员审批',
-    color: '#E6A23C',
+    color: '#409EFF',
     operatorLabel: '审批人',
     actionDetail: '退回修改',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
   resubmit: { label: '发起者修改', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
+}
+
+const placeholderTimelineMeta = {
+  admin: {
+    id: 'placeholder-admin',
+    label: '管理员审批',
+    color: '#C0C4CC',
+    placeholderText: '等待管理员审批',
+  },
+  applicant: {
+    id: 'placeholder-applicant',
+    label: '发起者修改',
+    color: '#C0C4CC',
+    placeholderText: '等待发起者修改后重新提交',
+  },
+}
+
+const finalTimelineMeta = {
+  approved: {
+    id: 'final-approved',
+    label: '审批流程结束',
+    color: '#67C23A',
+    placeholderText: '审批已通过，流程结束',
+    icon: Check,
+  },
+  rejected: {
+    id: 'final-rejected',
+    label: '审批流程结束',
+    color: '#F56C6C',
+    placeholderText: '审批已驳回，流程结束',
+    icon: Close,
+  },
 }
 
 const normalizeAudit = (item = {}) => {
@@ -155,7 +197,72 @@ const normalizeAudit = (item = {}) => {
       : null,
     result: item.result || '',
     time: formatDateTime(item.auditedAt || item.createdAt),
+    isPlaceholder: false,
+    isFinal: false,
+    // icon: Aim,
+    isHollow: true,
   }
+}
+
+const createPlaceholderTimelineItem = (key) => {
+  const meta = placeholderTimelineMeta[key]
+  if (!meta) return null
+  return {
+    id: meta.id,
+    action: key,
+    label: meta.label,
+    color: meta.color,
+    operatorLabel: '',
+    resultLabel: '',
+    actionDetail: '',
+    showActionDetail: false,
+    operator: null,
+    result: '',
+    time: '',
+    isPlaceholder: true,
+    isFinal: false,
+    placeholderText: meta.placeholderText,
+    icon: Clock,
+    isHollow: false,
+  }
+}
+
+const createFinalTimelineItem = (status) => {
+  const meta = finalTimelineMeta[status]
+  if (!meta) return null
+  return {
+    id: meta.id,
+    action: 'final',
+    label: meta.label,
+    color: meta.color,
+    operatorLabel: '',
+    resultLabel: '',
+    actionDetail: '',
+    showActionDetail: false,
+    operator: null,
+    result: '',
+    time: '',
+    isPlaceholder: false,
+    isFinal: true,
+    placeholderText: meta.placeholderText,
+    icon: meta.icon || Check,
+    isHollow: false,
+  }
+}
+
+const buildAuditTimeline = (list = [], status = '') => {
+  const timeline = [...list]
+  if (status === 'pending') {
+    const placeholder = createPlaceholderTimelineItem('admin')
+    if (placeholder) timeline.push(placeholder)
+  } else if (status === 'returned') {
+    const placeholder = createPlaceholderTimelineItem('applicant')
+    if (placeholder) timeline.push(placeholder)
+  } else if (status === 'approved' || status === 'rejected') {
+    const finalItem = createFinalTimelineItem(status)
+    if (finalItem) timeline.push(finalItem)
+  }
+  return timeline
 }
 
 const normalizeApplicationFiles = (files = []) =>
@@ -190,6 +297,7 @@ const resetAuditDialog = () => {
   auditDialog.list = []
   auditDialog.title = ''
   auditDialog.currentApplicationId = ''
+  auditDialog.currentStatus = ''
 }
 
 const resetResubmitState = () => {
@@ -287,12 +395,14 @@ const handleViewAuditLog = async (row) => {
   auditDialog.loading = true
   auditDialog.list = []
   auditDialog.currentApplicationId = row.id
+  auditDialog.currentStatus = row.status || ''
   const dialogSuffix = row.dataset?.title ? ` - ${row.dataset.title}` : ` - ${row.id}`
   auditDialog.title = `审批日志${dialogSuffix}`
   try {
     const res = await fetchApplicationAuditsAPI(row.id)
     if (res.data?.message === 'success') {
-      auditDialog.list = (res.data.audits || []).map((item) => normalizeAudit(item))
+      const normalizedAudits = (res.data.audits || []).map((item) => normalizeAudit(item))
+      auditDialog.list = buildAuditTimeline(normalizedAudits, auditDialog.currentStatus)
     } else {
       ElMessage.error(res.data?.message || '审批日志加载失败')
     }
@@ -484,25 +594,34 @@ onMounted(fetchApplications)
             v-for="item in auditDialog.list"
             :key="item.id"
             :timestamp="item.time"
-              :color="item.color"
+            :color="item.color"
+            :icon="item.icon"
+            :hollow="item.isHollow"
           >
             <div class="audit-step">
               <div class="audit-step-label">{{ item.label }}</div>
-              <div class="audit-step-operator">
-                <template v-if="item.operator">
-                  {{ item.operatorLabel }}：{{ item.operator.nickname }}
-                  <span v-if="item.operator.email" class="table-sub-text"
-                    >({{ item.operator.email }})</span
-                  >
-                </template>
-                <template v-else>{{ item.operatorLabel }}：系统</template>
-              </div>
-              <div v-if="item.showActionDetail" class="audit-step-action">
-                操作类型：{{ item.actionDetail }}
-              </div>
-              <div v-if="item.result" class="audit-step-result">
-                {{ item.resultLabel }}：{{ item.result }}
-              </div>
+              <template v-if="item.isPlaceholder || item.isFinal">
+                <div class="audit-step-placeholder">
+                  {{ item.placeholderText || '等待处理' }}
+                </div>
+              </template>
+              <template v-else>
+                <div class="audit-step-operator">
+                  <template v-if="item.operator">
+                    {{ item.operatorLabel }}：{{ item.operator.nickname }}
+                    <span v-if="item.operator.email" class="table-sub-text"
+                      >({{ item.operator.email }})</span
+                    >
+                  </template>
+                  <template v-else>{{ item.operatorLabel }}：系统</template>
+                </div>
+                <div v-if="item.showActionDetail" class="audit-step-action">
+                  操作类型：{{ item.actionDetail }}
+                </div>
+                <div v-if="item.result" class="audit-step-result">
+                  {{ item.resultLabel }}：{{ item.result }}
+                </div>
+              </template>
             </div>
           </el-timeline-item>
         </el-timeline>
@@ -726,5 +845,9 @@ onMounted(fetchApplications)
 }
 .audit-step-result {
   color: #606266;
+}
+.audit-step-placeholder {
+  color: #909399;
+  font-size: 13px;
 }
 </style>
