@@ -342,6 +342,7 @@ const toEditableAttachment = (item = {}) => ({
   size: Number(item.size ?? 0),
   createdAt: item.createdAt || '-',
   isNew: !item.id,
+  isRemoved: Boolean(item.isRemoved),
   file: item.file || null,
 })
 
@@ -404,6 +405,19 @@ const loadApplicationFiles = async (applicationId) => {
   }
 }
 
+const getAttachmentStatusMeta = (item = {}) => {
+  if (item.isRemoved) return { label: '被移除', type: 'danger' }
+  if (!item.id) return { label: '待提交', type: 'info' }
+  return { label: '已上传', type: 'success' }
+}
+
+const getAttachmentRowClass = ({ row } = {}) => {
+  if (!row) return ''
+  if (row.isRemoved) return 'attachment-row-removed'
+  if (!row.id) return 'attachment-row-new'
+  return ''
+}
+
 const validateAttachmentFile = (rawFile) => {
   if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
     ElMessage.error(`文件 "${rawFile.name}" 超过 ${APPLICATION_FILE_LIMIT_MB}MB 限制，无法上传`)
@@ -429,6 +443,7 @@ const addLocalAttachment = (rawFile, uid) => {
     size: rawFile.size,
     createdAt: formatDateTime(new Date()),
     file: rawFile,
+    isRemoved: false,
   })
   detailDialog.attachments.list.push(entry)
 }
@@ -446,6 +461,11 @@ const handleAttachmentFileQueued = (uploadFile) => {
 
 const handleRemoveAttachmentLocal = async (file) => {
   if (!file) return
+  if (file.id && file.isRemoved) {
+    file.isRemoved = false
+    ElMessage.success(`已撤销移除「${file.name}」`)
+    return
+  }
   if (file.id) {
     try {
       await ElMessageBox.confirm(`确定移除已上传的附件「${file.name}」吗？`, '提示', {
@@ -456,13 +476,14 @@ const handleRemoveAttachmentLocal = async (file) => {
     } catch {
       return
     }
+    file.isRemoved = true
+    ElMessage.info('附件已标记删除，重新提交后生效')
+    return
   }
   const index = detailDialog.attachments.list.findIndex((item) => item.uid === file.uid)
   if (index !== -1) {
     detailDialog.attachments.list.splice(index, 1)
-    if (file.id) {
-      ElMessage.info('附件已标记删除，重新提交后生效')
-    }
+    ElMessage.success(`已撤销新增附件「${file.name}」`)
   }
 }
 
@@ -470,9 +491,9 @@ const getAttachmentDiff = () => {
   const keptFileIds = []
   const newFiles = []
   ;(detailDialog.attachments.list || []).forEach((item) => {
-    if (item.id) {
+    if (item.id && !item.isRemoved) {
       if (!keptFileIds.includes(item.id)) keptFileIds.push(item.id)
-    } else if (item.file) {
+    } else if (!item.id && item.file && !item.isRemoved) {
       newFiles.push(item)
     }
   })
@@ -487,6 +508,10 @@ const handleDownloadAttachment = async (file) => {
   }
   if (!file?.id) {
     ElMessage.warning('请提交后再下载此附件')
+    return
+  }
+  if (file.isRemoved) {
+    ElMessage.warning('该附件已标记为移除，如需下载请撤销移除后再尝试')
     return
   }
   try {
@@ -856,7 +881,7 @@ onMounted(fetchApplications)
             <span v-else>-</span>
           </el-descriptions-item>
         </el-descriptions>
-        <div v-if="canViewAttachments" class="attachment-section">
+        <div v-if="canViewAttachments && !canResubmitApplication" class="attachment-section">
           <div class="attachment-header">
             <span>申请附件</span>
           </div>
@@ -873,15 +898,8 @@ onMounted(fetchApplications)
                 <el-table-column label="大小" width="120">
                   <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
                 </el-table-column>
-                <el-table-column prop="createdAt" label="更新时间" width="180" />
-                <el-table-column label="状态" width="120">
-                  <template #default="scope">
-                    <el-tag :type="scope.row.isNew ? 'info' : 'success'">
-                      {{ scope.row.isNew ? '待提交' : '已上传' }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="操作" width="220">
+                <el-table-column prop="createdAt" label="上传时间" width="180" />
+                <el-table-column label="操作" width="200">
                   <template #default="scope">
                     <el-space>
                       <el-button
@@ -892,47 +910,12 @@ onMounted(fetchApplications)
                       >
                         下载
                       </el-button>
-                      <el-button
-                        v-if="canResubmitApplication"
-                        text
-                        type="danger"
-                        size="small"
-                        :icon="Delete"
-                        @click="handleRemoveAttachmentLocal(scope.row)"
-                      >
-                        {{ scope.row.id ? '移除' : '撤销' }}
-                      </el-button>
                     </el-space>
                   </template>
                 </el-table-column>
               </el-table>
             </template>
           </el-skeleton>
-          <div v-if="canResubmitApplication" class="attachment-upload-area">
-            <div class="attachment-upload-header">
-              <span>可重新上传补充材料</span>
-              <small>单个文件大小不超过 {{ APPLICATION_FILE_LIMIT_MB }}MB</small>
-            </div>
-            <el-upload
-              ref="resubmitUploadRef"
-              action=""
-              :show-file-list="false"
-              :auto-upload="false"
-              :disabled="detailDialog.attachments.isLoading || detailDialog.resubmit.loading"
-              :on-change="handleAttachmentFileQueued"
-            >
-              <el-button
-                type="primary"
-                text
-                :icon="Upload"
-                :loading="detailDialog.resubmit.loading"
-                >选择文件</el-button
-              >
-            </el-upload>
-            <div class="attachment-upload-tip">
-              支持常见文档、图片及压缩包格式，变更仅在重新提交后生效。
-            </div>
-          </div>
         </div>
         <div v-if="canResubmitApplication" class="resubmit-area">
           <el-alert
@@ -941,21 +924,102 @@ onMounted(fetchApplications)
             show-icon
             title="申请已被退回，请根据意见修改信息后重新提交"
           />
-          <el-input
-            v-model="detailDialog.resubmit.reason"
-            type="textarea"
-            :rows="4"
-            maxlength="200"
-            show-word-limit
-            placeholder="请填写修改后的申请理由"
-          />
-          <div class="resubmit-buttons">
-            <el-button
-              type="primary"
-              :loading="detailDialog.resubmit.loading"
-              @click="handleResubmitApplication"
-              >重新提交审核</el-button
-            >
+          <div class="resubmit-content">
+            <div class="resubmit-block">
+              <div class="resubmit-block-title">申请附件</div>
+              <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
+                <template #default>
+                  <el-empty v-if="!detailDialog.attachments.list.length" description="暂无附件" />
+                  <el-table
+                    v-else
+                    :data="detailDialog.attachments.list"
+                    size="small"
+                    class="attachment-table"
+                    :row-class-name="getAttachmentRowClass"
+                  >
+                    <el-table-column
+                      prop="name"
+                      label="文件名"
+                      min-width="200"
+                      show-overflow-tooltip
+                    />
+                    <el-table-column label="大小" width="120">
+                      <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
+                    </el-table-column>
+                    <el-table-column prop="createdAt" label="更新时间" width="180" />
+                    <el-table-column label="状态" width="120">
+                      <template #default="scope">
+                        <el-tag :type="getAttachmentStatusMeta(scope.row).type">
+                          {{ getAttachmentStatusMeta(scope.row).label }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="220">
+                      <template #default="scope">
+                        <el-space>
+                          <el-button
+                            text
+                            size="small"
+                            :icon="Download"
+                            @click="handleDownloadAttachment(scope.row)"
+                          >
+                            下载
+                          </el-button>
+                          <el-button
+                            text
+                            :type="scope.row.isRemoved ? 'primary' : 'danger'"
+                            size="small"
+                            :icon="Delete"
+                            @click="handleRemoveAttachmentLocal(scope.row)"
+                          >
+                            <template v-if="scope.row.id">
+                              {{ scope.row.isRemoved ? '撤销移除' : '移除' }}
+                            </template>
+                            <template v-else>撤销</template>
+                          </el-button>
+                        </el-space>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </template>
+              </el-skeleton>
+              <div class="attachment-upload-area">
+                <div class="attachment-upload-header">
+                  <span>可重新上传补充材料</span>
+                  <small>单个文件大小不超过 {{ APPLICATION_FILE_LIMIT_MB }}MB</small>
+                </div>
+                <el-upload
+                  ref="resubmitUploadRef"
+                  action=""
+                  :show-file-list="false"
+                  :auto-upload="false"
+                  :disabled="detailDialog.attachments.isLoading || detailDialog.resubmit.loading"
+                  :on-change="handleAttachmentFileQueued"
+                >
+                  <el-button
+                    type="primary"
+                    text
+                    :icon="Upload"
+                    :loading="detailDialog.resubmit.loading"
+                    >选择文件</el-button
+                  >
+                </el-upload>
+                <div class="attachment-upload-tip">
+                  支持常见文档、图片及压缩包格式，变更仅在重新提交后生效。
+                </div>
+              </div>
+            </div>
+            <div class="resubmit-block">
+              <div class="resubmit-block-title">申请理由</div>
+              <el-input
+                v-model="detailDialog.resubmit.reason"
+                type="textarea"
+                :rows="6"
+                maxlength="200"
+                show-word-limit
+                placeholder="请填写修改后的申请理由"
+              />
+            </div>
           </div>
         </div>
         <div v-if="isAdmin() && detailDialog.data?.status === 'pending'" class="audit-action-area">
@@ -994,7 +1058,16 @@ onMounted(fetchApplications)
       </template>
     </el-skeleton>
     <template #footer>
-      <el-button @click="detailDialog.visible = false">关闭</el-button>
+      <div class="dialog-footer">
+        <el-button @click="detailDialog.visible = false">返回</el-button>
+        <el-button
+          v-if="canResubmitApplication"
+          type="primary"
+          :loading="detailDialog.resubmit.loading"
+          @click="handleResubmitApplication"
+          >重新提交审核</el-button
+        >
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -1047,6 +1120,12 @@ onMounted(fetchApplications)
 .attachment-table {
   margin-top: 8px;
 }
+.attachment-table :deep(.attachment-row-removed) {
+  background-color: #fff1f0;
+}
+.attachment-table :deep(.attachment-row-new) {
+  background-color: #f0f9ff;
+}
 .audit-action-area {
   margin-top: 16px;
   display: flex;
@@ -1068,9 +1147,23 @@ onMounted(fetchApplications)
   border-radius: 8px;
   background-color: #fff7e6;
 }
-.resubmit-buttons {
+.resubmit-content {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 16px;
+}
+.resubmit-block {
+  border: 1px solid #f5dab1;
+  border-radius: 8px;
+  padding: 16px;
+  background-color: #fffdf6;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.resubmit-block-title {
+  font-weight: 600;
+  color: #b05b00;
+  margin-bottom: 12px;
+  font-size: 14px;
 }
 .audit-log-steps {
   max-height: 420px;
@@ -1107,5 +1200,10 @@ onMounted(fetchApplications)
 }
 .audit-step-placeholder {
   color: #606266;
+}
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>
