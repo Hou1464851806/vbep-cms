@@ -64,23 +64,64 @@ const AGREEMENT_PDF_STATIC_PATH = '/static/agreement.pdf'
 
 const ALLOWED_EXTENSIONS = [
   // Documents
-  '.pdf', '.txt', '.md', '.rtf', '.tex',
-  '.doc', '.docx', '.wps', '.odt',
-  '.ppt', '.pptx', '.dps', '.ods',
-  '.xls', '.xlsx', '.et', '.odp',
+  '.pdf',
+  '.txt',
+  '.md',
+  '.rtf',
+  '.tex',
+  '.doc',
+  '.docx',
+  '.wps',
+  '.odt',
+  '.ppt',
+  '.pptx',
+  '.dps',
+  '.ods',
+  '.xls',
+  '.xlsx',
+  '.et',
+  '.odp',
   // Images
-  '.jpg', '.jpeg', '.png', '.gif', '.svg', '.bmp', '.tiff',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.svg',
+  '.bmp',
+  '.tiff',
   // Compressed Files
-  '.zip', '.rar', '.7z', '.tar', '.gz', '.tgz'
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.gz',
+  '.tgz',
 ]
 
 const DENIED_EXTENSIONS = [
-  '.exe', '.msi', '.bat', '.cmd', '.sh', '.ps1',
-  '.js', '.vbs', '.jar', '.dll', '.sys',
-  '.app', '.dmg', '.pkg',
-  '.scr', '.com', '.cpl', '.inf',
-  '.lnk', '.reg', '.hta', '.msc'
-];
+  '.exe',
+  '.msi',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.ps1',
+  '.js',
+  '.vbs',
+  '.jar',
+  '.dll',
+  '.sys',
+  '.app',
+  '.dmg',
+  '.pkg',
+  '.scr',
+  '.com',
+  '.cpl',
+  '.inf',
+  '.lnk',
+  '.reg',
+  '.hta',
+  '.msc',
+]
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
@@ -341,12 +382,12 @@ const handleViewDetail = async (row) => {
     // 后端现在返回结构为: { message: "success", dataset: {...}, hasAccess: true/false }
     if (res.data?.message === 'success') {
       const data = res.data.dataset
-      
+
       // 关键：将后端返回的 hasAccess 状态合并到 dialog 数据中
       const accessStatus = res.data.hasAccess !== undefined ? res.data.hasAccess : row.hasAccess
-      
+
       detailDialog.data = { ...data, hasAccess: accessStatus }
-      
+
       // 只有有权限时才处理文件列表
       if (accessStatus) {
         detailDialog.files = normalizeDatasetFiles(data.files)
@@ -366,10 +407,10 @@ const handleViewDetail = async (row) => {
 }
 const handleApplyFromDetail = () => {
   if (!detailDialog.data) return
-  
+
   // 1. 关闭详情弹窗
   detailDialog.visible = false
-  
+
   // 2. 打开申请弹窗（复用已有的逻辑）
   handleApply(normalizeOneDataset(detailDialog.data))
 }
@@ -575,13 +616,13 @@ const handleApplicationAttachmentBeforeUpload = (rawFile) => {
 
   const fileName = rawFile.name.toLowerCase()
 
-  const isDenied = DENIED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+  const isDenied = DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
   if (isDenied) {
     ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
     return false
   }
 
-  const isAllowed = ALLOWED_EXTENSIONS.some(ext => fileName.endsWith(ext))
+  const isAllowed = ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
   if (!isAllowed) {
     ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
     return false
@@ -1029,10 +1070,10 @@ const handleSubmitApplication = async () => {
                   >
                     查看详情
                   </el-button>
-                  
-                  <el-button 
-                    type="primary" 
-                    :icon="Promotion" 
+
+                  <el-button
+                    type="primary"
+                    :icon="Promotion"
                     size="small"
                     @click="handleApply(scope.row)"
                   >
@@ -1090,9 +1131,7 @@ const handleSubmitApplication = async () => {
             >上传文件</el-button
           >
           <template #tip>
-            <div class="el-upload__tip">
-              单个文件不超过 {{ DATASET_FILE_LIMIT_MB }}MB
-            </div>
+            <div class="el-upload__tip">单个文件不超过 {{ DATASET_FILE_LIMIT_MB }}MB</div>
           </template>
         </el-upload>
       </div>
@@ -1355,11 +1394,7 @@ const handleSubmitApplication = async () => {
         </el-form-item>
       </el-form>
       <div v-else-if="applicationDialog.currentStep === 3" class="result-step">
-        <el-result
-          icon="success"
-          title="申请已提交"
-          sub-title="请等待1至5个工作日查看结果"
-        >
+        <el-result icon="success" title="申请已提交" sub-title="请等待1至5个工作日查看结果">
         </el-result>
       </div>
       <template #footer>
@@ -1426,7 +1461,9 @@ const handleSubmitApplication = async () => {
         <div v-if="detailDialog.data">
           <el-descriptions border :column="1">
             <el-descriptions-item label="名称">{{ detailDialog.data.title }}</el-descriptions-item>
-            <el-descriptions-item label="创建时间">{{ formatDateTime(detailDialog.data.created_at) }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{
+              formatDateTime(detailDialog.data.created_at)
+            }}</el-descriptions-item>
             <el-descriptions-item label="描述">
               <div style="white-space: pre-wrap">
                 {{ detailDialog.data.description || '暂无描述' }}
@@ -1434,7 +1471,7 @@ const handleSubmitApplication = async () => {
             </el-descriptions-item>
           </el-descriptions>
 
-          <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px;">文件列表</div>
+          <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px">文件列表</div>
 
           <div v-if="detailDialog.data.hasAccess">
             <el-table :data="detailDialog.files" stripe border height="300px">
@@ -1449,7 +1486,8 @@ const handleSubmitApplication = async () => {
                     link
                     :icon="Download"
                     @click="handleDownloadFile(detailDialog.data.id, row)"
-                  >下载</el-button>
+                    >下载</el-button
+                  >
                 </template>
               </el-table-column>
             </el-table>
@@ -1460,9 +1498,9 @@ const handleSubmitApplication = async () => {
               <template #default>
                 <div class="no-access-actions">
                   <p class="no-access-tip">请提交申请，通过审批后即可访问所有文件。</p>
-                  <el-button 
-                    type="primary" 
-                    :icon="Promotion" 
+                  <el-button
+                    type="primary"
+                    :icon="Promotion"
                     size="large"
                     @click="handleApplyFromDetail"
                   >
@@ -1472,7 +1510,6 @@ const handleSubmitApplication = async () => {
               </template>
             </el-empty>
           </div>
-
         </div>
       </el-skeleton>
     </el-dialog>

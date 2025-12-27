@@ -47,12 +47,10 @@ const validatePassword = (rule, value, callback) => {
 }
 
 const registerFormRules = reactive({
-  nickname: [
-    { required: true, message: '真实姓名不能为空', trigger: 'blur' }
-  ],
+  nickname: [{ required: true, message: '真实姓名不能为空', trigger: 'blur' }],
   phone: [
     { required: true, message: '手机号不能为空', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' }
+    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' },
   ],
   email: [
     { required: true, message: '邮箱不能为空', trigger: 'blur' },
@@ -80,7 +78,7 @@ const submitRegisterForm = async () => {
       password: registerForm.password,
     }
     await axios.post('/api/v1/users/', requestData)
-    isLoading.value = false 
+    isLoading.value = false
     isRegisterSuccess.value = true
     registerFormRef.value.resetFields()
     setTimeout(() => {
@@ -118,8 +116,7 @@ const submitRegisterForm = async () => {
         <span class="heading">VBEP数据平台注册</span>
       </div>
       <div class="login-container">
-        <div class="login-content"> 
-          
+        <div class="login-content">
           <div v-if="isRegisterSuccess" class="success-state">
             <el-icon class="success-icon" color="#67C23A"><CircleCheckFilled /></el-icon>
             <h3 class="success-title">注册成功！</h3>
@@ -130,7 +127,7 @@ const submitRegisterForm = async () => {
           </div>
 
           <el-form
-            v-else 
+            v-else
             ref="registerFormRef"
             class="login-form"
             :model="registerForm"
@@ -139,39 +136,71 @@ const submitRegisterForm = async () => {
             label-position="right"
             status-icon
           >
-             <el-form-item class="login-group" label="真实姓名" prop="nickname">
-                <el-input class="login-info" size="large" v-model="registerForm.nickname" placeholder="请输入真实姓名">
-                  <template #prefix><el-icon><User /></el-icon></template>
-                </el-input>
-              </el-form-item>
+            <el-form-item class="login-group" label="真实姓名" prop="nickname">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.nickname"
+                placeholder="请输入真实姓名"
+              >
+                <template #prefix
+                  ><el-icon><User /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
 
-              <el-form-item class="login-group" label="手机号" prop="phone">
-                <el-input class="login-info" size="large" v-model="registerForm.phone" placeholder="请输入手机号">
-                  <template #prefix><el-icon><Iphone /></el-icon></template>
-                </el-input>
-              </el-form-item>
+            <el-form-item class="login-group" label="手机号" prop="phone">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.phone"
+                placeholder="请输入手机号"
+              >
+                <template #prefix
+                  ><el-icon><Iphone /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
 
-              <el-form-item class="login-group" label="邮箱" prop="email">
-                <el-input class="login-info" size="large" v-model="registerForm.email" placeholder="请输入邮箱">
-                  <template #prefix><el-icon><Message /></el-icon></template>
-                </el-input>
-              </el-form-item>
+            <el-form-item class="login-group" label="邮箱" prop="email">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.email"
+                placeholder="请输入邮箱"
+              >
+                <template #prefix
+                  ><el-icon><Message /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
 
-              <el-form-item class="login-group" label="密码" prop="password">
-                <el-input class="login-info" size="large" v-model="registerForm.password" placeholder="请输入密码" type="password" show-password>
-                  <template #prefix><el-icon><Lock /></el-icon></template>
-                </el-input>
-              </el-form-item>
-              
-              <div class="footer-links" style="padding-left: 80px;">
-                <p class="forgot-password">
-                  密码需包含大写、小写、数字、特殊字符中的至少3项 (6-20位)
-                </p>
-              </div>
-              
-              <el-form-item class="login-group login-button-item">
-                <el-button class="login-btn" type="primary" @click="submitRegisterForm">立刻注册</el-button>
-              </el-form-item>
+            <el-form-item class="login-group" label="密码" prop="password">
+              <el-input
+                class="login-info"
+                size="large"
+                v-model="registerForm.password"
+                placeholder="请输入密码"
+                type="password"
+                show-password
+              >
+                <template #prefix
+                  ><el-icon><Lock /></el-icon
+                ></template>
+              </el-input>
+            </el-form-item>
+
+            <div class="footer-links" style="padding-left: 80px">
+              <p class="forgot-password">
+                密码需包含大写、小写、数字、特殊字符中的至少3项 (6-20位)
+              </p>
+            </div>
+
+            <el-form-item class="login-group login-button-item">
+              <el-button class="login-btn" type="primary" @click="submitRegisterForm"
+                >立刻注册</el-button
+              >
+            </el-form-item>
           </el-form>
         </div>
       </div>
@@ -187,29 +216,29 @@ const submitRegisterForm = async () => {
   min-height: 100vh;
   margin: 0;
   background-color: #ffffff;
-  overflow: hidden; 
+  overflow: hidden;
 }
 .login-card-wrapper {
   background-color: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   width: 800px;
-  padding-bottom: 30px; 
-  position: relative; 
+  padding-bottom: 30px;
+  position: relative;
   box-sizing: border-box;
 }
 .register-button-wrapper {
   position: absolute;
   top: 0;
   right: 0;
-  width: 120px; 
-  height: 120px; 
+  width: 120px;
+  height: 120px;
   overflow: hidden;
 }
 .register-button {
   position: absolute;
-  top: 15px; 
-  right: 15px; 
+  top: 15px;
+  right: 15px;
   font-size: 14px;
   text-decoration: none;
   color: #181818;
@@ -219,20 +248,20 @@ const submitRegisterForm = async () => {
   text-decoration: underline;
 }
 .sso-banner {
-  padding: 30px 40px 0; 
-  display: flex; 
+  padding: 30px 40px 0;
+  display: flex;
   align-items: center;
-  margin-bottom: 20px; 
+  margin-bottom: 20px;
 }
 .sso-logo img {
-  height: 80px; 
+  height: 80px;
 }
 .sso-header {
   display: flex;
   justify-content: center;
   align-items: center;
   text-align: center;
-  margin-bottom: 40px; 
+  margin-bottom: 40px;
 }
 .sso-header .heading {
   font-size: 24px;
@@ -241,14 +270,14 @@ const submitRegisterForm = async () => {
 }
 .login-container {
   display: flex;
-  justify-content: center; 
-  padding: 0 40px; 
+  justify-content: center;
+  padding: 0 40px;
 }
 
 /* 保持内容宽度限制 */
 .login-content {
   width: 380px; /* 稍微增加一点宽度以容纳 label + input */
-  margin: 0 auto; 
+  margin: 0 auto;
 }
 
 .login-form {
@@ -256,30 +285,30 @@ const submitRegisterForm = async () => {
 }
 
 :deep(.login-info.el-input .el-input__wrapper:hover) {
-  border-color: #a4cef8; 
+  border-color: #a4cef8;
 }
 :deep(.login-info.el-input.is-focused .el-input__wrapper) {
-  border-color: #409eff; 
+  border-color: #409eff;
 }
 :deep(.login-info.el-input .el-input__inner) {
-  color: #333; 
-  padding-left: 10px; 
+  color: #333;
+  padding-left: 10px;
 }
 :deep(.login-info.el-input .el-input__inner::placeholder) {
-  color: #808080; 
+  color: #808080;
 }
 :deep(.login-info.el-input .el-input__prefix) {
-  color: #808080; 
-  font-size: 18px; 
-  margin-right: 8px; 
-  display: flex; 
-  align-items: center; 
+  color: #808080;
+  font-size: 18px;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
 }
 :deep(.login-info.el-input .el-input__suffix) {
-  color: #808080; 
-  font-size: 18px; 
-  display: flex; 
-  align-items: center; 
+  color: #808080;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
 }
 
 /* 调整 label 的样式，使其更对齐 */
@@ -289,7 +318,7 @@ const submitRegisterForm = async () => {
 }
 
 .login-button-item {
-  margin-top: 30px; 
+  margin-top: 30px;
 }
 .login-btn {
   --el-color-primary: #ef1c23;
@@ -344,7 +373,13 @@ const submitRegisterForm = async () => {
   margin-bottom: 30px;
 }
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>

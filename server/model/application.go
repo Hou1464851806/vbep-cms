@@ -8,21 +8,22 @@ const (
 	PENDING ApplicationStatus = iota
 	APPROVED
 	REJECTED
+	RETURNED
 )
 
+// Application 申请信息
+// 申请的状态需要根据审批操作进行改变，用户可进行的操作也根据申请状态进行变化
 type Application struct {
 	Base
-	ApplicantID   string            `gorm:"not null;type:char(36)"` // 申请人
-	Applicant     User              `gorm:"foreignKey:ApplicantID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	DatasetID     string            `gorm:"not null;type:char(36)"` // 申请的目标数据集
-	Dataset       Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`
-	Status        ApplicationStatus `gorm:"not null;default:0"` // 申请的处理状态
-	Reason        string            `gorm:"not null"`           // 申请的理由
-	AuditorID     *string           `gorm:"type:char(36)"`      // 审批者
-	Auditor       *User             `gorm:"foreignKey:AuditorID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL"`
-	AuditorResult *string
-	AuditedAt     *time.Time
-	Files         []File `gorm:"polymorphic:Owner;"` // 申请的附件
+	ApplicantID string            `gorm:"not null;type:char(36)"`                                                             // 申请人
+	Applicant   User              `gorm:"foreignKey:ApplicantID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"` // 申请人用户信息
+	DatasetID   string            `gorm:"not null;type:char(36)"`                                                             // 申请的目标数据集
+	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
+	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
+	Reason      string            `gorm:"not null"`                                                                           // 申请的理由
+
+	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"` // 申请的审批记录历史
+	Files  []File  `gorm:"polymorphic:Owner;"`                     // 申请的附件
 }
 
 type ApplicationListItem struct {
@@ -45,6 +46,8 @@ func (s ApplicationStatus) String() string {
 		return "approved" // 或 "已通过"
 	case REJECTED:
 		return "rejected" // 或 "已拒绝"
+	case RETURNED:
+		return "returned" // 或 "已退回"
 	default:
 		return "unknown"
 	}
@@ -57,15 +60,32 @@ func (app Application) ToListItem() ApplicationListItem {
 		Reason:    app.Reason,
 		Applicant: app.Applicant.ToBrief(),
 		Dataset:   app.Dataset.ToBrief(),
-		Result:    app.AuditorResult,
-		AuditedAt: app.AuditedAt,
 		CreatedAt: app.CreatedAt,
 	}
 
-	if app.AuditorID != nil && app.Auditor != nil {
-		auditorBrief := app.Auditor.ToBrief()
-		item.Auditor = &auditorBrief
+	if latest := app.latestAudit(); latest != nil {
+		if latest.Auditor != nil {
+			auditorBrief := latest.Auditor.ToBrief()
+			item.Auditor = &auditorBrief
+		}
+		item.Result = latest.AuditorResult
+		item.AuditedAt = latest.AuditedAt
 	}
 
 	return item
+}
+
+func (app Application) latestAudit() *Audit {
+	if len(app.Audits) == 0 {
+		return nil
+	}
+
+	var latest *Audit
+	for i := range app.Audits {
+		if latest == nil || app.Audits[i].CreatedAt.After(latest.CreatedAt) {
+			latest = &app.Audits[i]
+		}
+	}
+
+	return latest
 }

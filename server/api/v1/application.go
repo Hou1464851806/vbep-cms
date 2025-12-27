@@ -1,8 +1,11 @@
 package v1
 
 import (
+	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -16,6 +19,8 @@ import (
 var (
 	errUserNotAuthenticated = errors.New("user not authenticated")
 	errInvalidUserID        = errors.New("invalid user id")
+	errInvalidUser          = errors.New("invalid user")
+	errPermissionDenied     = errors.New("permission denied")
 )
 
 type ApplicationApi struct {
@@ -33,6 +38,10 @@ type createApplicationParam struct {
 
 type auditApplicationParam struct {
 	Result string `json:"result" binding:"required"`
+}
+
+type resubmitApplicationParam struct {
+	Reason string `json:"reason" binding:"required"`
 }
 
 func (a *ApplicationApi) Create(ctx *gin.Context) {
@@ -76,13 +85,15 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 }
 
 func (a *ApplicationApi) GetAll(ctx *gin.Context) {
-	// 1. 获取当前用户信息
-	userObj, exists := ctx.Get(global.CTXUserObj)
-	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+	currentUser, err := getCurrentUser(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUser) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
-	currentUser := userObj.(*model.User)
 
 	// 2. 决定查询范围
 	var filterID *string
@@ -114,13 +125,15 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 		return
 	}
 
-	// 1. 获取当前用户信息
-	userObj, exists := ctx.Get(global.CTXUserObj)
-	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "unauthorized"})
+	currentUser, err := getCurrentUser(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUser) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
-	currentUser := userObj.(*model.User)
 
 	// 2. 查询 Application
 	application, err := a.service.GetApplicationByID(id)
@@ -146,6 +159,49 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	})
 }
 
+func (a *ApplicationApi) GetAudits(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	currentUser, err := getCurrentUser(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUser) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
+		return
+	}
+
+	if err := ensureApplicationReadable(ctx, currentUser, id); err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+		case errors.Is(err, errPermissionDenied):
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		default:
+			logger.Errorf("failed to verify application %s: %v", id, err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application audits"})
+		}
+		return
+	}
+
+	audits, err := a.service.GetApplicationAudits(id)
+	if err != nil {
+		logger.Errorf("failed to load audits for application %s: %v", id, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application audits"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "success",
+		"audits":  audits,
+	})
+}
+
 func (a *ApplicationApi) Approve(ctx *gin.Context) {
 	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
 		return a.service.ApproveApplication(id, auditorID, result)
@@ -156,6 +212,93 @@ func (a *ApplicationApi) Reject(ctx *gin.Context) {
 	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
 		return a.service.RejectApplication(id, auditorID, result)
 	}, "reject")
+}
+
+func (a *ApplicationApi) Return(ctx *gin.Context) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
+		return a.service.ReturnApplication(id, auditorID, result)
+	}, "return")
+}
+
+func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	var (
+		reason       string
+		keptFileIDs  []string
+		newFileHeads []*multipart.FileHeader
+	)
+
+	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
+		reason = strings.TrimSpace(ctx.PostForm("reason"))
+		keptRaw := ctx.PostForm("keptFileIds")
+		if keptRaw != "" {
+			if err := json.Unmarshal([]byte(keptRaw), &keptFileIDs); err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid keptFileIds"})
+				return
+			}
+		}
+		form, err := ctx.MultipartForm()
+		if err != nil && err != http.ErrNotMultipart {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid attachment payload"})
+			return
+		}
+		if form != nil {
+			if files, ok := form.File["files"]; ok {
+				newFileHeads = files
+			}
+		}
+	} else {
+		var param resubmitApplicationParam
+		if err := ctx.ShouldBindJSON(&param); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			return
+		}
+		reason = strings.TrimSpace(param.Reason)
+	}
+
+	if reason == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "reason is required"})
+		return
+	}
+
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUserID) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
+		return
+	}
+
+	application, err := a.service.ResubmitApplication(id, userIDStr, reason, keptFileIDs, newFileHeads)
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			return
+		case errors.Is(err, service.ErrApplicationPermissionDenied):
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			return
+		case errors.Is(err, service.ErrApplicationNotEditable):
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application cannot be resubmitted"})
+			return
+		default:
+			logger.Errorf("failed to resubmit application %s: %v", id, err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to resubmit application"})
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message":     "success",
+		"application": *application,
+	})
 }
 
 type auditActionFunc func(id, auditorID, result string) (*model.ApplicationListItem, error)
@@ -205,6 +348,18 @@ func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionF
 	})
 }
 
+func getCurrentUser(ctx *gin.Context) (*model.User, error) {
+	userObj, exists := ctx.Get(global.CTXUserObj)
+	if !exists {
+		return nil, errUserNotAuthenticated
+	}
+	user, ok := userObj.(*model.User)
+	if !ok {
+		return nil, errInvalidUser
+	}
+	return user, nil
+}
+
 func getUserIDFromContext(ctx *gin.Context) (string, error) {
 	userID, exists := ctx.Get("user_id")
 	if !exists {
@@ -215,4 +370,20 @@ func getUserIDFromContext(ctx *gin.Context) (string, error) {
 		return "", errInvalidUserID
 	}
 	return userIDStr, nil
+}
+
+func ensureApplicationReadable(ctx *gin.Context, user *model.User, applicationID string) error {
+	var app model.Application
+	err := global.DB.WithContext(ctx.Request.Context()).
+		Model(&model.Application{}).
+		Select("id, applicant_id").
+		Where("id = ?", applicationID).
+		First(&app).Error
+	if err != nil {
+		return err
+	}
+	if user.Role == model.Common && app.ApplicantID != user.ID {
+		return errPermissionDenied
+	}
+	return nil
 }

@@ -402,7 +402,10 @@ func canUploadApplicationFiles(user *model.User, application *model.ApplicationL
 	if user == nil || application == nil {
 		return false
 	}
-	return application.Applicant.ID == user.ID && application.Status == "pending"
+	if application.Applicant.ID != user.ID {
+		return false
+	}
+	return application.Status == "pending" || application.Status == "returned"
 }
 
 func canDeleteApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
@@ -412,7 +415,10 @@ func canDeleteApplicationFiles(user *model.User, application *model.ApplicationL
 	if user.Role >= model.Admin {
 		return true
 	}
-	return application.Applicant.ID == user.ID && application.Status == "pending"
+	if application.Applicant.ID != user.ID {
+		return false
+	}
+	return application.Status == "pending" || application.Status == "returned"
 }
 
 func buildApplicationFileResponse(file model.File) applicationFileResponse {
