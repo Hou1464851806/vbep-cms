@@ -9,9 +9,10 @@ import {
   RefreshLeft,
   Memo,
   Clock,
-  Aim,
+  Upload,
+  Delete,
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
@@ -22,12 +23,71 @@ const approveApplicationAPI = (id, data) =>
   apiClient.post(`/api/v1/applications/${id}/approve`, data)
 const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
 const returnApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/return`, data)
-const resubmitApplicationAPI = (id, data) =>
-  apiClient.post(`/api/v1/applications/${id}/resubmit`, data)
+const resubmitApplicationAPI = (id, data, config = {}) =>
+  apiClient.post(`/api/v1/applications/${id}/resubmit`, data, config)
 const fetchApplicationAuditsAPI = (id) => apiClient.get(`/api/v1/applications/${id}/audits`)
 const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
+
+const APPLICATION_FILE_LIMIT_MB = 20
+const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
+const ALLOWED_EXTENSIONS = [
+  '.pdf',
+  '.txt',
+  '.md',
+  '.rtf',
+  '.tex',
+  '.doc',
+  '.docx',
+  '.wps',
+  '.odt',
+  '.ppt',
+  '.pptx',
+  '.dps',
+  '.ods',
+  '.xls',
+  '.xlsx',
+  '.et',
+  '.odp',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.svg',
+  '.bmp',
+  '.tiff',
+  '.zip',
+  '.rar',
+  '.7z',
+  '.tar',
+  '.gz',
+  '.tgz',
+]
+const DENIED_EXTENSIONS = [
+  '.exe',
+  '.msi',
+  '.bat',
+  '.cmd',
+  '.sh',
+  '.ps1',
+  '.js',
+  '.vbs',
+  '.jar',
+  '.dll',
+  '.sys',
+  '.app',
+  '.dmg',
+  '.pkg',
+  '.scr',
+  '.com',
+  '.cpl',
+  '.inf',
+  '.lnk',
+  '.reg',
+  '.hta',
+  '.msc',
+]
 
 const readStoredUserId = () => {
   if (typeof window === 'undefined') return ''
@@ -43,6 +103,7 @@ const currentUserId = ref(readStoredUserId())
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
 const isLoading = ref(true)
+const resubmitUploadRef = ref(null)
 const detailDialog = reactive({
   visible: false,
   loading: false,
@@ -54,6 +115,7 @@ const detailDialog = reactive({
   attachments: {
     isLoading: false,
     list: [],
+    originalList: [],
     currentApplicationId: '',
   },
   resubmit: {
@@ -273,6 +335,16 @@ const normalizeApplicationFiles = (files = []) =>
     createdAt: formatDateTime(item.createdAt || item.CreatedAt || item.Time?.CreatedAt),
   }))
 
+const toEditableAttachment = (item = {}) => ({
+  id: item.id || '',
+  uid: item.id || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  name: item.name || '未命名文件',
+  size: Number(item.size ?? 0),
+  createdAt: item.createdAt || '-',
+  isNew: !item.id,
+  file: item.file || null,
+})
+
 const canViewApplicationAttachments = (application) => {
   if (!application) return false
   if (isAdmin()) return true
@@ -289,7 +361,11 @@ const canResubmitApplication = computed(() => {
 const resetAttachmentState = () => {
   detailDialog.attachments.isLoading = false
   detailDialog.attachments.list = []
+  detailDialog.attachments.originalList = []
   detailDialog.attachments.currentApplicationId = ''
+  if (resubmitUploadRef.value) {
+    resubmitUploadRef.value.clearFiles?.()
+  }
 }
 
 const resetAuditDialog = () => {
@@ -308,11 +384,12 @@ const resetResubmitState = () => {
 const loadApplicationFiles = async (applicationId) => {
   if (!applicationId) return
   detailDialog.attachments.isLoading = true
-  detailDialog.attachments.list = []
   try {
     const res = await fetchApplicationFilesAPI(applicationId)
     if (res?.data?.message === 'success') {
-      detailDialog.attachments.list = normalizeApplicationFiles(res.data.files)
+      const normalized = normalizeApplicationFiles(res.data.files)
+      detailDialog.attachments.originalList = normalized.map((item) => ({ ...item }))
+      detailDialog.attachments.list = normalized.map((item) => toEditableAttachment(item))
       detailDialog.attachments.currentApplicationId = applicationId
     } else if (res?.data?.message) {
       ElMessage.error(res.data.message)
@@ -327,10 +404,89 @@ const loadApplicationFiles = async (applicationId) => {
   }
 }
 
+const validateAttachmentFile = (rawFile) => {
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${APPLICATION_FILE_LIMIT_MB}MB 限制，无法上传`)
+    return false
+  }
+  const fileName = rawFile.name?.toLowerCase?.() || ''
+  if (DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+    ElMessage.error(`文件类型暂不支持："${rawFile.name}"`)
+    return false
+  }
+  if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+    ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
+    return false
+  }
+  return true
+}
+
+const addLocalAttachment = (rawFile, uid) => {
+  const entry = toEditableAttachment({
+    id: '',
+    uid: uid || `local-${Date.now()}`,
+    name: rawFile.name,
+    size: rawFile.size,
+    createdAt: formatDateTime(new Date()),
+    file: rawFile,
+  })
+  detailDialog.attachments.list.push(entry)
+}
+
+const handleAttachmentFileQueued = (uploadFile) => {
+  const rawFile = uploadFile?.raw
+  if (!rawFile) return
+  if (!validateAttachmentFile(rawFile)) {
+    ElMessage.warning('文件未通过校验')
+    return
+  }
+  addLocalAttachment(rawFile, uploadFile.uid)
+  ElMessage.success(`已添加附件「${rawFile.name}」，提交后生效`)
+}
+
+const handleRemoveAttachmentLocal = async (file) => {
+  if (!file) return
+  if (file.id) {
+    try {
+      await ElMessageBox.confirm(`确定移除已上传的附件「${file.name}」吗？`, '提示', {
+        type: 'warning',
+        confirmButtonText: '移除',
+        cancelButtonText: '取消',
+      })
+    } catch {
+      return
+    }
+  }
+  const index = detailDialog.attachments.list.findIndex((item) => item.uid === file.uid)
+  if (index !== -1) {
+    detailDialog.attachments.list.splice(index, 1)
+    if (file.id) {
+      ElMessage.info('附件已标记删除，重新提交后生效')
+    }
+  }
+}
+
+const getAttachmentDiff = () => {
+  const keptFileIds = []
+  const newFiles = []
+  ;(detailDialog.attachments.list || []).forEach((item) => {
+    if (item.id) {
+      if (!keptFileIds.includes(item.id)) keptFileIds.push(item.id)
+    } else if (item.file) {
+      newFiles.push(item)
+    }
+  })
+  return { keptFileIds, newFiles }
+}
+
 const handleDownloadAttachment = async (file) => {
   const applicationId = detailDialog.attachments.currentApplicationId
   if (!applicationId) {
     ElMessage.error('未找到对应的申请')
+    return
+  }
+  if (!file?.id) {
+    ElMessage.warning('请提交后再下载此附件')
     return
   }
   try {
@@ -445,7 +601,7 @@ const handleDialogAudit = async (action) => {
   if (!current?.id) return
   const result = detailDialog.audit.result.trim()
   if (!result) {
-    ElMessage.warning('请填写审核结果')
+    ElMessage.warning('请填写审核意见')
     return
   }
 
@@ -479,12 +635,26 @@ const handleResubmitApplication = async () => {
     ElMessage.warning('请填写修改后的申请理由')
     return
   }
+
+  const { keptFileIds, newFiles } = getAttachmentDiff()
+  const formData = new FormData()
+  formData.append('reason', reason)
+  formData.append('keptFileIds', JSON.stringify(keptFileIds))
+  newFiles.forEach((item) => {
+    if (item.file) {
+      formData.append('files', item.file, item.name)
+    }
+  })
+
   detailDialog.resubmit.loading = true
   try {
-    const res = await resubmitApplicationAPI(current.id, { reason })
+    const res = await resubmitApplicationAPI(current.id, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
     if (res.data?.message === 'success' && res.data.application) {
       updateApplicationEntry(res.data.application)
       detailDialog.resubmit.reason = reason
+      await loadApplicationFiles(current.id)
       ElMessage.success('申请已重新提交')
     } else {
       ElMessage.error(res.data?.message || '重新提交失败')
@@ -613,18 +783,26 @@ onMounted(fetchApplications)
                 <template v-else>
                   <div class="audit-step-operator">
                     <template v-if="item.operator">
-                      {{ item.operatorLabel }}：<span class="audit-step-bold-text">{{ item.operator.nickname }}</span>
-                      <span v-if="item.operator.email" class="table-sub-text"
-                        > ({{ item.operator.email }})</span
+                      {{ item.operatorLabel }}：<span class="audit-step-bold-text">{{
+                        item.operator.nickname
+                      }}</span>
+                      <span v-if="item.operator.email" class="table-sub-text">
+                        ({{ item.operator.email }})</span
                       >
                     </template>
-                    <template v-else>{{ item.operatorLabel }}：<span class="audit-step-bold-text">系统</span></template>
+                    <template v-else
+                      >{{ item.operatorLabel }}：<span class="audit-step-bold-text"
+                        >系统</span
+                      ></template
+                    >
                   </div>
                   <div v-if="item.showActionDetail" class="audit-step-action">
                     审批操作：<span class="audit-step-bold-text">{{ item.actionDetail }}</span>
                   </div>
                   <div v-if="item.result" class="audit-step-result">
-                    {{ item.resultLabel }}：<span class="audit-step-bold-text">{{ item.result }}</span>
+                    {{ item.resultLabel }}：<span class="audit-step-bold-text">{{
+                      item.result
+                    }}</span>
                   </div>
                 </template>
               </el-card>
@@ -671,7 +849,7 @@ onMounted(fetchApplications)
             </template>
             <span v-else>-</span>
           </el-descriptions-item>
-          <el-descriptions-item label="审核结果">
+          <el-descriptions-item label="审核意见">
             <div v-if="detailDialog.data.auditorResult">
               {{ detailDialog.data.auditorResult }}
             </div>
@@ -695,22 +873,66 @@ onMounted(fetchApplications)
                 <el-table-column label="大小" width="120">
                   <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
                 </el-table-column>
-                <el-table-column prop="createdAt" label="上传时间" width="180" />
-                <el-table-column label="操作" width="200">
+                <el-table-column prop="createdAt" label="更新时间" width="180" />
+                <el-table-column label="状态" width="120">
                   <template #default="scope">
-                    <el-button
-                      text
-                      size="small"
-                      :icon="Download"
-                      @click="handleDownloadAttachment(scope.row)"
-                    >
-                      下载
-                    </el-button>
+                    <el-tag :type="scope.row.isNew ? 'info' : 'success'">
+                      {{ scope.row.isNew ? '待提交' : '已上传' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="220">
+                  <template #default="scope">
+                    <el-space>
+                      <el-button
+                        text
+                        size="small"
+                        :icon="Download"
+                        @click="handleDownloadAttachment(scope.row)"
+                      >
+                        下载
+                      </el-button>
+                      <el-button
+                        v-if="canResubmitApplication"
+                        text
+                        type="danger"
+                        size="small"
+                        :icon="Delete"
+                        @click="handleRemoveAttachmentLocal(scope.row)"
+                      >
+                        {{ scope.row.id ? '移除' : '撤销' }}
+                      </el-button>
+                    </el-space>
                   </template>
                 </el-table-column>
               </el-table>
             </template>
           </el-skeleton>
+          <div v-if="canResubmitApplication" class="attachment-upload-area">
+            <div class="attachment-upload-header">
+              <span>可重新上传补充材料</span>
+              <small>单个文件大小不超过 {{ APPLICATION_FILE_LIMIT_MB }}MB</small>
+            </div>
+            <el-upload
+              ref="resubmitUploadRef"
+              action=""
+              :show-file-list="false"
+              :auto-upload="false"
+              :disabled="detailDialog.attachments.isLoading || detailDialog.resubmit.loading"
+              :on-change="handleAttachmentFileQueued"
+            >
+              <el-button
+                type="primary"
+                text
+                :icon="Upload"
+                :loading="detailDialog.resubmit.loading"
+                >选择文件</el-button
+              >
+            </el-upload>
+            <div class="attachment-upload-tip">
+              支持常见文档、图片及压缩包格式，变更仅在重新提交后生效。
+            </div>
+          </div>
         </div>
         <div v-if="canResubmitApplication" class="resubmit-area">
           <el-alert
@@ -798,6 +1020,29 @@ onMounted(fetchApplications)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+.attachment-upload-area {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #dcdfe6;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.attachment-upload-header {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: #909399;
+}
+.attachment-upload-header span {
+  font-weight: 500;
+  color: #303133;
+  font-size: 14px;
+}
+.attachment-upload-tip {
+  font-size: 12px;
+  color: #a8abb2;
 }
 .attachment-table {
   margin-top: 8px;

@@ -1,8 +1,11 @@
 package v1
 
 import (
+	"encoding/json"
 	"errors"
+	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -224,9 +227,42 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	var param resubmitApplicationParam
-	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	var (
+		reason       string
+		keptFileIDs  []string
+		newFileHeads []*multipart.FileHeader
+	)
+
+	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
+		reason = strings.TrimSpace(ctx.PostForm("reason"))
+		keptRaw := ctx.PostForm("keptFileIds")
+		if keptRaw != "" {
+			if err := json.Unmarshal([]byte(keptRaw), &keptFileIDs); err != nil {
+				ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid keptFileIds"})
+				return
+			}
+		}
+		form, err := ctx.MultipartForm()
+		if err != nil && err != http.ErrNotMultipart {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid attachment payload"})
+			return
+		}
+		if form != nil {
+			if files, ok := form.File["files"]; ok {
+				newFileHeads = files
+			}
+		}
+	} else {
+		var param resubmitApplicationParam
+		if err := ctx.ShouldBindJSON(&param); err != nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			return
+		}
+		reason = strings.TrimSpace(param.Reason)
+	}
+
+	if reason == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "reason is required"})
 		return
 	}
 
@@ -240,7 +276,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.service.ResubmitApplication(id, userIDStr, param.Reason)
+	application, err := a.service.ResubmitApplication(id, userIDStr, reason, keptFileIDs, newFileHeads)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

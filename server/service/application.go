@@ -2,8 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
+	"os"
+	"path/filepath"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,6 +17,7 @@ import (
 
 	"server/global"
 	"server/model"
+	"server/pkg/uuid"
 )
 
 var (
@@ -228,8 +235,9 @@ func (s *ApplicationService) GetApplicationAudits(applicationID string) ([]model
 	return result, nil
 }
 
-func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationListItem, error) {
 	ctx := context.Background()
+	cleanup := func(success bool) {}
 
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var application model.Application
@@ -249,6 +257,12 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string)
 		if application.Status != model.RETURNED {
 			return ErrApplicationNotEditable
 		}
+
+		syncCleanup, err := s.syncApplicationAttachmentsTx(tx, id, keptFileIDs, newFiles)
+		if err != nil {
+			return err
+		}
+		cleanup = syncCleanup
 
 		if err := tx.Model(&model.Application{}).
 			Where("id = ?", id).
@@ -272,8 +286,128 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string)
 		return nil
 	})
 	if err != nil {
+		cleanup(false)
 		return nil, err
 	}
 
+	cleanup(true)
+
 	return s.GetApplicationByID(id)
+}
+
+func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicationID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (func(bool), error) {
+	cleanup := func(bool) {}
+	kept := make(map[string]struct{})
+	for _, id := range keptFileIDs {
+		if id == "" {
+			continue
+		}
+		kept[id] = struct{}{}
+	}
+
+	var existingFiles []model.File
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
+		Find(&existingFiles).Error; err != nil {
+		return cleanup, fmt.Errorf("failed to query attachments for application %s: %w", applicationID, err)
+	}
+
+	var filesToDelete []model.File
+	for _, file := range existingFiles {
+		if _, ok := kept[file.ID]; ok {
+			continue
+		}
+		filesToDelete = append(filesToDelete, file)
+	}
+
+	for _, file := range filesToDelete {
+		if err := tx.Where("id = ? AND owner_id = ? AND owner_type = ?", file.ID, applicationID, applicationOwnerType).
+			Delete(&model.File{}).Error; err != nil {
+			return cleanup, fmt.Errorf("failed to delete attachment %s: %w", file.ID, err)
+		}
+	}
+
+	var newFilePaths []string
+	for _, header := range newFiles {
+		if header == nil {
+			continue
+		}
+		_, storedPath, err := s.saveApplicationFileWithTx(tx, applicationID, header)
+		if err != nil {
+			return cleanup, err
+		}
+		newFilePaths = append(newFilePaths, storedPath)
+	}
+
+	cleanup = func(success bool) {
+		if success {
+			for _, file := range filesToDelete {
+				removePhysicalFile(file.Path)
+			}
+			if len(filesToDelete) > 0 {
+				cleanupApplicationDirectory(applicationID)
+			}
+		} else {
+			for _, path := range newFilePaths {
+				removePhysicalFile(path)
+			}
+		}
+	}
+
+	return cleanup, nil
+}
+
+func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
+	if fileHeader == nil {
+		return nil, "", fmt.Errorf("file header cannot be empty")
+	}
+	if fileHeader.Size > maxUploadSize {
+		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
+	}
+
+	src, err := fileHeader.Open()
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to open upload file: %w", err)
+	}
+	defer src.Close()
+
+	fileUUID := uuid.NewV4()
+	appDir := applicationDirPath(applicationID)
+	if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
+		return nil, "", fmt.Errorf("failed to create application upload directory: %w", err)
+	}
+
+	fileExt := filepath.Ext(fileHeader.Filename)
+	targetPath := filepath.Clean(filepath.Join(appDir, fmt.Sprintf("%s%s", fileUUID, fileExt)))
+	dst, err := os.Create(targetPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create destination file: %w", err)
+	}
+	defer dst.Close()
+
+	hasher := md5.New()
+	written, err := io.Copy(io.MultiWriter(dst, hasher), src)
+	if err != nil {
+		removePhysicalFile(targetPath)
+		return nil, "", fmt.Errorf("failed to write file to disk: %w", err)
+	}
+
+	newFile := &model.File{
+		Base: model.Base{
+			ID: fileUUID,
+		},
+		Name:      fileHeader.Filename,
+		Path:      filepath.ToSlash(targetPath),
+		MD5:       hex.EncodeToString(hasher.Sum(nil)),
+		Size:      uint(written),
+		OwnerID:   applicationID,
+		OwnerType: applicationOwnerType,
+	}
+
+	if err := tx.Create(newFile).Error; err != nil {
+		removePhysicalFile(targetPath)
+		return nil, "", fmt.Errorf("failed to save file metadata: %w", err)
+	}
+
+	return newFile, targetPath, nil
 }
