@@ -2,9 +2,11 @@ package initialize
 
 import (
 	"fmt"
+	"reflect"
 	"server/global"
 	"server/logger"
 	"server/model"
+	"strings"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -46,18 +48,34 @@ func NewDB() *gorm.DB {
 	logger.Successf(logMsg)
 
 	// 4. 自动迁移
-	err = autoMigrate(db)
+	autoMigrate(db)
+
+	return db
+}
+
+func autoMigrate(db *gorm.DB) {
+	// 数据库需要迁移的模型
+	models := []interface{}{
+		&model.User{},
+		&model.Dataset{},
+		&model.File{},
+		&model.Application{},
+		&model.Audit{},
+		&model.DailyStat{},
+	}
+
+	// 迁移
+	err := db.AutoMigrate(models...)
 	if err != nil {
 		//logger.Errorf("Failed to migrate schema: %v", err)
 		logger.Fatalf("Failed to migrate schema: %v", err)
 	}
 
-	logger.Successf("Auto migrate schema")
-
-	return db
-}
-
-func autoMigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&model.User{}, &model.Dataset{}, &model.File{}, &model.Application{}, &model.Audit{})
-	return err
+	// 通过反射打印迁移的模型名称
+	modelNames := make([]string, len(models), len(models))
+	for i, m := range models {
+		modelName := reflect.TypeOf(m).Elem().Name()
+		modelNames[i] = modelName
+	}
+	logger.Successf("Auto migrate schema of %d models: %s", len(models), strings.Join(modelNames, ", "))
 }
