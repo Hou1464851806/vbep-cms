@@ -17,6 +17,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 引入 axios 实例和清除 token 的方法
 import apiClient, { clearAuthToken } from '@/request/axios.js'
+import '@/assets/styles/universal.css'
 
 // --- API 定义 ---
 const fetchUserInfoAPI = (userId) => apiClient.get(`/api/v1/users/${userId}`)
@@ -397,8 +398,8 @@ const currentPageTitle = computed(() => {
     </el-container>
 
     <el-dialog v-model="profileDialogVisible" title="个人信息" width="500px">
-      <div class="profile-list">
-        <div class="profile-row">
+      <div class="info-list">
+        <div class="info-row">
           <div class="row-label">姓名</div>
           <div class="row-content">
             <span v-if="!editState.nickname">{{ userInfo.nickname }}</span>
@@ -425,7 +426,7 @@ const currentPageTitle = computed(() => {
           </div>
         </div>
 
-        <div class="profile-row">
+        <div class="info-row">
           <div class="row-label">邮箱</div>
           <div class="row-content">
             <span v-if="!editState.email">{{ userInfo.email || '未设置' }}</span>
@@ -452,7 +453,7 @@ const currentPageTitle = computed(() => {
           </div>
         </div>
 
-        <div class="profile-row">
+        <div class="info-row">
           <div class="row-label">手机号</div>
           <div class="row-content">
             <span v-if="!editState.phone">{{ userInfo.phone || '未设置' }}</span>
@@ -481,7 +482,7 @@ const currentPageTitle = computed(() => {
 
         <el-divider border-style="dashed" />
 
-        <div class="profile-row danger-row">
+        <div class="info-row danger-row">
           <div class="row-label danger-label">账户控制</div>
           <div class="row-content">
             <span class="danger-desc">注销后无法恢复，请谨慎操作</span>
@@ -586,40 +587,8 @@ const currentPageTitle = computed(() => {
   background-color: #f0f2f5;
 }
 
-/* 个人信息 Dialog 样式 */
-.profile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  padding: 0 10px;
-}
-.profile-row {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #f0f0f0;
-  padding-bottom: 15px;
-}
-.profile-row:last-child {
-  border-bottom: none;
-}
 .row-label {
   width: 60px;
-  font-weight: bold;
-  color: #606266;
-}
-.row-content {
-  flex: 1;
-  padding: 0 15px;
-  color: #303133;
-  display: flex;
-  align-items: center;
-  height: 32px; /* 固定高度防止Input切换时抖动 */
-}
-.row-action {
-  width: 110px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 5px;
 }
 
 /* 密码 Dialog 提示样式 */

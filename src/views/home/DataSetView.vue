@@ -16,6 +16,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
+import '@/assets/styles/universal.css'
 import {
   formatDateTime,
   formatShortId,
@@ -1517,11 +1518,6 @@ const handleSubmitApplication = async () => {
 </template>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
 .file-dialog-toolbar {
   margin-bottom: 20px;
 }

@@ -5,6 +5,7 @@ import axios from 'axios'
 import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
+import '@/assets/styles/login.css'
 
 const router = useRouter()
 
@@ -208,133 +209,17 @@ const submitRegisterForm = async () => {
   </div>
 </template>
 
-<style>
-.main-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  margin: 0;
-  background-color: #ffffff;
-  overflow: hidden;
-}
-.login-card-wrapper {
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 800px;
-  padding-bottom: 30px;
-  position: relative;
-  box-sizing: border-box;
-}
-.register-button-wrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 120px;
-  height: 120px;
-  overflow: hidden;
-}
-.register-button {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  font-size: 14px;
-  text-decoration: none;
-  color: #181818;
-}
-.register-button:hover {
-  color: #4292c3;
-  text-decoration: underline;
-}
-.sso-banner {
-  padding: 30px 40px 0;
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-}
-.sso-logo img {
-  height: 80px;
-}
-.sso-header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  margin-bottom: 40px;
-}
-.sso-header .heading {
-  font-size: 24px;
-  font-weight: bold;
-  color: #181818;
-}
-.login-container {
-  display: flex;
-  justify-content: center;
-  padding: 0 40px;
-}
-
+<style scoped>
 /* 保持内容宽度限制 */
 .login-content {
   width: 380px; /* 稍微增加一点宽度以容纳 label + input */
   margin: 0 auto;
 }
 
-.login-form {
-  width: 100%;
-}
-
-:deep(.login-info.el-input .el-input__wrapper:hover) {
-  border-color: #a4cef8;
-}
-:deep(.login-info.el-input.is-focused .el-input__wrapper) {
-  border-color: #409eff;
-}
-:deep(.login-info.el-input .el-input__inner) {
-  color: #333;
-  padding-left: 10px;
-}
-:deep(.login-info.el-input .el-input__inner::placeholder) {
-  color: #808080;
-}
-:deep(.login-info.el-input .el-input__prefix) {
-  color: #808080;
-  font-size: 18px;
-  margin-right: 8px;
-  display: flex;
-  align-items: center;
-}
-:deep(.login-info.el-input .el-input__suffix) {
-  color: #808080;
-  font-size: 18px;
-  display: flex;
-  align-items: center;
-}
-
 /* 调整 label 的样式，使其更对齐 */
 :deep(.el-form-item__label) {
   color: #181818;
   font-weight: 500;
-}
-
-.login-button-item {
-  margin-top: 30px;
-}
-.login-btn {
-  --el-color-primary: #ef1c23;
-  width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  background: #ef1c23;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-.login-btn:hover {
-  --el-button-hover-bg-color: #d1181f;
 }
 
 .footer-links {

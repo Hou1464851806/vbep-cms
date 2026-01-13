@@ -5,6 +5,7 @@ import { ElMessage } from 'element-plus'
 
 // 复用现有的 axios 实例
 import apiClient from '@/request/axios.js'
+import '@/assets/styles/universal.css'
 import { formatDateTime, formatShortId } from '@/utils/format.js'
 
 // --- API 定义 ---
@@ -140,7 +141,7 @@ const handleSave = async (originalRow) => {
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
-        <span>用户管理</span>
+        <span>用户列表</span>
       </div>
     </template>
 
@@ -217,11 +218,4 @@ const handleSave = async (originalRow) => {
 </template>
 
 <style scoped>
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 18px;
-  font-weight: bold;
-}
 </style>

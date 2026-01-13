@@ -15,6 +15,7 @@ import {
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import apiClient from '@/request/axios.js'
+import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
@@ -740,7 +741,9 @@ onMounted(fetchApplications)
 <template>
   <el-card shadow="never">
     <template #header>
-      <span>数据集申请列表</span>
+      <div class="card-header">
+        <span>申请列表</span>
+      </div>
     </template>
 
     <el-skeleton :rows="5" animated :loading="isLoading">

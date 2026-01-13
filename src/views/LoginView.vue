@@ -10,6 +10,7 @@ import thirdPartyChatSrc from '@/assets/img/wechat.png'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import apiClient, { setAuthToken } from '@/request/axios.js'
+import '@/assets/styles/login.css'
 
 const router = useRouter()
 
@@ -156,76 +157,8 @@ const submitLoginFrom = async () => {
 </template>
 
 <style scoped>
-/* 全局背景和居中 */
-.main-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 100vh;
-  margin: 0;
-  background-color: #ffffff;
-  overflow: hidden; /* 防止注册按钮溢出时的滚动条 */
-}
-/* 整个白色卡片的容器，为了更好地控制注册按钮的定位 */
-.login-card-wrapper {
-  background-color: #fff;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  width: 800px; /* 根据图片估算宽度 */
-  /* height: 500px; 可以设置固定高度或让内容撑开 */
-  padding-bottom: 30px; /* 留出底部空间 */
-  position: relative; /* For sso-banner content positioning */
-  box-sizing: border-box;
-}
-/* 注册按钮及对角线背景 */
-.register-button-wrapper {
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 120px; /* 按钮区域的宽度 */
-  height: 120px; /* 按钮区域的高度 */
-  overflow: hidden;
-}
-.register-button {
-  position: absolute;
-  top: 15px; /* 根据图片调整文字位置 */
-  right: 15px; /* 根据图片调整文字位置 */
-  font-size: 14px;
-  text-decoration: none;
-  color: #181818;
-}
-.register-button:hover {
-  color: #4292c3;
-  text-decoration: underline;
-}
-/* SSO Banner - 包含 Logo */
-.sso-banner {
-  padding: 30px 40px 0; /* 根据图片调整内边距 */
-  display: flex; /* 让 logo 更好地定位 */
-  align-items: center;
-  margin-bottom: 20px; /* 与标题的间距 */
-}
-.sso-logo img {
-  height: 80px; /* 根据图片调整 logo 大小 */
-}
-/* SSO Header - 欢迎语 */
-.sso-header {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  margin-bottom: 40px; /* 与登录区域的间距 */
-}
-.sso-header .heading {
-  font-size: 24px;
-  font-weight: bold;
-  color: #181818;
-}
 /* Login Container - 左右布局的核心区域 */
 .login-container {
-  display: flex;
-  justify-content: center; /* 确保内部内容居中，如果卡片区域小 */
-  padding: 0 40px; /* 左右内边距 */
   gap: 60px; /* 二维码和表单之间的间距 */
 }
 /* QR Code Display Area */
@@ -272,63 +205,6 @@ const submitLoginFrom = async () => {
   display: flex;
   flex-direction: column;
   padding-left: 30px; /* 补偿 qr-code-line */
-}
-.login-form {
-  width: 100%;
-}
-
-/* 悬停时的样式调整：边框变亮，阴影更明显 */
-:deep(.login-info.el-input .el-input__wrapper:hover) {
-  border-color: #a4cef8; /* 悬停时边框变浅蓝 */
-}
-/* 聚焦时的样式调整：使用 Element Plus 的主色强调聚焦，阴影更深 */
-:deep(.login-info.el-input.is-focused .el-input__wrapper) {
-  border-color: #409eff; /* 聚焦时边框变为 Element Plus 的主蓝色 */
-}
-/* 针对输入框内部的文字区域 */
-:deep(.login-info.el-input .el-input__inner) {
-  color: #333; /* 文本颜色，保持深色可见性 */
-  padding-left: 10px; /* 图标与文本的间距 */
-}
-/* 针对 placeholder 文字的颜色：比图片中更深，更清晰 */
-:deep(.login-info.el-input .el-input__inner::placeholder) {
-  color: #808080; /* 中灰色，比 #999 更显眼，但又不是纯黑 */
-}
-/* 针对前缀图标的样式：颜色与 placeholder 保持一致，更清晰 */
-:deep(.login-info.el-input .el-input__prefix) {
-  color: #808080; /* 图标颜色，与占位符颜色一致 */
-  font-size: 18px; /* 图标大小 */
-  margin-right: 8px; /* 图标与文本的间距 */
-  display: flex; /* 确保图标垂直居中 */
-  align-items: center; /* 确保图标垂直居中 */
-}
-
-:deep(.login-info.el-input .el-input__suffix) {
-  color: #808080; /* 图标颜色，与占位符颜色一致 */
-  font-size: 18px; /* 图标大小 */
-  display: flex; /* 确保图标垂直居中 */
-  align-items: center; /* 确保图标垂直居中 */
-}
-
-.login-button-item {
-  margin-top: 30px; /* 登录按钮与输入框的额外间距 */
-}
-
-.login-btn {
-  width: 100%;
-  height: 48px;
-  border-radius: 8px;
-  background: #ef1c23;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.login-btn:hover {
-  background-color: #d1181f;
 }
 
 /* 找回账号密码 */

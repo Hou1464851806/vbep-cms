@@ -1,0 +1,50 @@
+/* Universal Card Header Style */
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+/* Generic Row-based List Layout (for profiles, settings, etc.) */
+.info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: 0 10px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 15px;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-row .row-label {
+  /* width is defined in component-specific styles */
+  font-weight: bold;
+  color: #606266;
+  flex-shrink: 0; /* Prevent label from shrinking */
+}
+
+.info-row .row-content {
+  flex: 1;
+  padding: 0 15px;
+  color: #303133;
+  display: flex;
+  align-items: center;
+  min-height: 32px; /* Use min-height to prevent layout shift */
+}
+
+.info-row .row-action {
+  width: 110px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
