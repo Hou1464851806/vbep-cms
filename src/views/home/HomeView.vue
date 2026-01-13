@@ -11,6 +11,7 @@ import {
   Key,
   Check,
   Close,
+  Setting,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -320,6 +321,9 @@ const currentPageTitle = computed(() => {
   if (route.path.includes('/users')) {
     return '用户管理'
   }
+  if (route.path.includes('/settings')) {
+    return '系统设置'
+  }
 
   return '系统面板' // 默认回退
 })
@@ -343,6 +347,11 @@ const currentPageTitle = computed(() => {
         <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">
           <el-icon><User /></el-icon>
           <span>用户管理</span>
+        </el-menu-item>
+
+        <el-menu-item index="/home/settings" v-if="userInfo.roleId > 1">
+          <el-icon><Setting /></el-icon>
+          <span>系统设置</span>
         </el-menu-item>
       </el-menu>
     </el-aside>

@@ -5,4 +5,5 @@ type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
+	Runtime  SettingConfig  `mapstructure:"runtime"`
 }

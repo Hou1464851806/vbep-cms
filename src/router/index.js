@@ -5,6 +5,7 @@ import HomeView from '@/views/home/HomeView.vue'
 import DataSetView from '@/views/home/DataSetView.vue'
 import ApplicationView from '@/views/home/ApplicationView.vue'
 import UserView from '@/views/home/UserView.vue'
+import SettingsView from '@/views/home/SettingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -41,6 +42,11 @@ const router = createRouter({
           path: 'users',
           name: 'user-list',
           component: UserView,
+        },
+        {
+          path: 'settings',
+          name: 'settings-view',
+          component: SettingsView,
         },
       ],
     },

@@ -1,9 +1,10 @@
 package initialize
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"server/router"
+
+	"github.com/gin-gonic/gin"
 )
 
 func NewRouter() *gin.Engine {
@@ -36,6 +37,10 @@ func NewRouter() *gin.Engine {
 	// audit
 	auditRouter := new(router.AuditRouter)
 	auditRouter.InitAuditRouter(v1)
+
+	// setting
+	settingRouter := new(router.SettingRouter)
+	settingRouter.InitSettingRouter(v1)
 
 	return r
 }

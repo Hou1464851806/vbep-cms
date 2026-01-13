@@ -81,7 +81,7 @@ func (a *AuthApi) Logout(ctx *gin.Context) {
 	}
 
 	// 3. 计算剩余时间并写入 Redis (调用你新加的 pkg/jwt 方法)
-	duration := claims.ExpiresAt.Time.Sub(time.Now())
+	duration := time.Until(claims.ExpiresAt.Time)
 	if duration > 0 {
 		if err := jwt.SetTokenBlacklist(tokenString, duration); err != nil {
 			logger.Errorf("redis error: %v", err)
