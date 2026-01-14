@@ -12,6 +12,7 @@ import {
   Check,
   Close,
   Setting,
+  Download,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -319,6 +320,9 @@ const currentPageTitle = computed(() => {
   if (route.path.includes('/applications')) {
     return roleId > 0 ? '审批管理' : '我的申请'
   }
+  if (route.path.includes('/downloads')) {
+    return '下载中心'
+  }
   if (route.path.includes('/users')) {
     return '用户管理'
   }
@@ -343,6 +347,11 @@ const currentPageTitle = computed(() => {
         <el-menu-item index="/home/applications">
           <el-icon><Memo /></el-icon>
           <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
+        </el-menu-item>
+
+        <el-menu-item index="/home/downloads">
+          <el-icon><Download /></el-icon>
+          <span>下载中心</span>
         </el-menu-item>
 
         <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">

@@ -36,6 +36,13 @@ type applicationFileResponse struct {
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
+type publicFileResponse struct {
+	ID        string    `json:"fileID"`
+	Name      string    `json:"name"`
+	Size      uint      `json:"size"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 func NewFileApi() *FileApi {
 	return &FileApi{
 		service:            service.NewFileService(),
@@ -338,6 +345,127 @@ func (a *FileApi) DeleteFromApplication(ctx *gin.Context) {
 			return
 		}
 		logger.Errorf("failed to delete file %s for application %s: %v", fileID, applicationID, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+}
+
+func (a *FileApi) ListPublic(ctx *gin.Context) {
+	if _, ok := getUserFromContext(ctx); !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+
+	files, err := a.service.GetPublicFiles()
+	if err != nil {
+		logger.Errorf("failed to list public files: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load files"})
+		return
+	}
+
+	resp := make([]publicFileResponse, 0, len(files))
+	for _, file := range files {
+		resp = append(resp, publicFileResponse{
+			ID:        file.ID,
+			Name:      file.Name,
+			Size:      file.Size,
+			CreatedAt: file.CreatedAt,
+		})
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "files": resp})
+}
+
+func (a *FileApi) UploadPublic(ctx *gin.Context) {
+	user, ok := getUserFromContext(ctx)
+	if !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+	if user.Role != model.SuperAdmin {
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		return
+	}
+
+	fileHeader, err := ctx.FormFile("file")
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		return
+	}
+
+	file, err := a.service.CreatePublicFile(fileHeader)
+	if err != nil {
+		logger.Errorf("failed to upload public file: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "file": publicFileResponse{
+		ID:        file.ID,
+		Name:      file.Name,
+		Size:      file.Size,
+		CreatedAt: file.CreatedAt,
+	}})
+}
+
+func (a *FileApi) DownloadPublic(ctx *gin.Context) {
+	fileID := ctx.Param("fileID")
+	if fileID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid file id"})
+		return
+	}
+
+	if _, ok := getUserFromContext(ctx); !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+
+	file, err := a.service.GetPublicFile(fileID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			return
+		}
+		logger.Errorf("failed to get public file %s: %v", fileID, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "download failed"})
+		return
+	}
+
+	targetPath := file.Path
+	if !filepath.IsAbs(targetPath) {
+		if abs, err := filepath.Abs(targetPath); err == nil {
+			targetPath = abs
+		}
+	}
+
+	ctx.FileAttachment(targetPath, file.Name)
+}
+
+func (a *FileApi) DeletePublic(ctx *gin.Context) {
+	fileID := ctx.Param("fileID")
+	if fileID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid file id"})
+		return
+	}
+
+	user, ok := getUserFromContext(ctx)
+	if !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+	if user.Role != model.SuperAdmin {
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		return
+	}
+
+	if err := a.service.DeletePublicFile(fileID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			return
+		}
+		logger.Errorf("failed to delete public file %s: %v", fileID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
 		return
 	}
