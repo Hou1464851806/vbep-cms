@@ -1,49 +1,61 @@
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <div class="card-header">
-        <span>全局设置</span>
+  <div class="settings-container">
+    <!-- Global Settings Card -->
+    <el-card shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>全局设置</span>
+        </div>
+      </template>
+      <div class="info-list">
+        <!-- Public Email Setting -->
+        <div class="info-row">
+          <div class="row-label">公邮地址</div>
+          <div class="row-content">
+            <span v-if="!editState.public_email">{{ settings.public_email || '未设置' }}</span>
+            <el-input v-else v-model="tempSettings.public_email" size="small" />
+          </div>
+          <div class="row-action">
+            <el-button v-if="!editState.public_email" type="primary" link :icon="Edit" @click="startEdit('public_email')">
+              修改
+            </el-button>
+            <template v-else>
+              <el-button type="success" link :icon="Check" @click="saveField('public_email', '公邮地址')">确定</el-button>
+              <el-button type="info" link :icon="Close" @click="cancelEdit('public_email')">取消</el-button>
+            </template>
+          </div>
+        </div>
       </div>
-    </template>
+    </el-card>
 
-    <div class="info-list">
-      <!-- App File Setting -->
-      <div class="info-row">
-        <div class="row-label">模版文件</div>
-        <div class="row-content">
-          <span v-if="!editState.app_file">{{ settings.app_file || '未设置' }}</span>
-          <el-input v-else v-model="tempSettings.app_file" size="small" />
+    <!-- Template Settings Card -->
+    <el-card shadow="never">
+      <template #header>
+        <div class="card-header">
+          <span>模版设置</span>
         </div>
-        <div class="row-action">
-          <el-button v-if="!editState.app_file" type="primary" link :icon="Edit" @click="startEdit('app_file')">
-            修改
-          </el-button>
-          <template v-else>
-            <el-button type="success" link :icon="Check" @click="saveField('app_file', '模版文件')">确定</el-button>
-            <el-button type="info" link :icon="Close" @click="cancelEdit('app_file')">取消</el-button>
-          </template>
-        </div>
-      </div>
-
-      <!-- Public Email Setting -->
-      <div class="info-row">
-        <div class="row-label">公邮地址</div>
-        <div class="row-content">
-          <span v-if="!editState.public_email">{{ settings.public_email || '未设置' }}</span>
-          <el-input v-else v-model="tempSettings.public_email" size="small" />
-        </div>
-        <div class="row-action">
-          <el-button v-if="!editState.public_email" type="primary" link :icon="Edit" @click="startEdit('public_email')">
-            修改
-          </el-button>
-          <template v-else>
-            <el-button type="success" link :icon="Check" @click="saveField('public_email', '公邮地址')">确定</el-button>
-            <el-button type="info" link :icon="Close" @click="cancelEdit('public_email')">取消</el-button>
-          </template>
+      </template>
+      <div class="info-list">
+        <!-- App File Setting -->
+        <div class="info-row">
+          <div class="row-label">模版文件</div>
+          <div class="row-content">
+            <span v-if="!editState.app_file">{{ settings.app_file || '未设置' }}</span>
+            <el-input v-else v-model="tempSettings.app_file" size="small" />
+          </div>
+          <div class="row-action">
+            <el-button v-if="!editState.app_file" type="primary" link :icon="Edit" @click="startEdit('app_file')">
+              修改
+            </el-button>
+            <template v-else>
+              <el-button type="success" link :icon="Check" @click="saveField('app_file', '模版文件')">确定</el-button>
+              <el-button type="info" link :icon="Close" @click="cancelEdit('app_file')">取消</el-button>
+            </template>
+          </div>
         </div>
       </div>
-    </div>
-  </el-card>
+    </el-card>
+  </div>
 </template>
 
 <script setup>
@@ -108,6 +120,7 @@ const saveField = async (field, labelName) => {
   // Diff check: if value hasn't changed, just exit edit mode
   if (newValue === oldValue) {
     cancelEdit(field);
+    ElMessage.info('设置未发生变化');
     return;
   }
 
@@ -143,7 +156,19 @@ const saveField = async (field, labelName) => {
 </script>
 
 <style scoped>
+.settings-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 1100px) {
+  .settings-container {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .row-label {
-  width: 150px; /* Increased width for longer labels */
+  width: 150px;
 }
 </style>
