@@ -1,10 +1,17 @@
 <template>
   <div class="settings-container">
+    <el-alert
+      v-if="isSimpleAdmin"
+      title="只有超级管理员可以修改本页的设置项"
+      type="warning"
+      show-icon
+      class="full-width-alert"
+    />
     <!-- Global Settings Card -->
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span>全局设置</span>
+          <span>通用设置</span>
         </div>
       </template>
       <div class="info-list">
@@ -16,12 +23,14 @@
             <el-input v-else v-model="tempSettings.public_email" size="small" />
           </div>
           <div class="row-action">
-            <el-button v-if="!editState.public_email" type="primary" link :icon="Edit" @click="startEdit('public_email')">
-              修改
-            </el-button>
-            <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('public_email', '公邮地址')">确定</el-button>
-              <el-button type="info" link :icon="Close" @click="cancelEdit('public_email')">取消</el-button>
+            <template v-if="canEdit">
+              <el-button v-if="!editState.public_email" type="primary" link :icon="Edit" @click="startEdit('public_email')">
+                修改
+              </el-button>
+              <template v-else>
+                <el-button type="success" link :icon="Check" @click="saveField('public_email', '公邮地址')">确定</el-button>
+                <el-button type="info" link :icon="Close" @click="cancelEdit('public_email')">取消</el-button>
+              </template>
             </template>
           </div>
         </div>
@@ -44,12 +53,14 @@
             <el-input v-else v-model="tempSettings.app_file" size="small" />
           </div>
           <div class="row-action">
-            <el-button v-if="!editState.app_file" type="primary" link :icon="Edit" @click="startEdit('app_file')">
-              修改
-            </el-button>
-            <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('app_file', '模版文件')">确定</el-button>
-              <el-button type="info" link :icon="Close" @click="cancelEdit('app_file')">取消</el-button>
+            <template v-if="canEdit">
+              <el-button v-if="!editState.app_file" type="primary" link :icon="Edit" @click="startEdit('app_file')">
+                修改
+              </el-button>
+              <template v-else>
+                <el-button type="success" link :icon="Check" @click="saveField('app_file', '模版文件')">确定</el-button>
+                <el-button type="info" link :icon="Close" @click="cancelEdit('app_file')">取消</el-button>
+              </template>
             </template>
           </div>
         </div>
@@ -59,11 +70,15 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue';
+import { ref, onMounted, reactive, inject, computed } from 'vue';
 import axios from '@/request/axios';
 import { ElMessage } from 'element-plus';
 import '@/assets/styles/universal.css';
 import { Edit, Check, Close } from '@element-plus/icons-vue';
+
+const userInfo = inject('userInfo');
+const canEdit = computed(() => userInfo?.roleId === 2);
+const isSimpleAdmin = computed(() => userInfo?.roleId === 1);
 
 const settings = ref({
   app_file: '',
@@ -170,5 +185,9 @@ const saveField = async (field, labelName) => {
 
 .row-label {
   width: 150px;
+}
+
+.full-width-alert {
+  grid-column: 1 / -1;
 }
 </style>

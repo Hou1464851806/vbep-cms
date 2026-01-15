@@ -327,7 +327,7 @@ const currentPageTitle = computed(() => {
     return '用户管理'
   }
   if (route.path.includes('/settings')) {
-    return '系统设置'
+    return '全局设置'
   }
 
   return '系统面板' // 默认回退
@@ -336,34 +336,61 @@ const currentPageTitle = computed(() => {
 
 <template>
   <el-container class="main-layout-container">
-    <el-aside width="200px">
+    <el-aside width="200px" class="sidebar-container">
       <div class="logo-area">VBEP 数据平台</div>
-      <el-menu :default-active="route.path" class="el-menu-vertical-demo" router>
-        <el-menu-item index="/home/datasets">
-          <el-icon><Tickets /></el-icon>
-          <span>{{ userInfo.roleId > 0 ? '数据集管理' : '数据集浏览' }}</span>
-        </el-menu-item>
+      <div class="sidebar-flex-wrapper">
+        <el-menu :default-active="route.path" class="el-menu-vertical-demo menu-top" router>
+          <el-menu-item-group>
+            <template #title>
+              <div class="group-title-wrapper">
+                <span class="separator-start"></span>
+                <span class="group-text">业务管理</span>
+                <span class="separator-end"></span>
+              </div>
+            </template>
+            <el-menu-item index="/home/datasets">
+              <el-icon><Tickets /></el-icon>
+              <span>{{ userInfo.roleId > 0 ? '数据集管理' : '数据集浏览' }}</span>
+            </el-menu-item>
 
-        <el-menu-item index="/home/applications">
-          <el-icon><Memo /></el-icon>
-          <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
-        </el-menu-item>
+            <el-menu-item index="/home/applications">
+              <el-icon><Memo /></el-icon>
+              <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
+            </el-menu-item>
 
-        <el-menu-item index="/home/downloads">
-          <el-icon><Download /></el-icon>
-          <span>{{ userInfo.roleId > 1 ? '下载中心管理' : '下载中心' }}</span>
-        </el-menu-item>
+            <el-menu-item index="/home/downloads">
+              <el-icon><Download /></el-icon>
+              <span>{{ userInfo.roleId > 1 ? '下载中心管理' : '下载中心' }}</span>
+            </el-menu-item>
+          </el-menu-item-group>
+        </el-menu>
 
-        <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">
-          <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item>
+        <el-menu
+          v-if="userInfo.roleId > 0"
+          :default-active="route.path"
+          class="el-menu-vertical-demo menu-bottom"
+          router
+        >
+          <el-menu-item-group>
+            <template #title>
+              <div class="group-title-wrapper">
+                <span class="separator-start"></span>
+                <span class="group-text">系统管理</span>
+                <span class="separator-end"></span>
+              </div>
+            </template>
+            <el-menu-item index="/home/users">
+              <el-icon><User /></el-icon>
+              <span>用户管理</span>
+            </el-menu-item>
 
-        <el-menu-item index="/home/settings" v-if="userInfo.roleId > 1">
-          <el-icon><Setting /></el-icon>
-          <span>系统设置</span>
-        </el-menu-item>
-      </el-menu>
+            <el-menu-item index="/home/settings">
+              <el-icon><Setting /></el-icon>
+              <span>全局设置</span>
+            </el-menu-item>
+          </el-menu-item-group>
+        </el-menu>
+      </div>
     </el-aside>
 
     <el-container>
@@ -554,12 +581,41 @@ const currentPageTitle = computed(() => {
   color: #409eff;
   background-color: #fff;
 }
-.el-aside {
+.sidebar-container {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid #e6e6e6;
   background-color: #fff;
 }
+.sidebar-flex-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.menu-top {
+  flex: 1;
+  overflow-y: auto;
+}
 .el-menu {
   border-right: none;
+}
+.group-title-wrapper {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+}
+.separator-start {
+  width: 12px;
+  height: 1px;
+  background-color: #dcdfe6;
+  margin-right: 8px;
+}
+.separator-end {
+  flex: 1;
+  height: 1px;
+  background-color: #dcdfe6;
+  margin-left: 8px;
 }
 .el-header {
   background-color: #fff;

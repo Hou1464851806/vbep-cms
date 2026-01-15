@@ -34,9 +34,8 @@ const ROLE_MAP = {
 // 动态判断当前登录用户是否为超级管理员 (Role === 2)
 // 注意：HomeView 可能会把 role 格式化为 'admin'/'user' 字符串，
 // 所以我们通过 ID 在完整的 userList 中查找自己的原始 role 值来判断最准确
-const isSuperAdmin = computed(() => {
-  return currentUser && currentUser.roleId === 2
-})
+const isSuperAdmin = computed(() => currentUser && currentUser.roleId === 2)
+const isSimpleAdmin = computed(() => currentUser && currentUser.roleId === 1)
 
 // --- 数据格式化 ---
 const getRoleTag = (roleVal) => {
@@ -138,6 +137,13 @@ const handleSave = async (originalRow) => {
 </script>
 
 <template>
+  <el-alert
+    v-if="isSimpleAdmin"
+    title="只有超级管理员可以修改用户的权限组"
+    type="warning"
+    show-icon
+    style="margin-bottom: 20px"
+  />
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
