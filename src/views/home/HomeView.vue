@@ -321,7 +321,7 @@ const currentPageTitle = computed(() => {
     return roleId > 0 ? '审批管理' : '我的申请'
   }
   if (route.path.includes('/downloads')) {
-    return '下载中心'
+    return roleId > 1 ? '下载中心管理' : '下载中心'
   }
   if (route.path.includes('/users')) {
     return '用户管理'
@@ -351,7 +351,7 @@ const currentPageTitle = computed(() => {
 
         <el-menu-item index="/home/downloads">
           <el-icon><Download /></el-icon>
-          <span>下载中心</span>
+          <span>{{ userInfo.roleId > 1 ? '下载中心管理' : '下载中心' }}</span>
         </el-menu-item>
 
         <el-menu-item index="/home/users" v-if="userInfo.roleId > 0">

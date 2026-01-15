@@ -11,6 +11,7 @@ import {
   Clock,
   Upload,
   Delete,
+  Refresh,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -743,6 +744,9 @@ onMounted(fetchApplications)
     <template #header>
       <div class="card-header">
         <span>申请列表</span>
+        <div class="header-actions">
+          <el-button :icon="Refresh" circle @click="fetchApplications" :loading="isLoading" title="刷新列表" />
+        </div>
       </div>
     </template>
 

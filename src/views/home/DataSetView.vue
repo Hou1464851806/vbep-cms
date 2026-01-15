@@ -10,6 +10,7 @@ import {
   Download,
   Promotion,
   View,
+  Refresh,
 } from '@element-plus/icons-vue'
 import VuePdfEmbed from 'vue-pdf-embed'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
@@ -1005,9 +1006,10 @@ const handleSubmitApplication = async () => {
       <template #header>
         <div class="card-header">
           <span>数据集列表</span>
-          <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd"
-            >新增数据集</el-button
-          >
+          <div class="header-actions">
+            <el-button :icon="Refresh" circle @click="fetchDatasets" :loading="isDataLoading" title="刷新列表" />
+            <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd">新增数据集</el-button>
+          </div>
         </div>
       </template>
 
@@ -1016,7 +1018,7 @@ const handleSubmitApplication = async () => {
           <el-table-column label="内部ID" width="100">
             <template #default="{ row }">
               <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-                <span style="cursor: pointer; font-family: monospace; color: #909399">
+                <span class="monospace-id">
                   {{ formatShortId(row.id) }}
                 </span>
               </el-tooltip>

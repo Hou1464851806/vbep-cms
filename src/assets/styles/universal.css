@@ -48,3 +48,15 @@
   justify-content: flex-end;
   gap: 5px;
 }
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.monospace-id {
+  cursor: pointer;
+  font-family: monospace;
+  color: #909399;
+}

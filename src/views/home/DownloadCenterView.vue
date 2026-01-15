@@ -198,11 +198,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .upload-btn-wrapper {
   display: inline-flex;
 }

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, inject, reactive, computed } from 'vue'
-import { Edit, Check, Close } from '@element-plus/icons-vue'
+import { Edit, Check, Close, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 // 复用现有的 axios 实例
@@ -142,6 +142,9 @@ const handleSave = async (originalRow) => {
     <template #header>
       <div class="card-header">
         <span>用户列表</span>
+        <div class="header-actions">
+          <el-button :icon="Refresh" circle @click="fetchUsers" :loading="isLoading" title="刷新列表" />
+        </div>
       </div>
     </template>
 
@@ -149,7 +152,7 @@ const handleSave = async (originalRow) => {
       <el-table-column label="内部ID" width="100">
         <template #default="{ row }">
           <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-            <span style="cursor: pointer; font-family: monospace; color: #909399">
+            <span class="monospace-id">
               {{ formatShortId(row.id) }}
             </span>
           </el-tooltip>
