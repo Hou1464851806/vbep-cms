@@ -27,6 +27,11 @@ func SetSetting(settingsMap map[string]interface{}) error {
 		return err
 	}
 
+	// Force read from config file to ensure UnmarshalKey picks up the latest changes
+	if err := global.VP.ReadInConfig(); err != nil {
+		return err
+	}
+
 	// And finally, unmarshal the 'runtime' section back into our global config struct.
 	// This ensures the in-memory config is in sync with the file.
 	return global.VP.UnmarshalKey("runtime", &global.CFG.Runtime)

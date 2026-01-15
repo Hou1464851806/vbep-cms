@@ -49,8 +49,15 @@
         <div class="info-row">
           <div class="row-label">模版文件</div>
           <div class="row-content">
-            <span v-if="!editState.app_file">{{ settings.app_file || '未设置' }}</span>
-            <el-input v-else v-model="tempSettings.app_file" size="small" />
+            <span v-if="!editState.app_file">{{ getPublicFileName(settings.app_file) || '未设置' }}</span>
+            <el-select v-else v-model="tempSettings.app_file" size="small" placeholder="请选择文件" clearable>
+              <el-option
+                v-for="file in publicFiles"
+                :key="file.id"
+                :label="file.name"
+                :value="file.id"
+              />
+            </el-select>
           </div>
           <div class="row-action">
             <template v-if="canEdit">
@@ -84,6 +91,7 @@ const settings = ref({
   app_file: '',
   public_email: '',
 });
+const publicFiles = ref([]);
 
 // State for inline editing
 const editState = reactive({
@@ -110,8 +118,25 @@ const fetchSettings = async () => {
   }
 };
 
-onMounted(() => {
-  fetchSettings();
+const fetchPublicFiles = async () => {
+  try {
+    const response = await axios.get('/api/v1/files/public');
+    if (response.data.message === 'success') {
+      publicFiles.value = response.data.files;
+    }
+  } catch (error) {
+    console.error('Failed to fetch public files:', error);
+  }
+};
+
+const getPublicFileName = (id) => {
+  const file = publicFiles.value.find(f => f.id === id);
+  return file ? file.name : '';
+};
+
+onMounted(async () => {
+  await fetchPublicFiles();
+  await fetchSettings();
 });
 
 // Start editing a field
@@ -140,10 +165,6 @@ const saveField = async (field, labelName) => {
   }
 
   // Basic validation (can be expanded)
-  if (!newValue && field === 'app_file') {
-    ElMessage.warning(`${labelName}不能为空`);
-    return;
-  }
   if (field === 'public_email' && newValue) { // Validate only if not empty
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newValue)) {
