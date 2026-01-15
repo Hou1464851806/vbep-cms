@@ -1,38 +1,30 @@
 package service
 
 import (
-	"server/config"
 	"server/global"
+	"server/model"
 )
 
 // GetSetting retrieves the current system settings.
-// It reads directly from the in-memory global config.
-func GetSetting() (config.SettingConfig, error) {
-	return global.CFG.Runtime, nil
+// It reads from the database.
+func GetSetting() (*model.Setting, error) {
+	var setting model.Setting
+	// Use FirstOrCreate as requested.
+	// Note: This will try to find a record matching the empty struct (all fields zero/empty).
+	if err := global.DB.FirstOrCreate(&setting).Error; err != nil {
+		return nil, err
+	}
+	return &setting, nil
 }
 
 // SetSetting updates the system settings.
-// It updates the viper instance, writes to the config file, and updates the in-memory global config.
+// It updates the database record.
 func SetSetting(settingsMap map[string]interface{}) error {
-	// The settingsMap contains only the fields present in the PATCH request body.
-	for key, value := range settingsMap {
-		// To improve security, you could add validation here to ensure `key`
-		// is a known and modifiable setting before setting it in viper.
-		viperKey := "runtime." + key
-		global.VP.Set(viperKey, value)
-	}
-
-	// After setting all values in viper, write to file.
-	if err := global.VP.WriteConfig(); err != nil {
+	// Ensure the record exists by calling GetSetting
+	setting, err := GetSetting()
+	if err != nil {
 		return err
 	}
 
-	// Force read from config file to ensure UnmarshalKey picks up the latest changes
-	if err := global.VP.ReadInConfig(); err != nil {
-		return err
-	}
-
-	// And finally, unmarshal the 'runtime' section back into our global config struct.
-	// This ensures the in-memory config is in sync with the file.
-	return global.VP.UnmarshalKey("runtime", &global.CFG.Runtime)
+	return global.DB.Model(setting).Updates(settingsMap).Error
 }

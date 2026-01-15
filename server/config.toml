@@ -1,25 +1,23 @@
-app_name = 'vbep-cms'
-
-[database]
-db_name = 'vbep_cms'
-db_path = './main.sqlite3'
-db_type = 'sqlite'
-host = '127.0.0.1'
-password = 'hou812712'
-port = 5432
-ssl_mode = 'disable'
-time_zone = 'Asia/Shanghai'
-user = 'nonbeing'
-
-[redis]
-addr = '127.0.0.1:6379'
-db = 0
-password = ''
-
-[runtime]
-app_file = ''
-public_email = ''
+app_name = "vbep-cms"
 
 [server]
-ip = '0.0.0.0'
+ip = "0.0.0.0"
 port = 8080
+
+[database]
+db_type = "sqlite"
+# sqlite
+db_path = "./main.sqlite3"
+# postgres
+host = "127.0.0.1"
+port = 5432
+user = "nonbeing"
+password = "hou812712"
+db_name = "vbep_cms"
+ssl_mode = "disable"
+time_zone = "Asia/Shanghai"
+
+[redis]
+addr = "127.0.0.1:6379"
+password = ""
+db = 0

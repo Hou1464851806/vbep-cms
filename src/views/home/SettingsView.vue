@@ -50,12 +50,12 @@
           <div class="row-label">模版文件</div>
           <div class="row-content">
             <span v-if="!editState.app_file">{{ getPublicFileName(settings.app_file) || '未设置' }}</span>
-            <el-select v-else v-model="tempSettings.app_file" size="small" placeholder="请选择文件" clearable>
+            <el-select v-else v-model="tempSettings.app_file" size="small" placeholder="请选择文件" clearable filterable style="width: 100%">
               <el-option
                 v-for="file in publicFiles"
-                :key="file.id"
+                :key="getFileId(file)"
                 :label="file.name"
-                :value="file.id"
+                :value="getFileId(file)"
               />
             </el-select>
           </div>
@@ -122,15 +122,21 @@ const fetchPublicFiles = async () => {
   try {
     const response = await axios.get('/api/v1/files/public');
     if (response.data.message === 'success') {
-      publicFiles.value = response.data.files;
+      publicFiles.value = response.data.files || [];
     }
   } catch (error) {
     console.error('Failed to fetch public files:', error);
   }
 };
 
+const getFileId = (file) => {
+  // 兼容各种可能的 ID 字段名
+  return file.id || file.fileID || file.fileId || file.FileID || file.FileId || file.ID || file.fileid;
+};
+
 const getPublicFileName = (id) => {
-  const file = publicFiles.value.find(f => f.id === id);
+  if (!id) return '';
+  const file = publicFiles.value.find(f => getFileId(f) === id);
   return file ? file.name : '';
 };
 
@@ -140,9 +146,15 @@ onMounted(async () => {
 });
 
 // Start editing a field
-const startEdit = (field) => {
+const startEdit = async (field) => {
+  
+  // Refresh the file list when starting to edit the template file
+  if (field === 'app_file') {
+    await fetchPublicFiles();
+  }
+
   // Copy current value to temp storage
-  tempSettings[field] = settings.value[field];
+  tempSettings[field] = settings.value[field] || '';
   // Set editing state to true
   editState[field] = true;
 };
@@ -154,7 +166,7 @@ const cancelEdit = (field) => {
 
 // Save a single field
 const saveField = async (field, labelName) => {
-  const newValue = tempSettings[field];
+  const newValue = tempSettings[field] || '';
   const oldValue = settings.value[field];
 
   // Diff check: if value hasn't changed, just exit edit mode
