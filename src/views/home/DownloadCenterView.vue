@@ -6,6 +6,10 @@ import {
   Download,
   Delete,
   Refresh,
+  Picture,
+  VideoPlay,
+  Headset,
+  Box,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -34,6 +38,24 @@ const isAdmin = inject('isAdmin')
 const fileList = ref([])
 const isLoading = ref(false)
 const isUploading = ref(false)
+
+// --- 辅助函数 ---
+const getFileIcon = (fileName) => {
+  if (!fileName) return Document
+  const ext = fileName.split('.').pop().toLowerCase()
+
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp']
+  const videoExts = ['mp4', 'avi', 'mov', 'mkv', 'webm']
+  const audioExts = ['mp3', 'wav', 'ogg', 'flac']
+  const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz']
+
+  if (imageExts.includes(ext)) return Picture
+  if (videoExts.includes(ext)) return VideoPlay
+  if (audioExts.includes(ext)) return Headset
+  if (archiveExts.includes(ext)) return Box
+
+  return Document
+}
 
 // --- 方法 ---
 const loadFiles = async () => {
@@ -154,7 +176,9 @@ onMounted(() => {
       <el-table-column label="文件名" min-width="300">
         <template #default="{ row }">
           <div class="file-name-cell">
-            <el-icon class="file-icon"><Document /></el-icon>
+            <el-icon class="file-icon">
+              <component :is="getFileIcon(row.name)" />
+            </el-icon>
             <span class="file-name-text" :title="row.name">{{ row.name }}</span>
           </div>
         </template>
