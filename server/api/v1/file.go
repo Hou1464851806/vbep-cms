@@ -160,7 +160,7 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 		return
 	}
 
-	targetPath := file.Path
+	targetPath := file.GetPath()
 	if !filepath.IsAbs(targetPath) {
 		if abs, err := filepath.Abs(targetPath); err == nil {
 			targetPath = abs
@@ -311,7 +311,7 @@ func (a *FileApi) DownloadByApplication(ctx *gin.Context) {
 		return
 	}
 
-	targetPath := file.Path
+	targetPath := file.GetPath()
 	if !filepath.IsAbs(targetPath) {
 		if abs, err := filepath.Abs(targetPath); err == nil {
 			targetPath = abs
@@ -439,7 +439,7 @@ func (a *FileApi) DownloadPublic(ctx *gin.Context) {
 		return
 	}
 
-	targetPath := file.Path
+	targetPath := file.GetPath()
 	if !filepath.IsAbs(targetPath) {
 		if abs, err := filepath.Abs(targetPath); err == nil {
 			targetPath = abs

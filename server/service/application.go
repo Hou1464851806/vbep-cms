@@ -342,7 +342,7 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 	cleanup = func(success bool) {
 		if success {
 			for _, file := range filesToDelete {
-				removePhysicalFile(file.Path)
+				removePhysicalFile(file.GetPath())
 			}
 			if len(filesToDelete) > 0 {
 				cleanupApplicationDirectory(applicationID)
@@ -377,8 +377,7 @@ func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationI
 		return nil, "", fmt.Errorf("failed to create application upload directory: %w", err)
 	}
 
-	fileExt := filepath.Ext(fileHeader.Filename)
-	targetPath := filepath.Clean(filepath.Join(appDir, fmt.Sprintf("%s%s", fileUUID, fileExt)))
+	targetPath := filepath.Clean(filepath.Join(appDir, fileUUID))
 	dst, err := os.Create(targetPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to create destination file: %w", err)
@@ -397,7 +396,6 @@ func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationI
 			ID: fileUUID,
 		},
 		Name:      fileHeader.Filename,
-		Path:      filepath.ToSlash(targetPath),
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      uint(written),
 		OwnerID:   applicationID,

@@ -61,8 +61,7 @@ func (s *FileService) CreateDatasetFile(datasetID, creatorID string, fileHeader 
 		return nil, fmt.Errorf("failed to create dataset upload directory: %w", err)
 	}
 
-	fileExt := filepath.Ext(fileHeader.Filename)
-	targetPath := filepath.Clean(filepath.Join(datasetDir, fmt.Sprintf("%s%s", fileUUID, fileExt)))
+	targetPath := filepath.Clean(filepath.Join(datasetDir, fileUUID))
 	tmpFile, err := os.Create(targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create destination file: %w", err)
@@ -81,7 +80,6 @@ func (s *FileService) CreateDatasetFile(datasetID, creatorID string, fileHeader 
 			ID: fileUUID,
 		},
 		Name:      fileHeader.Filename,
-		Path:      filepath.ToSlash(targetPath),
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      size,
 		OwnerID:   datasetID,
@@ -145,7 +143,7 @@ func (s *FileService) DeleteDatasetFile(datasetID, fileID string) error {
 		return gorm.ErrRecordNotFound
 	}
 
-	removePhysicalFile(file.Path)
+	removePhysicalFile(file.GetPath())
 	cleanupDatasetDirectory(datasetID)
 	return nil
 }
@@ -175,8 +173,7 @@ func (s *FileService) CreateApplicationFile(applicationID, creatorID string, fil
 		return nil, fmt.Errorf("failed to create application upload directory: %w", err)
 	}
 
-	fileExt := filepath.Ext(fileHeader.Filename)
-	targetPath := filepath.Clean(filepath.Join(appDir, fmt.Sprintf("%s%s", fileUUID, fileExt)))
+	targetPath := filepath.Clean(filepath.Join(appDir, fileUUID))
 	tmpFile, err := os.Create(targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create destination file: %w", err)
@@ -195,7 +192,6 @@ func (s *FileService) CreateApplicationFile(applicationID, creatorID string, fil
 			ID: fileUUID,
 		},
 		Name:      fileHeader.Filename,
-		Path:      filepath.ToSlash(targetPath),
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      size,
 		OwnerID:   applicationID,
@@ -258,7 +254,7 @@ func (s *FileService) DeleteApplicationFile(applicationID, fileID string) error 
 		return gorm.ErrRecordNotFound
 	}
 
-	removePhysicalFile(file.Path)
+	removePhysicalFile(file.GetPath())
 	cleanupApplicationDirectory(applicationID)
 	return nil
 }
@@ -273,7 +269,7 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 	}
 
 	for _, file := range files {
-		removePhysicalFile(file.Path)
+		removePhysicalFile(file.GetPath())
 	}
 
 	res := global.DB.WithContext(ctx).
@@ -309,8 +305,7 @@ func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.F
 		return nil, fmt.Errorf("failed to create public upload directory: %w", err)
 	}
 
-	fileExt := filepath.Ext(fileHeader.Filename)
-	targetPath := filepath.Clean(filepath.Join(publicDir, fmt.Sprintf("%s%s", fileUUID, fileExt)))
+	targetPath := filepath.Clean(filepath.Join(publicDir, fileUUID))
 	tmpFile, err := os.Create(targetPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create destination file: %w", err)
@@ -330,7 +325,6 @@ func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.F
 			ID: fileUUID,
 		},
 		Name:      fileHeader.Filename,
-		Path:      filepath.ToSlash(targetPath),
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      size,
 		OwnerID:   publicOwnerID,
@@ -389,7 +383,7 @@ func (s *FileService) DeletePublicFile(fileID string) error {
 		return gorm.ErrRecordNotFound
 	}
 
-	removePhysicalFile(file.Path)
+	removePhysicalFile(file.GetPath())
 	return nil
 }
 
