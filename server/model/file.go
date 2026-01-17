@@ -9,4 +9,5 @@ type File struct {
 
 	OwnerID   string `gorm:"not null;index"`
 	OwnerType string `gorm:"not null"`
+	CreatorID string `gorm:"not null;index"`
 }

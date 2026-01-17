@@ -98,7 +98,13 @@ func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreateDatasetFile(datasetID, fileHeader)
+	user, ok := getUserFromContext(ctx)
+	if !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+
+	file, err := a.service.CreateDatasetFile(datasetID, user.ID, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
@@ -256,7 +262,7 @@ func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreateApplicationFile(applicationID, fileHeader)
+	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
@@ -395,7 +401,7 @@ func (a *FileApi) UploadPublic(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreatePublicFile(fileHeader)
+	file, err := a.service.CreatePublicFile(user.ID, fileHeader)
 	if err != nil {
 		logger.Errorf("failed to upload public file: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})

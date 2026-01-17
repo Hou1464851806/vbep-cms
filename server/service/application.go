@@ -258,7 +258,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string,
 			return ErrApplicationNotEditable
 		}
 
-		syncCleanup, err := s.syncApplicationAttachmentsTx(tx, id, keptFileIDs, newFiles)
+		syncCleanup, err := s.syncApplicationAttachmentsTx(tx, id, applicantID, keptFileIDs, newFiles)
 		if err != nil {
 			return err
 		}
@@ -295,7 +295,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string,
 	return s.GetApplicationByID(id)
 }
 
-func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicationID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (func(bool), error) {
+func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (func(bool), error) {
 	cleanup := func(bool) {}
 	kept := make(map[string]struct{})
 	for _, id := range keptFileIDs {
@@ -332,7 +332,7 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 		if header == nil {
 			continue
 		}
-		_, storedPath, err := s.saveApplicationFileWithTx(tx, applicationID, header)
+		_, storedPath, err := s.saveApplicationFileWithTx(tx, applicationID, creatorID, header)
 		if err != nil {
 			return cleanup, err
 		}
@@ -357,7 +357,7 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 	return cleanup, nil
 }
 
-func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
+func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
 	if fileHeader == nil {
 		return nil, "", fmt.Errorf("file header cannot be empty")
 	}
@@ -402,6 +402,7 @@ func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationI
 		Size:      uint(written),
 		OwnerID:   applicationID,
 		OwnerType: applicationOwnerType,
+		CreatorID: creatorID,
 	}
 
 	if err := tx.Create(newFile).Error; err != nil {

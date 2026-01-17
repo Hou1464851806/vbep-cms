@@ -36,7 +36,7 @@ func NewFileService() *FileService {
 	return &FileService{}
 }
 
-func (s *FileService) CreateDatasetFile(datasetID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreateDatasetFile(datasetID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	if fileHeader == nil {
 		return nil, fmt.Errorf("file header cannot be empty")
 	}
@@ -86,6 +86,7 @@ func (s *FileService) CreateDatasetFile(datasetID string, fileHeader *multipart.
 		Size:      size,
 		OwnerID:   datasetID,
 		OwnerType: datasetOwnerType,
+		CreatorID: creatorID,
 	}
 
 	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
@@ -149,7 +150,7 @@ func (s *FileService) DeleteDatasetFile(datasetID, fileID string) error {
 	return nil
 }
 
-func (s *FileService) CreateApplicationFile(applicationID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreateApplicationFile(applicationID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	if fileHeader == nil {
 		return nil, fmt.Errorf("file header cannot be empty")
 	}
@@ -199,6 +200,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, fileHeader *mu
 		Size:      size,
 		OwnerID:   applicationID,
 		OwnerType: applicationOwnerType,
+		CreatorID: creatorID,
 	}
 
 	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
@@ -287,7 +289,7 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 	return nil
 }
 
-func (s *FileService) CreatePublicFile(fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	if fileHeader == nil {
 		return nil, fmt.Errorf("file header cannot be empty")
 	}
@@ -333,6 +335,7 @@ func (s *FileService) CreatePublicFile(fileHeader *multipart.FileHeader) (*model
 		Size:      size,
 		OwnerID:   publicOwnerID,
 		OwnerType: publicOwnerType,
+		CreatorID: creatorID,
 	}
 
 	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
