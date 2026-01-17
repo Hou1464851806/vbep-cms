@@ -155,7 +155,7 @@ const descriptionDialogVisible = ref(false);
 
 const fetchSettings = async () => {
   try {
-    const response = await axios.get('/api/v1/setting');
+    const response = await axios.get('/api/v1/settings');
     if (response.data.message === 'success') {
       settings.value = response.data.data;
     } else {
@@ -242,7 +242,7 @@ const saveField = async (field, labelName) => {
 
   try {
     const payload = { [field]: newValue };
-    const response = await axios.patch('/api/v1/setting', payload);
+    const response = await axios.patch('/api/v1/settings', payload);
     if (response.data.message === 'success') {
       ElMessage.success(`${labelName}已更新`);
       // Update local state
@@ -267,7 +267,7 @@ const saveDescription = async () => {
   
   try {
     const payload = { template_description: newValue };
-    const response = await axios.patch('/api/v1/setting', payload);
+    const response = await axios.patch('/api/v1/settings', payload);
     if (response.data.message === 'success') {
       ElMessage.success('模版描述已更新');
       settings.value.template_description = newValue;

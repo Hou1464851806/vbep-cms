@@ -33,7 +33,6 @@ func NewApplicationApi() *ApplicationApi {
 
 type createApplicationParam struct {
 	DatasetID string `json:"datasetId" binding:"required"`
-	Reason    string `json:"reason" binding:"required"`
 }
 
 type auditApplicationParam struct {
@@ -65,7 +64,7 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 		DatasetID:   param.DatasetID,
 		ApplicantID: userIDStr,
 		Status:      model.PENDING,
-		Reason:      param.Reason,
+		Reason:      "申请资料已提交",
 	}
 
 	if err := a.service.CreateApplication(app); err != nil {
