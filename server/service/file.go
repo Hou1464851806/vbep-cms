@@ -19,14 +19,14 @@ import (
 )
 
 const (
-	datasetUploadRoot     = "uploads/datasets"
-	applicationUploadRoot = "uploads/applications"
-	maxUploadSize         = 500 * 1024 * 1024
-	datasetOwnerType      = "datasets"
-	applicationOwnerType  = "applications"
-	publicDownloadRoot    = "uploads/public_downloads"
-	publicOwnerType       = "public_downloads"
-	publicOwnerID         = "system"
+	maxUploadSize = 500 * 1024 * 1024
+	publicOwnerID = "system"
+)
+
+const (
+	datasetOwnerType     = "datasets"
+	applicationOwnerType = "applications"
+	publicOwnerType      = "public_downloads"
 )
 
 type FileService struct {
@@ -36,42 +36,42 @@ func NewFileService() *FileService {
 	return &FileService{}
 }
 
-func (s *FileService) CreateDatasetFile(datasetID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+// --- Create ---
+
+func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, ownerType, creatorID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
 	if fileHeader == nil {
-		return nil, fmt.Errorf("file header cannot be empty")
+		return nil, "", fmt.Errorf("file header cannot be empty")
 	}
 	if fileHeader.Size > maxUploadSize {
-		return nil, fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
-	}
-
-	ctx := context.Background()
-	if err := s.ensureDatasetExists(ctx, datasetID); err != nil {
-		return nil, err
+		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
 	}
 
 	src, err := fileHeader.Open()
 	if err != nil {
-		return nil, fmt.Errorf("failed to open upload file: %w", err)
+		return nil, "", fmt.Errorf("failed to open upload file: %w", err)
 	}
 	defer src.Close()
 
 	fileUUID := uuid.NewV4()
-	datasetDir := datasetDirPath(datasetID)
-	if err := os.MkdirAll(datasetDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to create dataset upload directory: %w", err)
+	ownerDir := model.GetDir(ownerType, ownerID)
+	if err := os.MkdirAll(ownerDir, os.ModePerm); err != nil {
+		return nil, "", fmt.Errorf("failed to create upload directory: %w", err)
 	}
 
-	targetPath := filepath.Clean(filepath.Join(datasetDir, fileUUID))
+	targetPath := filepath.Clean(filepath.Join(ownerDir, fileUUID))
 	tmpFile, err := os.Create(targetPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create destination file: %w", err)
+		return nil, "", fmt.Errorf("failed to create destination file: %w", err)
 	}
 	defer tmpFile.Close()
 
 	hasher := md5.New()
 	written, err := io.Copy(io.MultiWriter(tmpFile, hasher), src)
 	if err != nil {
-		return nil, fmt.Errorf("failed to write file to disk: %w", err)
+		// 清理可能残留的文件
+		tmpFile.Close()
+		os.Remove(targetPath)
+		return nil, "", fmt.Errorf("failed to write file to disk: %w", err)
 	}
 
 	size := uint(written)
@@ -82,17 +82,79 @@ func (s *FileService) CreateDatasetFile(datasetID, creatorID string, fileHeader 
 		Name:      fileHeader.Filename,
 		MD5:       hex.EncodeToString(hasher.Sum(nil)),
 		Size:      size,
-		OwnerID:   datasetID,
-		OwnerType: datasetOwnerType,
+		OwnerID:   ownerID,
+		OwnerType: ownerType,
 		CreatorID: creatorID,
 	}
 
-	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
-		_ = os.Remove(targetPath)
-		return nil, fmt.Errorf("failed to save file metadata: %w", err)
+	db := global.DB
+	if tx != nil {
+		db = tx
 	}
 
+	if err := db.WithContext(ctx).Create(newFile).Error; err != nil {
+		_ = os.Remove(targetPath)
+		return nil, "", fmt.Errorf("failed to save file metadata: %w", err)
+	}
+
+	return newFile, targetPath, nil
+}
+
+func (s *FileService) CreateDatasetFile(datasetID string, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+	ctx := context.Background()
+	if err := s.ensureDatasetExists(ctx, datasetID); err != nil {
+		return nil, err
+	}
+
+	newFile, _, err := s.UploadFile(ctx, nil, datasetID, datasetOwnerType, creatorID, fileHeader)
+	if err != nil {
+		return nil, err
+	}
 	return newFile, nil
+}
+
+func (s *FileService) CreateApplicationFile(applicationID string, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+	ctx := context.Background()
+	if err := s.ensureApplicationExists(ctx, applicationID); err != nil {
+		return nil, err
+	}
+
+	newFile, _, err := s.UploadFile(ctx, nil, applicationID, applicationOwnerType, creatorID, fileHeader)
+	if err != nil {
+		return nil, err
+	}
+	return newFile, nil
+}
+
+func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+	ctx := context.Background()
+	newFile, _, err := s.UploadFile(ctx, nil, publicOwnerID, publicOwnerType, creatorID, fileHeader)
+	if err != nil {
+		return nil, err
+	}
+	return newFile, nil
+}
+
+// --- Get ---
+
+func (s *FileService) ListFiles(ctx context.Context, ownerID, ownerType string) ([]model.File, error) {
+	var files []model.File
+	err := global.DB.WithContext(ctx).
+		Where("owner_id = ? AND owner_type = ?", ownerID, ownerType).
+		Order("created_at DESC").
+		Find(&files).Error
+	return files, err
+}
+
+func (s *FileService) GetFile(ctx context.Context, fileID, ownerID, ownerType string) (*model.File, error) {
+	var file model.File
+	err := global.DB.WithContext(ctx).
+		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, ownerID, ownerType).
+		First(&file).Error
+	if err != nil {
+		return nil, err
+	}
+	return &file, nil
 }
 
 func (s *FileService) GetFilesByDataset(datasetID string) ([]model.File, error) {
@@ -100,111 +162,19 @@ func (s *FileService) GetFilesByDataset(datasetID string) ([]model.File, error) 
 	if err := s.ensureDatasetExists(ctx, datasetID); err != nil {
 		return nil, err
 	}
-
-	files, err := gorm.G[model.File](global.DB).
-		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
-		Order("created_at DESC").
-		Find(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query files for dataset: %w", err)
-	}
-
-	return files, nil
+	return s.ListFiles(ctx, datasetID, datasetOwnerType)
 }
 
 func (s *FileService) GetDatasetFile(datasetID, fileID string) (*model.File, error) {
 	ctx := context.Background()
-	file, err := gorm.G[model.File](global.DB).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, datasetID, datasetOwnerType).
-		First(ctx)
+	file, err := s.GetFile(ctx, fileID, datasetID, datasetOwnerType)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to query dataset file: %w", err)
 	}
-	return &file, nil
-}
-
-func (s *FileService) DeleteDatasetFile(datasetID, fileID string) error {
-	file, err := s.GetDatasetFile(datasetID, fileID)
-	if err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-	res := global.DB.WithContext(ctx).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, datasetID, datasetOwnerType).
-		Delete(&model.File{})
-	if res.Error != nil {
-		return fmt.Errorf("failed to delete file record: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-
-	removePhysicalFile(file.GetPath())
-	cleanupDatasetDirectory(datasetID)
-	return nil
-}
-
-func (s *FileService) CreateApplicationFile(applicationID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
-	if fileHeader == nil {
-		return nil, fmt.Errorf("file header cannot be empty")
-	}
-	if fileHeader.Size > maxUploadSize {
-		return nil, fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
-	}
-
-	ctx := context.Background()
-	if err := s.ensureApplicationExists(ctx, applicationID); err != nil {
-		return nil, err
-	}
-
-	src, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open upload file: %w", err)
-	}
-	defer src.Close()
-
-	fileUUID := uuid.NewV4()
-	appDir := applicationDirPath(applicationID)
-	if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to create application upload directory: %w", err)
-	}
-
-	targetPath := filepath.Clean(filepath.Join(appDir, fileUUID))
-	tmpFile, err := os.Create(targetPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer tmpFile.Close()
-
-	hasher := md5.New()
-	written, err := io.Copy(io.MultiWriter(tmpFile, hasher), src)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file to disk: %w", err)
-	}
-
-	size := uint(written)
-	newFile := &model.File{
-		Base: model.Base{
-			ID: fileUUID,
-		},
-		Name:      fileHeader.Filename,
-		MD5:       hex.EncodeToString(hasher.Sum(nil)),
-		Size:      size,
-		OwnerID:   applicationID,
-		OwnerType: applicationOwnerType,
-		CreatorID: creatorID,
-	}
-
-	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
-		_ = os.Remove(targetPath)
-		return nil, fmt.Errorf("failed to save file metadata: %w", err)
-	}
-
-	return newFile, nil
+	return file, nil
 }
 
 func (s *FileService) GetFilesByApplication(applicationID string) ([]model.File, error) {
@@ -212,40 +182,48 @@ func (s *FileService) GetFilesByApplication(applicationID string) ([]model.File,
 	if err := s.ensureApplicationExists(ctx, applicationID); err != nil {
 		return nil, err
 	}
-
-	files, err := gorm.G[model.File](global.DB).
-		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
-		Order("created_at DESC").
-		Find(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query files for application: %w", err)
-	}
-	return files, nil
+	return s.ListFiles(ctx, applicationID, applicationOwnerType)
 }
 
 func (s *FileService) GetApplicationFile(applicationID, fileID string) (*model.File, error) {
 	ctx := context.Background()
-	file, err := gorm.G[model.File](global.DB).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, applicationID, applicationOwnerType).
-		First(ctx)
+	file, err := s.GetFile(ctx, fileID, applicationID, applicationOwnerType)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
 		return nil, fmt.Errorf("failed to query application file: %w", err)
 	}
-	return &file, nil
+	return file, nil
 }
 
-func (s *FileService) DeleteApplicationFile(applicationID, fileID string) error {
-	file, err := s.GetApplicationFile(applicationID, fileID)
+func (s *FileService) GetPublicFiles() ([]model.File, error) {
+	ctx := context.Background()
+	return s.ListFiles(ctx, publicOwnerID, publicOwnerType)
+}
+
+func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
+	ctx := context.Background()
+	file, err := s.GetFile(ctx, fileID, publicOwnerID, publicOwnerType)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, err
+		}
+		return nil, fmt.Errorf("failed to query public file: %w", err)
+	}
+	return file, nil
+}
+
+// --- Delete ---
+
+func (s *FileService) DeleteFile(ctx context.Context, fileID, ownerID, ownerType string) error {
+	file, err := s.GetFile(ctx, fileID, ownerID, ownerType)
 	if err != nil {
 		return err
 	}
 
-	ctx := context.Background()
 	res := global.DB.WithContext(ctx).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, applicationID, applicationOwnerType).
+		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, ownerID, ownerType).
 		Delete(&model.File{})
 	if res.Error != nil {
 		return fmt.Errorf("failed to delete file record: %w", res.Error)
@@ -255,15 +233,17 @@ func (s *FileService) DeleteApplicationFile(applicationID, fileID string) error 
 	}
 
 	removePhysicalFile(file.GetPath())
-	cleanupApplicationDirectory(applicationID)
+	cleanupOwnerDirectory(ownerType, ownerID)
 	return nil
+}
+
+func (s *FileService) DeleteDatasetFile(datasetID, fileID string) error {
+	return s.DeleteFile(context.Background(), fileID, datasetID, datasetOwnerType)
 }
 
 func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 	ctx := context.Background()
-	files, err := gorm.G[model.File](global.DB).
-		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
-		Find(ctx)
+	files, err := s.ListFiles(ctx, datasetID, datasetOwnerType)
 	if err != nil {
 		return fmt.Errorf("failed to query files for dataset %s: %w", datasetID, err)
 	}
@@ -279,113 +259,21 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetID, res.Error)
 	}
 
-	if err := os.RemoveAll(datasetDirPath(datasetID)); err != nil && !os.IsNotExist(err) {
+	if err := os.RemoveAll(model.GetDir(datasetOwnerType, datasetID)); err != nil && !os.IsNotExist(err) {
 		logger.Warnf("failed to remove dataset directory %s: %v", datasetID, err)
 	}
 	return nil
 }
 
-func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
-	if fileHeader == nil {
-		return nil, fmt.Errorf("file header cannot be empty")
-	}
-	if fileHeader.Size > maxUploadSize {
-		return nil, fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
-	}
-
-	src, err := fileHeader.Open()
-	if err != nil {
-		return nil, fmt.Errorf("failed to open upload file: %w", err)
-	}
-	defer src.Close()
-
-	fileUUID := uuid.NewV4()
-	publicDir := publicDirPath()
-	if err := os.MkdirAll(publicDir, os.ModePerm); err != nil {
-		return nil, fmt.Errorf("failed to create public upload directory: %w", err)
-	}
-
-	targetPath := filepath.Clean(filepath.Join(publicDir, fileUUID))
-	tmpFile, err := os.Create(targetPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer tmpFile.Close()
-
-	hasher := md5.New()
-	written, err := io.Copy(io.MultiWriter(tmpFile, hasher), src)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write file to disk: %w", err)
-	}
-
-	ctx := context.Background()
-	size := uint(written)
-	newFile := &model.File{
-		Base: model.Base{
-			ID: fileUUID,
-		},
-		Name:      fileHeader.Filename,
-		MD5:       hex.EncodeToString(hasher.Sum(nil)),
-		Size:      size,
-		OwnerID:   publicOwnerID,
-		OwnerType: publicOwnerType,
-		CreatorID: creatorID,
-	}
-
-	if err := gorm.G[model.File](global.DB).Create(ctx, newFile); err != nil {
-		_ = os.Remove(targetPath)
-		return nil, fmt.Errorf("failed to save file metadata: %w", err)
-	}
-
-	return newFile, nil
-}
-
-func (s *FileService) GetPublicFiles() ([]model.File, error) {
-	ctx := context.Background()
-	files, err := gorm.G[model.File](global.DB).
-		Where("owner_id = ? AND owner_type = ?", publicOwnerID, publicOwnerType).
-		Order("created_at DESC").
-		Find(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query public files: %w", err)
-	}
-	return files, nil
-}
-
-func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
-	ctx := context.Background()
-	file, err := gorm.G[model.File](global.DB).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, publicOwnerID, publicOwnerType).
-		First(ctx)
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, err
-		}
-		return nil, fmt.Errorf("failed to query public file: %w", err)
-	}
-	return &file, nil
+func (s *FileService) DeleteApplicationFile(applicationID, fileID string) error {
+	return s.DeleteFile(context.Background(), fileID, applicationID, applicationOwnerType)
 }
 
 func (s *FileService) DeletePublicFile(fileID string) error {
-	file, err := s.GetPublicFile(fileID)
-	if err != nil {
-		return err
-	}
-
-	ctx := context.Background()
-	res := global.DB.WithContext(ctx).
-		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, publicOwnerID, publicOwnerType).
-		Delete(&model.File{})
-	if res.Error != nil {
-		return fmt.Errorf("failed to delete file record: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
-	}
-
-	removePhysicalFile(file.GetPath())
-	return nil
+	return s.DeleteFile(context.Background(), fileID, publicOwnerID, publicOwnerType)
 }
+
+// --- Other ---
 
 func (s *FileService) ensureDatasetExists(ctx context.Context, datasetID string) error {
 	_, err := gorm.G[model.Dataset](global.DB).
@@ -415,18 +303,6 @@ func (s *FileService) ensureApplicationExists(ctx context.Context, applicationID
 	return nil
 }
 
-func datasetDirPath(datasetID string) string {
-	return filepath.Join(datasetUploadRoot, datasetID)
-}
-
-func applicationDirPath(applicationID string) string {
-	return filepath.Join(applicationUploadRoot, applicationID)
-}
-
-func publicDirPath() string {
-	return filepath.Join(publicDownloadRoot, publicOwnerID)
-}
-
 func removePhysicalFile(filePath string) {
 	targetPath := filePath
 	if !filepath.IsAbs(targetPath) {
@@ -439,8 +315,8 @@ func removePhysicalFile(filePath string) {
 	}
 }
 
-func cleanupDatasetDirectory(datasetUUID string) {
-	dir := datasetDirPath(datasetUUID)
+func cleanupOwnerDirectory(ownerType, ownerID string) {
+	dir := model.GetDir(ownerType, ownerID)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -450,23 +326,15 @@ func cleanupDatasetDirectory(datasetUUID string) {
 	}
 	if len(entries) == 0 {
 		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-			logger.Warnf("failed to remove dataset directory %s: %v", dir, err)
+			logger.Warnf("failed to remove directory %s: %v", dir, err)
 		}
 	}
 }
 
+func cleanupDatasetDirectory(datasetUUID string) {
+	cleanupOwnerDirectory(datasetOwnerType, datasetUUID)
+}
+
 func cleanupApplicationDirectory(applicationID string) {
-	dir := applicationDirPath(applicationID)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			logger.Warnf("failed to inspect application directory %s: %v", dir, err)
-		}
-		return
-	}
-	if len(entries) == 0 {
-		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-			logger.Warnf("failed to remove application directory %s: %v", dir, err)
-		}
-	}
+	cleanupOwnerDirectory(applicationOwnerType, applicationID)
 }

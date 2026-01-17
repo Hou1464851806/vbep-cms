@@ -2,14 +2,9 @@ package service
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"mime/multipart"
-	"os"
-	"path/filepath"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,7 +12,6 @@ import (
 
 	"server/global"
 	"server/model"
-	"server/pkg/uuid"
 )
 
 var (
@@ -332,7 +326,7 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 		if header == nil {
 			continue
 		}
-		_, storedPath, err := s.saveApplicationFileWithTx(tx, applicationID, creatorID, header)
+		_, storedPath, err := NewFileService().UploadFile(context.Background(), tx, applicationID, applicationOwnerType, creatorID, header)
 		if err != nil {
 			return cleanup, err
 		}
@@ -355,58 +349,4 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 	}
 
 	return cleanup, nil
-}
-
-func (s *ApplicationService) saveApplicationFileWithTx(tx *gorm.DB, applicationID, creatorID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
-	if fileHeader == nil {
-		return nil, "", fmt.Errorf("file header cannot be empty")
-	}
-	if fileHeader.Size > maxUploadSize {
-		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
-	}
-
-	src, err := fileHeader.Open()
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to open upload file: %w", err)
-	}
-	defer src.Close()
-
-	fileUUID := uuid.NewV4()
-	appDir := applicationDirPath(applicationID)
-	if err := os.MkdirAll(appDir, os.ModePerm); err != nil {
-		return nil, "", fmt.Errorf("failed to create application upload directory: %w", err)
-	}
-
-	targetPath := filepath.Clean(filepath.Join(appDir, fileUUID))
-	dst, err := os.Create(targetPath)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to create destination file: %w", err)
-	}
-	defer dst.Close()
-
-	hasher := md5.New()
-	written, err := io.Copy(io.MultiWriter(dst, hasher), src)
-	if err != nil {
-		removePhysicalFile(targetPath)
-		return nil, "", fmt.Errorf("failed to write file to disk: %w", err)
-	}
-
-	newFile := &model.File{
-		Base: model.Base{
-			ID: fileUUID,
-		},
-		Name:      fileHeader.Filename,
-		MD5:       hex.EncodeToString(hasher.Sum(nil)),
-		Size:      uint(written),
-		OwnerID:   applicationID,
-		OwnerType: applicationOwnerType,
-		CreatorID: creatorID,
-	}
-
-	if err := tx.Create(newFile).Error; err != nil {
-		removePhysicalFile(targetPath)
-		return nil, "", fmt.Errorf("failed to save file metadata: %w", err)
-	}
-
-	return newFile, targetPath, nil
 }
