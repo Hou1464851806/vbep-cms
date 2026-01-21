@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -214,6 +215,31 @@ func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
 	return file, nil
 }
 
+func (s *FileService) GetPublicTemplateFiles() ([]model.File, string, error) {
+	setting, err := GetSetting()
+	if err != nil {
+		return nil, "", err
+	}
+	if setting.TemplateFile == "" {
+		return []model.File{}, setting.TemplateDescription, nil
+	}
+
+	ids := strings.Split(setting.TemplateFile, ",")
+	var targetIDs []string
+	for _, id := range ids {
+		if t := strings.TrimSpace(id); t != "" {
+			targetIDs = append(targetIDs, t)
+		}
+	}
+
+	var files []model.File
+	err = global.DB.WithContext(context.Background()).
+		Where("id IN ? AND owner_id = ? AND owner_type = ?", targetIDs, publicOwnerID, publicOwnerType).
+		Find(&files).Error
+
+	return files, setting.TemplateDescription, err
+}
+
 // --- Delete ---
 
 func (s *FileService) DeleteFile(ctx context.Context, fileID, ownerID, ownerType string) error {
@@ -320,7 +346,7 @@ func cleanupOwnerDirectory(ownerType, ownerID string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			logger.Warnf("failed to inspect dataset directory %s: %v", dir, err)
+			logger.Warnf("failed to inspect directory %s: %v", dir, err)
 		}
 		return
 	}
@@ -329,12 +355,4 @@ func cleanupOwnerDirectory(ownerType, ownerID string) {
 			logger.Warnf("failed to remove directory %s: %v", dir, err)
 		}
 	}
-}
-
-func cleanupDatasetDirectory(datasetUUID string) {
-	cleanupOwnerDirectory(datasetOwnerType, datasetUUID)
-}
-
-func cleanupApplicationDirectory(applicationID string) {
-	cleanupOwnerDirectory(applicationOwnerType, applicationID)
 }

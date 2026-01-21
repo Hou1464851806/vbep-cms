@@ -20,7 +20,6 @@ type Application struct {
 	DatasetID   string            `gorm:"not null;type:char(36)"`                                                             // 申请的目标数据集
 	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
 	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
-	Reason      string            `gorm:"not null"`                                                                           // 申请的理由
 
 	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"` // 申请的审批记录历史
 	Files  []File  `gorm:"polymorphic:Owner;"`                     // 申请的附件
@@ -29,7 +28,6 @@ type Application struct {
 type ApplicationListItem struct {
 	ID        string       `json:"id"`
 	Status    string       `json:"status"`
-	Reason    string       `json:"reason"`
 	Applicant UserBrief    `json:"applicant"`
 	Dataset   DatasetBrief `json:"dataset"`
 	Auditor   *UserBrief   `json:"auditor,omitempty"`
@@ -57,7 +55,6 @@ func (app Application) ToListItem() ApplicationListItem {
 	item := ApplicationListItem{
 		ID:        app.ID,
 		Status:    app.Status.String(),
-		Reason:    app.Reason,
 		Applicant: app.Applicant.ToBrief(),
 		Dataset:   app.Dataset.ToBrief(),
 		CreatedAt: app.CreatedAt,

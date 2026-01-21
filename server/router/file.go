@@ -36,6 +36,7 @@ func (r *FileRouter) InitFileRouter(router *gin.RouterGroup) {
 	publicFiles.Use(middleware.JWTAuth())
 	{
 		publicFiles.GET("", middleware.AuthRole(model.Common), fileApi.ListPublic)
+		publicFiles.GET("/templates", middleware.AuthRole(model.Common), fileApi.ListPublicTemplates)
 		publicFiles.POST("", middleware.AuthRole(model.SuperAdmin), fileApi.UploadPublic)
 		publicFiles.GET("/:fileID/download", middleware.AuthRole(model.Common), fileApi.DownloadPublic)
 		publicFiles.DELETE("/:fileID", middleware.AuthRole(model.SuperAdmin), fileApi.DeletePublic)

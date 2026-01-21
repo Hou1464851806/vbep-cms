@@ -28,7 +28,7 @@ const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
 const deleteDatasetAPI = (uuid) => apiClient.delete(`/api/v1/datasets/${uuid}`)
-const fetchSystemSettingsAPI = () => apiClient.get('/api/v1/settings')
+const fetchPublicTemplateFilesAPI = () => apiClient.get('/api/v1/files/public/templates')
 
 const fetchFilesForDatasetAPI = (datasetId) => apiClient.get(`/api/v1/datasets/${datasetId}/files`)
 const uploadDatasetFileAPI = (datasetId, file, config = {}) => {
@@ -154,7 +154,7 @@ const applicationDialog = reactive({
   dataset: null,
   template: {
     description: '',
-    fileId: '',
+    files: [],
   },
   mandatory: {
     file: null,
@@ -551,46 +551,32 @@ const handleApply = async (row) => {
   applicationDialog.optional.uploadTasks = []
   applicationDialog.optional.createdApplicationId = ''
   applicationDialog.template.description = '加载中...'
-  applicationDialog.template.fileId = ''
+  applicationDialog.template.files = []
 
   applicationDialog.visible = true
 
   try {
-    const res = await fetchSystemSettingsAPI()
+    const res = await fetchPublicTemplateFilesAPI()
     if (res.data?.message === 'success') {
-      applicationDialog.template.description = res.data.data.template_description || '暂无说明'
-      const fileId = res.data.data.template_file || ''
-      applicationDialog.template.fileId = fileId
+      applicationDialog.template.description = res.data.description || '暂无说明'
+      applicationDialog.template.files = normalizeDatasetFiles(res.data.files || [])
+    } else {
+      ElMessage.error('获取申请模板信息失败')
     }
   } catch (e) {
     ElMessage.error('获取申请模板信息失败')
   }
 }
 
-const handleDownloadTemplate = async () => {
-  if (!applicationDialog.template.fileId) return
+const handleDownloadTemplateFile = async (file) => {
+  if (!file || !file.id) return
   try {
-    const res = await downloadPublicFileAPI(applicationDialog.template.fileId)
+    const res = await downloadPublicFileAPI(file.id)
     const blob = new Blob([res.data])
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    
-    let fileName = '申请模板.pdf'
-    const contentDisposition = res.headers['content-disposition']
-    if (contentDisposition) {
-      // 优先尝试解析 RFC 5987 格式的 filename* (处理 UTF-8 编码的中文文件名)
-      const filenameStarMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)
-      if (filenameStarMatch && filenameStarMatch[1]) {
-        fileName = decodeURIComponent(filenameStarMatch[1])
-      } else {
-        // 回退到普通的 filename="..."
-        const fileNameMatch = contentDisposition.match(/filename="?([^"]+)"?/)
-        if (fileNameMatch && fileNameMatch.length === 2) fileName = fileNameMatch[1]
-      }
-    }
-    
-    link.setAttribute('download', fileName)
+    link.setAttribute('download', file.name)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -916,13 +902,19 @@ const handleSubmitApplication = async () => {
       </div>
 
       <div v-if="applicationDialog.currentStep === 1" class="agreement-step">
-        <div class="template-description-box">
-          <div class="template-text">{{ applicationDialog.template.description }}</div>
+        <div>
+          <div class="upload-label">申请说明</div>
+          <div class="template-description-box">
+            <div class="template-text">{{ applicationDialog.template.description }}</div>
+          </div>
         </div>
-        <div class="template-download-area" v-if="applicationDialog.template.fileId">
-          <el-button type="primary" link :icon="Download" @click="handleDownloadTemplate">
-            下载申请模板文件
-          </el-button>
+        <div class="template-download-area" v-if="applicationDialog.template.files && applicationDialog.template.files.length">
+          <div class="upload-label">模版下载</div>
+          <div v-for="file in applicationDialog.template.files" :key="file.id">
+            <el-button type="primary" link :icon="Download" @click="handleDownloadTemplateFile(file)">
+              下载“{{ file.name }}”
+            </el-button>
+          </div>
         </div>
       </div>
 
@@ -1168,7 +1160,7 @@ const handleSubmitApplication = async () => {
 }
 .upload-label {
   font-weight: 500;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 .required-label::after {
   content: " *";

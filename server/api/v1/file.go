@@ -384,6 +384,36 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "success", "files": resp})
 }
 
+func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
+	if _, ok := getUserFromContext(ctx); !ok {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		return
+	}
+
+	files, description, err := a.service.GetPublicTemplateFiles()
+	if err != nil {
+		logger.Errorf("failed to list public template files: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load template files"})
+		return
+	}
+
+	resp := make([]publicFileResponse, 0, len(files))
+	for _, file := range files {
+		resp = append(resp, publicFileResponse{
+			ID:        file.ID,
+			Name:      file.Name,
+			Size:      file.Size,
+			CreatedAt: file.CreatedAt,
+		})
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message":     "success",
+		"files":       resp,
+		"description": description,
+	})
+}
+
 func (a *FileApi) UploadPublic(ctx *gin.Context) {
 	user, ok := getUserFromContext(ctx)
 	if !ok {

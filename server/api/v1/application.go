@@ -40,7 +40,6 @@ type auditApplicationParam struct {
 }
 
 type resubmitApplicationParam struct {
-	Reason string `json:"reason" binding:"required"`
 }
 
 func (a *ApplicationApi) Create(ctx *gin.Context) {
@@ -64,7 +63,6 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 		DatasetID:   param.DatasetID,
 		ApplicantID: userIDStr,
 		Status:      model.PENDING,
-		Reason:      "申请资料已提交",
 	}
 
 	if err := a.service.CreateApplication(app); err != nil {
@@ -227,13 +225,11 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	}
 
 	var (
-		reason       string
 		keptFileIDs  []string
 		newFileHeads []*multipart.FileHeader
 	)
 
 	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
-		reason = strings.TrimSpace(ctx.PostForm("reason"))
 		keptRaw := ctx.PostForm("keptFileIds")
 		if keptRaw != "" {
 			if err := json.Unmarshal([]byte(keptRaw), &keptFileIDs); err != nil {
@@ -257,12 +253,6 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 			return
 		}
-		reason = strings.TrimSpace(param.Reason)
-	}
-
-	if reason == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "reason is required"})
-		return
 	}
 
 	userIDStr, err := getUserIDFromContext(ctx)
@@ -275,7 +265,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.service.ResubmitApplication(id, userIDStr, reason, keptFileIDs, newFileHeads)
+	application, err := a.service.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

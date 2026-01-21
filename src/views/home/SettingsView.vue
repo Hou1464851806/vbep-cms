@@ -56,8 +56,8 @@
         <div class="info-row">
           <div class="row-label">模版文件</div>
           <div class="row-content">
-            <span v-if="!editState.template_file">{{ getPublicFileName(settings.template_file) || '未设置' }}</span>
-            <el-select v-else v-model="tempSettings.template_file" size="small" placeholder="请选择文件" clearable filterable style="width: 100%">
+            <span v-if="!editState.template_file">{{ getPublicFileNames(settings.template_file) || '未设置' }}</span>
+            <el-select v-else v-model="tempSettings.template_file" multiple collapse-tags collapse-tags-tooltip size="small" placeholder="请选择文件" clearable filterable style="width: 100%">
               <el-option
                 v-for="file in publicFiles"
                 :key="getFileId(file)"
@@ -147,7 +147,7 @@ const editState = reactive({
 
 // Temporary storage for editing values
 const tempSettings = reactive({
-  template_file: '',
+  template_file: [],
   public_email: '',
   template_description: '',
 });
@@ -182,10 +182,14 @@ const getFileId = (file) => {
   return file.id || file.fileID || file.fileId || file.FileID || file.FileId || file.ID || file.fileid;
 };
 
-const getPublicFileName = (id) => {
-  if (!id) return '';
-  const file = publicFiles.value.find(f => getFileId(f) === id);
-  return file ? file.name : '';
+const getPublicFileNames = (idsStr) => {
+  if (!idsStr) return '';
+  const ids = idsStr.split(',');
+  const names = ids.map(id => {
+    const file = publicFiles.value.find(f => getFileId(f) === id);
+    return file ? file.name : '未知文件';
+  });
+  return names.join(', ');
 };
 
 const formatDescription = (text) => {
@@ -206,10 +210,14 @@ const startEdit = async (field) => {
   // Refresh the file list when starting to edit the template file
   if (field === 'template_file') {
     await fetchPublicFiles();
+    // Convert comma-separated string to array for multiple select
+    const val = settings.value[field];
+    tempSettings[field] = val ? val.split(',') : [];
+  } else {
+    // Copy current value to temp storage
+    tempSettings[field] = settings.value[field] || '';
   }
 
-  // Copy current value to temp storage
-  tempSettings[field] = settings.value[field] || '';
   // Set editing state to true
   editState[field] = true;
 };
@@ -221,14 +229,22 @@ const cancelEdit = (field) => {
 
 // Save a single field
 const saveField = async (field, labelName) => {
-  const newValue = tempSettings[field] || '';
-  const oldValue = settings.value[field];
+  const newValue = tempSettings[field];
+  const oldValue = settings.value[field] || '';
 
   // Diff check: if value hasn't changed, just exit edit mode
-  if (newValue === oldValue) {
-    cancelEdit(field);
-    ElMessage.info('设置未发生变化');
-    return;
+  if (field === 'template_file') {
+    // Compare array vs string
+    const newStr = Array.isArray(newValue) ? newValue.join(',') : '';
+    if (newStr === oldValue) {
+      cancelEdit(field);
+      return;
+    }
+  } else {
+    if (newValue === oldValue) {
+      cancelEdit(field);
+      return;
+    }
   }
 
   // Basic validation (can be expanded)
@@ -246,7 +262,11 @@ const saveField = async (field, labelName) => {
     if (response.data.message === 'success') {
       ElMessage.success(`${labelName}已更新`);
       // Update local state
-      settings.value[field] = newValue;
+      if (field === 'template_file' && Array.isArray(newValue)) {
+        settings.value[field] = newValue.join(',');
+      } else {
+        settings.value[field] = newValue;
+      }
       // Exit edit mode
       cancelEdit(field);
     } else {

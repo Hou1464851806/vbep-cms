@@ -229,7 +229,7 @@ func (s *ApplicationService) GetApplicationAudits(applicationID string) ([]model
 	return result, nil
 }
 
-func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationListItem, error) {
 	ctx := context.Background()
 	cleanup := func(success bool) {}
 
@@ -262,7 +262,6 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, reason string,
 			Where("id = ?", id).
 			Updates(map[string]any{
 				"status": model.PENDING,
-				"reason": reason,
 			}).Error; err != nil {
 			return fmt.Errorf("failed to resubmit application %s: %w", id, err)
 		}
@@ -339,7 +338,7 @@ func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicati
 				removePhysicalFile(file.GetPath())
 			}
 			if len(filesToDelete) > 0 {
-				cleanupApplicationDirectory(applicationID)
+				cleanupOwnerDirectory(applicationOwnerType, applicationID)
 			}
 		} else {
 			for _, path := range newFilePaths {

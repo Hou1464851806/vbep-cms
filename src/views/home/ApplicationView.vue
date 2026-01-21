@@ -121,7 +121,6 @@ const detailDialog = reactive({
     currentApplicationId: '',
   },
   resubmit: {
-    reason: '',
     loading: false,
   },
 })
@@ -158,7 +157,6 @@ const normalizeApplication = (item = {}) => ({
   id: item.id,
   status: item.status,
   statusMeta: getStatusMeta(item.status),
-  reason: item.reason,
   dataset: {
     id: item.dataset?.id,
     title: item.dataset?.title,
@@ -380,7 +378,6 @@ const resetAuditDialog = () => {
 }
 
 const resetResubmitState = () => {
-  detailDialog.resubmit.reason = ''
   detailDialog.resubmit.loading = false
 }
 
@@ -555,7 +552,6 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.audit.result = ''
-  detailDialog.resubmit.reason = ''
   resetAttachmentState()
   try {
     const res = await fetchApplicationDetailAPI(row.id)
@@ -657,15 +653,9 @@ const handleDialogAudit = async (action) => {
 const handleResubmitApplication = async () => {
   const current = detailDialog.data
   if (!current?.id) return
-  const reason = detailDialog.resubmit.reason.trim()
-  if (!reason) {
-    ElMessage.warning('请填写修改后的申请理由')
-    return
-  }
 
   const { keptFileIds, newFiles } = getAttachmentDiff()
   const formData = new FormData()
-  formData.append('reason', reason)
   formData.append('keptFileIds', JSON.stringify(keptFileIds))
   newFiles.forEach((item) => {
     if (item.file) {
@@ -680,7 +670,6 @@ const handleResubmitApplication = async () => {
     })
     if (res.data?.message === 'success' && res.data.application) {
       updateApplicationEntry(res.data.application)
-      detailDialog.resubmit.reason = reason
       await loadApplicationFiles(current.id)
       ElMessage.success('申请已重新提交')
     } else {
@@ -698,7 +687,6 @@ watch(
   () => detailDialog.data,
   (value) => {
     detailDialog.audit.result = value?.auditorResult || ''
-    detailDialog.resubmit.reason = value?.reason || ''
     if (!value) {
       resetAttachmentState()
       resetResubmitState()
@@ -863,9 +851,6 @@ onMounted(fetchApplications)
               detailDialog.data.statusMeta.label
             }}</el-tag>
           </el-descriptions-item>
-          <el-descriptions-item label="申请理由">
-            <div class="reason-block">{{ detailDialog.data.reason }}</div>
-          </el-descriptions-item>
           <el-descriptions-item label="申请时间">
             {{ detailDialog.data.createdAt }}
           </el-descriptions-item>
@@ -1015,17 +1000,6 @@ onMounted(fetchApplications)
                   支持常见文档、图片及压缩包格式，变更仅在重新提交后生效。
                 </div>
               </div>
-            </div>
-            <div class="resubmit-block">
-              <div class="resubmit-block-title">申请理由</div>
-              <el-input
-                v-model="detailDialog.resubmit.reason"
-                type="textarea"
-                :rows="6"
-                maxlength="200"
-                show-word-limit
-                placeholder="请填写修改后的申请理由"
-              />
             </div>
           </div>
         </div>
