@@ -214,7 +214,7 @@ func (a *FileApi) ListByApplication(ctx *gin.Context) {
 		return
 	}
 
-	files, err := a.service.GetFilesByApplication(applicationID)
+	files, err := a.service.GetLatestApplicationFiles(applicationID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
@@ -509,7 +509,7 @@ func (a *FileApi) DeletePublic(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
 }
 
-func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*model.ApplicationListItem, bool) {
+func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*model.ApplicationDetail, bool) {
 	application, err := a.applicationService.GetApplicationByID(applicationID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -552,7 +552,7 @@ func (a *FileApi) checkDatasetDownloadPermission(datasetID string, userID string
 	return count > 0
 }
 
-func canAccessApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
+func canAccessApplicationFiles(user *model.User, application *model.ApplicationDetail) bool {
 	if user == nil || application == nil {
 		return false
 	}
@@ -562,7 +562,7 @@ func canAccessApplicationFiles(user *model.User, application *model.ApplicationL
 	return application.Applicant.ID == user.ID
 }
 
-func canUploadApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
+func canUploadApplicationFiles(user *model.User, application *model.ApplicationDetail) bool {
 	if user == nil || application == nil {
 		return false
 	}
@@ -572,7 +572,7 @@ func canUploadApplicationFiles(user *model.User, application *model.ApplicationL
 	return application.Status == "pending" || application.Status == "returned"
 }
 
-func canDeleteApplicationFiles(user *model.User, application *model.ApplicationListItem) bool {
+func canDeleteApplicationFiles(user *model.User, application *model.ApplicationDetail) bool {
 	if user == nil || application == nil {
 		return false
 	}

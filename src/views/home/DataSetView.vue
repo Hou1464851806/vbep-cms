@@ -48,6 +48,8 @@ const downloadPublicFileAPI = (fileId) =>
 
 const submitApplicationAPI = (applicationData) =>
   apiClient.post('/api/v1/applications', applicationData)
+const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
+const confirmApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/submit`)
 const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -587,6 +589,31 @@ const handleDownloadTemplateFile = async (file) => {
   }
 }
 
+const handleNextStep = async () => {
+  if (applicationDialog.currentStep === 1) {
+    // 从第一步进入第二步时，创建草稿申请
+    applicationDialog.isSubmitting = true
+    try {
+      const res = await submitApplicationAPI({
+        datasetId: applicationDialog.dataset.id,
+      })
+      if (res.data?.message === 'success' && res.data.id) {
+        applicationDialog.optional.createdApplicationId = res.data.id
+        applicationDialog.currentStep = 2
+      } else {
+        ElMessage.error(res.data?.message || '创建申请失败')
+      }
+    } catch (error) {
+      console.error('Failed to create draft application:', error)
+      ElMessage.error('创建申请失败')
+    } finally {
+      applicationDialog.isSubmitting = false
+    }
+  } else {
+    applicationDialog.currentStep++
+  }
+}
+
 const handleMandatoryFileChange = (file) => {
   const rawFile = file.raw
   if (rawFile.type !== 'application/pdf') {
@@ -643,22 +670,7 @@ const handleSubmitApplication = async () => {
 
   applicationDialog.isSubmitting = true
   try {
-    let applicationId = applicationDialog.optional.createdApplicationId
-    if (!applicationId) {
-      // 提交申请，不再需要 reason
-      const res = await submitApplicationAPI({
-        datasetId: applicationDialog.dataset.id,
-      })
-      if (res.data?.message === 'success' && res.data.id) {
-        applicationId = res.data.id
-        applicationDialog.optional.createdApplicationId = res.data.id
-      } else {
-        ElMessage.error(res.data?.message || '申请提交失败')
-        applicationDialog.isSubmitting = false
-        return
-      }
-    }
-
+    const applicationId = applicationDialog.optional.createdApplicationId
     // 上传必填文件
     try {
       await uploadApplicationFileAPI(applicationId, applicationDialog.mandatory.file)
@@ -677,13 +689,29 @@ const handleSubmitApplication = async () => {
       }
     }
 
+    // 确认提交（将草稿转为正式申请）
+    await confirmApplicationAPI(applicationId)
+
     applicationDialog.currentStep = 3
   } catch (error) {
     console.error('Application submission failed:', error)
-    ElMessage.error('提交申请时发生错误')
+    const msg = error.response?.data?.message || '提交申请时发生错误'
+    ElMessage.error(msg)
   } finally {
     applicationDialog.isSubmitting = false
   }
+}
+
+const handleCancelApplication = async () => {
+  // 如果已经创建了草稿（在第二步），取消时需要删除草稿
+  if (applicationDialog.optional.createdApplicationId) {
+    try {
+      await deleteApplicationAPI(applicationDialog.optional.createdApplicationId)
+    } catch (error) {
+      console.warn('Failed to delete draft application:', error)
+    }
+  }
+  applicationDialog.visible = false
 }
 </script>
 
@@ -961,12 +989,11 @@ const handleSubmitApplication = async () => {
 
       <template #footer>
         <template v-if="applicationDialog.currentStep === 1">
-          <el-button @click="applicationDialog.visible = false">取消</el-button>
-          <el-button type="primary" @click="applicationDialog.currentStep = 2">下一步</el-button>
+          <el-button @click="handleCancelApplication">取消</el-button>
+          <el-button type="primary" @click="handleNextStep" :loading="applicationDialog.isSubmitting">下一步</el-button>
         </template>
         <template v-else-if="applicationDialog.currentStep === 2">
-          <el-button @click="applicationDialog.visible = false" :disabled="applicationDialog.isSubmitting">取消</el-button>
-          <el-button @click="applicationDialog.currentStep = 1" :disabled="applicationDialog.isSubmitting">上一步</el-button>
+          <el-button @click="handleCancelApplication" :disabled="applicationDialog.isSubmitting">取消</el-button>
           <el-button
             type="primary"
             @click="handleSubmitApplication"

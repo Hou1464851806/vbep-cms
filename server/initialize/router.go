@@ -34,10 +34,6 @@ func NewRouter() *gin.Engine {
 	applicationRouter := new(router.ApplicationRouter)
 	applicationRouter.InitApplicationRouter(v1)
 
-	// audit
-	auditRouter := new(router.AuditRouter)
-	auditRouter.InitAuditRouter(v1)
-
 	// setting
 	settingRouter := new(router.SettingRouter)
 	settingRouter.InitSettingRouter(v1)

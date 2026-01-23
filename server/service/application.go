@@ -33,16 +33,15 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 		return err
 	}
 
+	app.Version = 0 // 初始创建为草稿状态
 	if err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(app).Error; err != nil {
+		if err := tx.Omit(clause.Associations).Create(app).Error; err != nil {
 			return fmt.Errorf("failed to create application: %w", err)
 		}
 
-		now := time.Now()
 		audit := &model.Audit{
 			Action:        model.ActionSubmit,
 			ApplicationID: app.ID,
-			AuditedAt:     &now,
 		}
 
 		if err := tx.Create(audit).Error; err != nil {
@@ -55,6 +54,75 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	}
 
 	return nil
+}
+
+func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) error {
+	ctx := context.Background()
+	var app model.Application
+
+	if err := global.DB.WithContext(ctx).
+		Select("id, applicant_id, version").
+		Where("id = ?", id).
+		First(&app).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		return fmt.Errorf("failed to query application: %w", err)
+	}
+
+	if app.ApplicantID != applicantID {
+		return ErrApplicationPermissionDenied
+	}
+
+	if app.Version != 0 {
+		return ErrApplicationNotEditable // 只能删除草稿
+	}
+
+	// 清理文件
+	if err := NewFileService().DeleteFilesByApplication(id); err != nil {
+		return err
+	}
+
+	// 删除 Application (级联删除 Audit)
+	if err := global.DB.WithContext(ctx).Delete(&app).Error; err != nil {
+		return fmt.Errorf("failed to delete application: %w", err)
+	}
+
+	return nil
+}
+
+func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) error {
+	ctx := context.Background()
+	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var app model.Application
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ?", id).
+			First(&app).Error; err != nil {
+			return err
+		}
+
+		if app.ApplicantID != applicantID {
+			return ErrApplicationPermissionDenied
+		}
+		if app.Version != 0 {
+			return ErrApplicationAlreadyProcessed
+		}
+
+		// 更新版本号为1，正式提交
+		// 同时更新关联的 Audit 时间，使其反映用户点击“提交”的时间
+		if err := tx.Model(&app).Update("version", 1).Error; err != nil {
+			return err
+		}
+
+		now := time.Now()
+		if err := tx.Model(&model.Audit{}).
+			Where("application_id = ? AND action = ?", id, model.ActionSubmit).
+			Updates(map[string]interface{}{"created_at": now}).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }
 
 func (s *ApplicationService) ListApplications(applicantID *string) ([]model.ApplicationListItem, error) {
@@ -71,7 +139,7 @@ func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Appl
 			return db.Select("id, title")
 		}).
 		Preload("Audits", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
 				return db.Select("id, nick_name, email")
 			})
 		})
@@ -94,7 +162,7 @@ func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Appl
 	return result, nil
 }
 
-func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	var app model.Application
 
@@ -107,7 +175,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationLi
 			return db.Select("id, title")
 		}).
 		Preload("Audits", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at DESC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
 				return db.Select("id, nick_name, email")
 			})
 		}).
@@ -121,7 +189,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationLi
 		return nil, fmt.Errorf("failed to query application %s: %w", id, err)
 	}
 
-	item := app.ToListItem()
+	item := app.ToDetail()
 	return &item, nil
 }
 
@@ -139,19 +207,19 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 	return nil
 }
 
-func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
 	return s.updateApplicationStatus(id, auditorID, result, model.APPROVED, model.ActionApprove)
 }
 
-func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
 	return s.updateApplicationStatus(id, auditorID, result, model.REJECTED, model.ActionReject)
 }
 
-func (s *ApplicationService) ReturnApplication(id, auditorID, result string) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) ReturnApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
 	return s.updateApplicationStatus(id, auditorID, result, model.RETURNED, model.ActionReturn)
 }
 
-func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus, action model.ActionType) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus, action model.ActionType) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.Application
@@ -174,21 +242,20 @@ func (s *ApplicationService) updateApplicationStatus(id, auditorID, result strin
 			return fmt.Errorf("failed to update application %s: %w", id, err)
 		}
 
-		now := time.Now()
-		audit := &model.Audit{
-			Action:        action,
-			ApplicationID: id,
-			AuditedAt:     &now,
-		}
-		if auditorID != "" {
-			audit.AuditorID = &auditorID
-		}
-		if result != "" {
-			audit.AuditorResult = &result
+		// 修改逻辑：不再创建新 Audit，而是更新最近的一条 Audit (代表当前的提交轮次)
+		var lastAudit model.Audit
+		if err := tx.Where("application_id = ?", id).Order("created_at DESC").First(&lastAudit).Error; err != nil {
+			return fmt.Errorf("failed to find pending audit for application %s: %w", id, err)
 		}
 
-		if err := tx.Create(audit).Error; err != nil {
-			return fmt.Errorf("failed to create audit for application %s: %w", id, err)
+		updates := map[string]interface{}{
+			"action":         action,
+			"auditor_result": result,
+			"auditor_id":     auditorID,
+		}
+
+		if err := tx.Model(&lastAudit).Updates(updates).Error; err != nil {
+			return fmt.Errorf("failed to update audit for application %s: %w", id, err)
 		}
 
 		return nil
@@ -200,13 +267,11 @@ func (s *ApplicationService) updateApplicationStatus(id, auditorID, result strin
 	return s.GetApplicationByID(id)
 }
 
-func (s *ApplicationService) GetApplicationAudits(applicationID string) ([]model.AuditListItem, error) {
-	ctx := context.Background()
-	var audits []model.Audit
-
-	err := global.DB.WithContext(ctx).
-		Where("application_id = ?", applicationID).
-		Order("created_at ASC").
+func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID string) (*model.AuditDetail, error) {
+	var audit model.Audit
+	err := global.DB.WithContext(context.Background()).
+		Where("id = ? AND application_id = ?", auditID, applicationID).
+		Preload("Files").
 		Preload("Auditor", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
@@ -216,27 +281,22 @@ func (s *ApplicationService) GetApplicationAudits(applicationID string) ([]model
 					return appDB.Select("id, nick_name, email")
 				})
 		}).
-		Find(&audits).Error
+		First(&audit).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to query audits for application %s: %w", applicationID, err)
+		return nil, err
 	}
-
-	result := make([]model.AuditListItem, len(audits))
-	for i := range audits {
-		result[i] = audits[i].ToListItem()
-	}
-
-	return result, nil
+	detail := audit.ToDetail()
+	return &detail, nil
 }
 
-func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationListItem, error) {
+func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	cleanup := func(success bool) {}
 
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var application model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id, applicant_id, status").
+			Select("id, applicant_id, status, version").
 			Where("id = ?", id).
 			First(&application).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -252,25 +312,25 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 			return ErrApplicationNotEditable
 		}
 
-		syncCleanup, err := s.syncApplicationAttachmentsTx(tx, id, applicantID, keptFileIDs, newFiles)
+		newAuditFiles, syncCleanup, err := NewFileService().SyncApplicationFiles(ctx, tx, id, applicantID, keptFileIDs, newFiles)
 		if err != nil {
 			return err
 		}
-		cleanup = syncCleanup
+		cleanup = syncCleanup // 仅在失败时清理新上传的文件
 
 		if err := tx.Model(&model.Application{}).
 			Where("id = ?", id).
 			Updates(map[string]any{
-				"status": model.PENDING,
+				"status":  model.PENDING,
+				"version": application.Version + 1,
 			}).Error; err != nil {
 			return fmt.Errorf("failed to resubmit application %s: %w", id, err)
 		}
 
-		now := time.Now()
 		audit := &model.Audit{
 			Action:        model.ActionReSubmit,
 			ApplicationID: id,
-			AuditedAt:     &now,
+			Files:         newAuditFiles,
 		}
 		if err := tx.Create(audit).Error; err != nil {
 			return fmt.Errorf("failed to create resubmit audit for application %s: %w", id, err)
@@ -286,66 +346,4 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 	cleanup(true)
 
 	return s.GetApplicationByID(id)
-}
-
-func (s *ApplicationService) syncApplicationAttachmentsTx(tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (func(bool), error) {
-	cleanup := func(bool) {}
-	kept := make(map[string]struct{})
-	for _, id := range keptFileIDs {
-		if id == "" {
-			continue
-		}
-		kept[id] = struct{}{}
-	}
-
-	var existingFiles []model.File
-	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
-		Find(&existingFiles).Error; err != nil {
-		return cleanup, fmt.Errorf("failed to query attachments for application %s: %w", applicationID, err)
-	}
-
-	var filesToDelete []model.File
-	for _, file := range existingFiles {
-		if _, ok := kept[file.ID]; ok {
-			continue
-		}
-		filesToDelete = append(filesToDelete, file)
-	}
-
-	for _, file := range filesToDelete {
-		if err := tx.Where("id = ? AND owner_id = ? AND owner_type = ?", file.ID, applicationID, applicationOwnerType).
-			Delete(&model.File{}).Error; err != nil {
-			return cleanup, fmt.Errorf("failed to delete attachment %s: %w", file.ID, err)
-		}
-	}
-
-	var newFilePaths []string
-	for _, header := range newFiles {
-		if header == nil {
-			continue
-		}
-		_, storedPath, err := NewFileService().UploadFile(context.Background(), tx, applicationID, applicationOwnerType, creatorID, header)
-		if err != nil {
-			return cleanup, err
-		}
-		newFilePaths = append(newFilePaths, storedPath)
-	}
-
-	cleanup = func(success bool) {
-		if success {
-			for _, file := range filesToDelete {
-				removePhysicalFile(file.GetPath())
-			}
-			if len(filesToDelete) > 0 {
-				cleanupOwnerDirectory(applicationOwnerType, applicationID)
-			}
-		} else {
-			for _, path := range newFilePaths {
-				removePhysicalFile(path)
-			}
-		}
-	}
-
-	return cleanup, nil
 }

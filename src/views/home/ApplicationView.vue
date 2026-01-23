@@ -7,10 +7,11 @@ import {
   View,
   Download,
   RefreshLeft,
-  Clock,
   Upload,
   Delete,
   Refresh,
+  Loading,
+  Timer,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -26,7 +27,7 @@ const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/
 const returnApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/return`, data)
 const resubmitApplicationAPI = (id, data, config = {}) =>
   apiClient.post(`/api/v1/applications/${id}/resubmit`, data, config)
-const fetchApplicationAuditsAPI = (id) => apiClient.get(`/api/v1/applications/${id}/audits`)
+const fetchAuditDetailAPI = (appId, auditId) => apiClient.get(`/api/v1/applications/${appId}/audits/${auditId}`)
 const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
@@ -112,6 +113,8 @@ const detailDialog = reactive({
   audit: {
     result: '',
     loading: false,
+    selectedId: '',
+    detailLoading: false,
   },
   attachments: {
     isLoading: false,
@@ -125,13 +128,13 @@ const detailDialog = reactive({
   timeline: [],
 })
 
-const activeNames = ref(['2', '3'])
+const activeNames = ref(['2'])
 
 const statusMetaMap = {
-  pending: { label: '待审批', type: 'warning' },
-  approved: { label: '已批准', type: 'success' },
-  rejected: { label: '已驳回', type: 'danger' },
-  returned: { label: '待修改', type: 'warning' },
+  pending: { label: '等待审批', type: 'warning' },
+  approved: { label: '通过申请', type: 'success' },
+  rejected: { label: '驳回申请', type: 'danger' },
+  returned: { label: '退回修改', type: 'warning' },
 }
 
 const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
@@ -161,81 +164,44 @@ const normalizeApplication = (item = {}) => ({
     : null,
   auditorResult: item.auditorResult || '',
   createdAt: formatDateTime(item.createdAt),
-  auditedAt: formatDateTime(item.auditedAt),
+  auditedAt: formatDateTime(item.updatedAt),
 })
 
-const auditActionMeta = {
-  submit: { label: '申请提交', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
+const auditActionMap = {
+  submit: { label: '申请已提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
   approve: {
     label: '管理员审批',
-    color: '#409EFF',
+    color: '#C0C4CC',
     operatorLabel: '审批人',
-    actionDetail: '通过',
+    actionDetail: '通过申请',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
   reject: {
     label: '管理员审批',
-    color: '#409EFF',
+    color: '#C0C4CC',
     operatorLabel: '审批人',
-    actionDetail: '驳回',
+    actionDetail: '驳回申请',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
   return: {
     label: '管理员审批',
-    color: '#409EFF',
+    color: '#C0C4CC',
     operatorLabel: '审批人',
-    actionDetail: '退回',
+    actionDetail: '退回修改',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
-  resubmit: { label: '发起者修改', color: '#409EFF', operatorLabel: '提交人', resultLabel: '备注' },
-}
-
-const placeholderTimelineMeta = {
-  admin: {
-    id: 'placeholder-admin',
-    label: '管理员审批',
-    color: '#C0C4CC',
-    placeholderText: '等待管理员审批',
-  },
-  applicant: {
-    id: 'placeholder-applicant',
-    label: '发起者修改',
-    color: '#C0C4CC',
-    placeholderText: '等待发起者修改后重新提交',
-  },
-}
-
-const finalTimelineMeta = {
-  approved: {
-    id: 'final-approved',
-    label: '审批流程结束',
-    color: '#67C23A',
-    placeholderText: '审批已通过，流程结束',
-    icon: Check,
-  },
-  rejected: {
-    id: 'final-rejected',
-    label: '审批流程结束',
-    color: '#F56C6C',
-    placeholderText: '审批已驳回，流程结束',
-    icon: Close,
-  },
+  resubmit: { label: '申请已重新提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
 }
 
 const normalizeAudit = (item = {}) => {
-  const meta = auditActionMeta[item.action] || { label: '未知操作', color: '#909399' }
+  const meta = auditActionMap[item.action] || { label: '未知操作', color: '#909399' }
   return {
     id: item.id,
     action: item.action || 'unknown',
-    label: meta.label,
     color: meta.color,
-    operatorLabel: meta.operatorLabel || '操作人',
-    resultLabel: meta.resultLabel || '备注',
-    actionDetail: meta.actionDetail || '',
-    showActionDetail: Boolean(meta.showActionDetail && meta.actionDetail),
     operator: item.operator
       ? {
           id: item.operator.id,
@@ -244,78 +210,20 @@ const normalizeAudit = (item = {}) => {
         }
       : null,
     result: item.result || '',
-    time: formatDateTime(item.auditedAt || item.createdAt),
-    isPlaceholder: false,
-    isFinal: false,
-    // icon: Aim,
-    isHollow: true,
-  }
-}
-
-const createPlaceholderTimelineItem = (key) => {
-  const meta = placeholderTimelineMeta[key]
-  if (!meta) return null
-  return {
-    id: meta.id,
-    action: key,
-    label: meta.label,
-    color: meta.color,
-    operatorLabel: '',
-    resultLabel: '',
-    actionDetail: '',
-    showActionDetail: false,
-    operator: null,
-    result: '',
-    time: '',
-    isPlaceholder: true,
-    isFinal: false,
-    placeholderText: meta.placeholderText,
-    icon: Clock,
-    isHollow: false,
-  }
-}
-
-const createFinalTimelineItem = (status) => {
-  const meta = finalTimelineMeta[status]
-  if (!meta) return null
-  return {
-    id: meta.id,
-    action: 'final',
-    label: meta.label,
-    color: meta.color,
-    operatorLabel: '',
-    resultLabel: '',
-    actionDetail: '',
-    showActionDetail: false,
-    operator: null,
-    result: '',
-    time: '',
-    isPlaceholder: false,
-    isFinal: true,
-    placeholderText: meta.placeholderText,
-    icon: meta.icon || Check,
-    isHollow: false,
+    time: formatDateTime(item.updatedAt || item.createdAt),
+    createdAt: formatDateTime(item.createdAt),
+    actionDetail: meta.actionDetail || '',
   }
 }
 
 const buildAuditTimeline = (list = [], status = '') => {
-  const timeline = [...list]
-  if (status === 'pending') {
-    const placeholder = createPlaceholderTimelineItem('admin')
-    if (placeholder) timeline.push(placeholder)
-  } else if (status === 'returned') {
-    const placeholder = createPlaceholderTimelineItem('applicant')
-    if (placeholder) timeline.push(placeholder)
-  } else if (status === 'approved' || status === 'rejected') {
-    const finalItem = createFinalTimelineItem(status)
-    if (finalItem) timeline.push(finalItem)
-  }
-  return timeline
+  // 后端按 ASC 排序 (旧 -> 新)，前端保持顺序，使得时间轴从上到下为 旧 -> 新
+  return list
 }
 
 const normalizeApplicationFiles = (files = []) =>
   files.map((item) => ({
-    id: item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
+    id: item.id || item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
     name: item.name || item.Name || '未命名文件',
     size: Number(item.size ?? item.Size ?? 0),
     createdAt: formatDateTime(item.createdAt || item.CreatedAt || item.Time?.CreatedAt),
@@ -379,6 +287,34 @@ const loadApplicationFiles = async (applicationId) => {
     ElMessage.error('附件列表加载失败')
   } finally {
     detailDialog.attachments.isLoading = false
+  }
+}
+
+const handleAuditClick = async (auditItem) => {
+  if (!auditItem || !auditItem.id) return
+  detailDialog.audit.selectedId = auditItem.id
+
+  if (canResubmitApplication.value) {
+    return
+  }
+
+  detailDialog.audit.detailLoading = true
+  resetAttachmentState()
+  
+  try {
+    const res = await fetchAuditDetailAPI(detailDialog.data.id, auditItem.id)
+    if (res.data?.message === 'success') {
+      const files = normalizeApplicationFiles(res.data.audit.files || [])
+      detailDialog.attachments.list = files.map(toEditableAttachment)
+      detailDialog.attachments.currentApplicationId = detailDialog.data.id
+    } else {
+      ElMessage.error('获取详情失败')
+    }
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('获取详情失败')
+  } finally {
+    detailDialog.audit.detailLoading = false
   }
 }
 
@@ -531,24 +467,24 @@ const handleViewDetail = async (row) => {
   detailDialog.data = null
   detailDialog.timeline = []
   detailDialog.audit.result = ''
-  activeNames.value = ['2', '3']
+  activeNames.value = ['2']
   resetAttachmentState()
   try {
-    const [detailRes, auditRes] = await Promise.all([
-      fetchApplicationDetailAPI(row.id),
-      fetchApplicationAuditsAPI(row.id),
-    ])
+    const detailRes = await fetchApplicationDetailAPI(row.id)
 
     if (detailRes.data?.message === 'success') {
       detailDialog.data = normalizeApplication(detailRes.data.application)
-    } else {
-      ElMessage.error(detailRes.data?.message || '获取申请详情失败')
-    }
-
-    if (auditRes.data?.message === 'success') {
-      const normalizedAudits = (auditRes.data.audits || []).map((item) => normalizeAudit(item))
+      
+      const normalizedAudits = (detailRes.data.application.audits || []).map((item) => normalizeAudit(item))
       const currentStatus = detailDialog.data?.status || row.status
       detailDialog.timeline = buildAuditTimeline(normalizedAudits, currentStatus)
+      
+      // 默认选中最新的一条（最后一条）
+      if (detailDialog.timeline.length > 0) {
+        handleAuditClick(detailDialog.timeline[detailDialog.timeline.length - 1])
+      }
+    } else {
+      ElMessage.error(detailRes.data?.message || '获取申请详情失败')
     }
   } catch (error) {
     console.error('Failed to load application detail', error)
@@ -579,7 +515,7 @@ const auditActionAPIMap = {
 }
 
 const auditActionSuccessMessage = {
-  approve: '申请已批准',
+  approve: '申请已通过',
   reject: '申请已驳回',
   return: '申请已退回',
 }
@@ -603,6 +539,10 @@ const handleDialogAudit = async (action) => {
       const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
       detailDialog.audit.result = normalized.auditorResult
+
+      const normalizedAudits = (res.data.application.audits || []).map((item) => normalizeAudit(item))
+      detailDialog.timeline = buildAuditTimeline(normalizedAudits, normalized.status)
+
       ElMessage.success(auditActionSuccessMessage[action] || '操作成功')
     } else {
       ElMessage.error(res.data?.message || '操作失败')
@@ -634,8 +574,18 @@ const handleResubmitApplication = async () => {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     if (res.data?.message === 'success' && res.data.application) {
-      updateApplicationEntry(res.data.application)
-      await loadApplicationFiles(current.id)
+      const appData = res.data.application
+      updateApplicationEntry(appData)
+
+      // 重新提交后刷新时间轴
+      const normalizedAudits = (appData.audits || []).map(item => normalizeAudit(item))
+      detailDialog.timeline = buildAuditTimeline(normalizedAudits, appData.status)
+
+      // 选中新的（最新的）提交记录（最后一条）
+      if (detailDialog.timeline.length > 0) {
+        handleAuditClick(detailDialog.timeline[detailDialog.timeline.length - 1])
+      }
+
       ElMessage.success('申请已重新提交')
     } else {
       ElMessage.error(res.data?.message || '重新提交失败')
@@ -648,6 +598,17 @@ const handleResubmitApplication = async () => {
   }
 }
 
+const isPendingAction = (action) => {
+  return action === 'submit' || action === 'resubmit'
+}
+
+const getActionTagType = (action) => {
+  if (action === 'approve') return 'success'
+  if (action === 'reject') return 'danger'
+  if (action === 'return') return 'warning'
+  return 'info'
+}
+
 watch(
   () => detailDialog.data,
   (value) => {
@@ -657,16 +618,11 @@ watch(
       resetResubmitState()
       return
     }
-    if (canViewApplicationAttachments(value)) {
-      const shouldReload =
-        detailDialog.attachments.currentApplicationId !== value.id ||
-        detailDialog.attachments.list.length === 0
-      if (shouldReload && value.id) {
-        loadApplicationFiles(value.id)
-      }
-    } else {
-      resetAttachmentState()
+    // 如果申请被退回，加载最新的文件列表以供用户修改和重新提交
+    if (value.status === 'returned' && value.id) {
+      loadApplicationFiles(value.id)
     }
+    // 不再自动加载文件，改为点击时间轴加载
   },
 )
 
@@ -709,7 +665,7 @@ onMounted(fetchApplications)
             {{ scope.row.dataset.title || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="申请日期" width="180" />
+        <el-table-column prop="createdAt" label="申请时间" width="180" />
         <el-table-column label="状态" width="120">
           <template #default="scope">
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
@@ -728,12 +684,17 @@ onMounted(fetchApplications)
     </el-skeleton>
   </el-card>
 
-  <el-dialog v-model="detailDialog.visible" title="申请详情" width="800px">
+  <el-dialog v-model="detailDialog.visible" title="申请详情" width="1000px">
     <el-skeleton :rows="5" animated :loading="detailDialog.loading">
       <template #default>
         <el-collapse v-model="activeNames">
           <el-collapse-item title="基本信息" name="1">
-            <el-descriptions border :column="1" v-if="detailDialog.data" class="custom-descriptions">
+            <el-descriptions border :column="2" v-if="detailDialog.data" class="custom-descriptions">
+              <el-descriptions-item label="当前状态" :span="2">
+                <el-tag :type="detailDialog.data.statusMeta.type">{{
+                  detailDialog.data.statusMeta.label
+                }}</el-tag>
+              </el-descriptions-item>
               <el-descriptions-item label="申请数据集">
                 {{ detailDialog.data.dataset.title }}
                 <el-tooltip :content="detailDialog.data.dataset.id" placement="top">
@@ -748,12 +709,7 @@ onMounted(fetchApplications)
                   >({{ detailDialog.data.applicant.email }})</span
                 >
               </el-descriptions-item>
-              <el-descriptions-item label="申请状态">
-                <el-tag :type="detailDialog.data.statusMeta.type">{{
-                  detailDialog.data.statusMeta.label
-                }}</el-tag>
-              </el-descriptions-item>
-              <el-descriptions-item label="申请时间">
+              <el-descriptions-item label="初次申请时间">
                 {{ detailDialog.data.createdAt }}
               </el-descriptions-item>
               <el-descriptions-item label="最后修改时间">
@@ -761,144 +717,99 @@ onMounted(fetchApplications)
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
-          <el-collapse-item title="审批记录" name="2">
-            <el-empty v-if="!detailDialog.timeline.length" description="暂无审批记录" />
-            <el-timeline v-else class="audit-log-steps">
-              <el-timeline-item
-                v-for="item in detailDialog.timeline"
-                :key="item.id"
-                :timestamp="item.time"
-                :color="item.color"
-                :icon="item.icon"
-                :hollow="item.isHollow"
-              >
-                <div class="audit-step">
-                  <div class="audit-step-label">{{ item.label }}</div>
-                  <el-card
-                    class="audit-step-card"
-                    shadow="never"
-                    :body-style="{ padding: '12px 12px' }"
+          <el-collapse-item title="时间线" name="2">
+            <el-row :gutter="20">
+              <!-- 左侧：时间轴 -->
+              <el-col :span="12" class="audit-timeline-col">
+                <el-empty v-if="!detailDialog.timeline.length" description="暂无审批记录" />
+                <el-timeline v-else class="audit-log-steps">
+                  <el-timeline-item
+                    v-for="item in detailDialog.timeline"
+                    :key="item.id"
+                    :timestamp="item.time"
+                    :color="item.color"
+                    placement="top"
+                    hide-timestamp
                   >
-                    <template v-if="item.isPlaceholder || item.isFinal">
-                      <div class="audit-step-placeholder">
-                        {{ item.placeholderText || '等待处理' }}
-                      </div>
-                    </template>
-                    <template v-else>
-                      <div class="audit-step-operator">
-                        <template v-if="item.operator">
-                          {{ item.operatorLabel }}：<span class="audit-step-bold-text">{{
-                            item.operator.nickname
-                          }}</span>
-                          <span v-if="item.operator.email" class="table-sub-text">
-                            ({{ item.operator.email }})</span
-                          >
-                        </template>
-                        <template v-else
-                          >{{ item.operatorLabel }}：<span class="audit-step-bold-text"
-                            >系统</span
-                          ></template
-                        >
-                      </div>
-                      <div v-if="item.showActionDetail" class="audit-step-action">
-                        审批操作：<span class="audit-step-bold-text">{{ item.actionDetail }}</span>
-                      </div>
-                      <div v-if="item.result" class="audit-step-result">
-                        {{ item.resultLabel }}：<span class="audit-step-bold-text">{{
-                          item.result
-                        }}</span>
-                      </div>
-                    </template>
-                  </el-card>
-                </div>
-              </el-timeline-item>
-            </el-timeline>
-          </el-collapse-item>
-          <el-collapse-item title="审批操作" name="3">
-            <div v-if="canViewAttachments && !canResubmitApplication" class="attachment-section">
-              <div class="attachment-header">
-                <span>申请附件</span>
-              </div>
-              <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
-                <template #default>
-                  <el-empty v-if="!detailDialog.attachments.list.length" description="暂无附件" />
-                  <el-table
-                    v-else
-                    :data="detailDialog.attachments.list"
-                    size="small"
-                    class="attachment-table"
-                  >
-                    <el-table-column
-                      prop="name"
-                      label="文件名"
-                      min-width="200"
-                      show-overflow-tooltip
-                    />
-                    <el-table-column label="大小" width="120">
-                      <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
-                    </el-table-column>
-                    <el-table-column prop="createdAt" label="上传时间" width="180" />
-                    <el-table-column label="操作" width="200">
-                      <template #default="scope">
-                        <el-space>
-                          <el-button
-                            text
-                            size="small"
-                            :icon="Download"
-                            @click="handleDownloadAttachment(scope.row)"
-                          >
-                            下载
-                          </el-button>
-                        </el-space>
-                      </template>
-                    </el-table-column>
-                  </el-table>
-                </template>
-              </el-skeleton>
-            </div>
-            <div v-if="canResubmitApplication" class="resubmit-area">
-              <el-alert
-                type="warning"
-                :closable="false"
-                show-icon
-                title="申请已被退回，请根据意见修改信息后重新提交"
-              />
-              <div class="resubmit-content">
-                <div class="resubmit-block">
-                  <div class="resubmit-block-title">申请附件</div>
-                  <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
-                    <template #default>
-                      <el-empty
-                        v-if="!detailDialog.attachments.list.length"
-                        description="暂无附件"
-                      />
-                      <el-table
-                        v-else
-                        :data="detailDialog.attachments.list"
-                        size="small"
-                        class="attachment-table"
-                        :row-class-name="getAttachmentRowClass"
-                      >
-                        <el-table-column
-                          prop="name"
-                          label="文件名"
-                          min-width="200"
-                          show-overflow-tooltip
-                        />
-                        <el-table-column label="大小" width="120">
-                          <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
-                        </el-table-column>
-                        <el-table-column prop="createdAt" label="更新时间" width="180" />
-                        <el-table-column label="状态" width="120">
-                          <template #default="scope">
-                            <el-tag :type="getAttachmentStatusMeta(scope.row).type">
-                              {{ getAttachmentStatusMeta(scope.row).label }}
+                    <el-card 
+                      class="audit-record-card" 
+                      :class="{ 'is-selected': item.id === detailDialog.audit.selectedId }"
+                      shadow="hover" 
+                      :body-style="{ padding: '0' }"
+                      @click="handleAuditClick(item)"
+                    >
+                      <!-- 上半部分：用户提交信息 -->
+                      <div class="audit-cell user-cell">
+                        <div class="cell-header">
+                          <div class="subject-wrapper">
+                            <el-tag type="primary" size="small" effect="dark" class="action-tag">
+                              {{ item.action === 'resubmit' ? '重新提交' : '提交申请' }}
                             </el-tag>
-                          </template>
-                        </el-table-column>
-                        <el-table-column label="操作" width="220">
-                          <template #default="scope">
-                            <el-space>
+                            <span class="subject">{{ detailDialog.data.applicant.nickname }}</span>
+                          </div>
+                          <span class="time">{{ item.createdAt }}</span>
+                        </div>
+                      </div>
+
+                      <!-- 分割线 -->
+                      <div class="audit-divider"></div>
+
+                      <!-- 下半部分：管理员审批信息 -->
+                      <div class="audit-cell admin-cell">
+                        <template v-if="isPendingAction(item.action)">
+                          <div class="placeholder-content">
+                            <el-icon><Timer /></el-icon>
+                            <span>等待管理员审批</span>
+                          </div>
+                        </template>
+                        <template v-else>
+                          <div class="cell-header">
+                            <div class="subject-wrapper">
+                              <el-tag :type="getActionTagType(item.action)" size="small" effect="dark" class="action-tag">
+                                {{ item.actionDetail }}
+                              </el-tag>
+                              <span class="subject">{{ item.operator?.nickname || '管理员' }}</span>
+                            </div>
+                            <span class="time">{{ item.time }}</span>
+                          </div>
+                        </template>
+                      </div>
+                    </el-card>
+                  </el-timeline-item>
+                </el-timeline>
+              </el-col>
+
+              <!-- 右侧：详情与操作 -->
+              <el-col :span="12" class="audit-detail-col" v-loading="detailDialog.audit.detailLoading">
+                <div v-if="!detailDialog.audit.selectedId" class="detail-placeholder">
+                  请选择左侧记录查看详情
+                </div>
+                <div v-else class="detail-content">
+                  <!-- 附件列表 -->
+                  <div v-if="canViewAttachments && !canResubmitApplication" class="attachment-section">
+                    <div class="attachment-header">
+                      <span>申请附件</span>
+                    </div>
+                    <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
+                      <template #default>
+                        <el-empty v-if="!detailDialog.attachments.list.length" description="暂无附件" :image-size="60" class="empty-attachment" />
+                        <el-table
+                          v-else
+                          :data="detailDialog.attachments.list"
+                          size="small"
+                          class="attachment-table"
+                        >
+                          <el-table-column
+                            prop="name"
+                            label="文件名"
+                            min-width="150"
+                            show-overflow-tooltip
+                          />
+                          <el-table-column label="大小" width="100">
+                            <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
+                          </el-table-column>
+                          <el-table-column label="操作" width="80" align="center">
+                            <template #default="scope">
                               <el-button
                                 text
                                 size="small"
@@ -907,67 +818,147 @@ onMounted(fetchApplications)
                               >
                                 下载
                               </el-button>
-                              <el-button
-                                text
-                                :type="scope.row.isRemoved ? 'primary' : 'danger'"
-                                size="small"
-                                :icon="Delete"
-                                @click="handleRemoveAttachmentLocal(scope.row)"
-                              >
-                                <template v-if="scope.row.id">
-                                  {{ scope.row.isRemoved ? '撤销移除' : '移除' }}
+                            </template>
+                          </el-table-column>
+                        </el-table>
+                      </template>
+                    </el-skeleton>
+                  </div>
+
+                  <!-- 重新提交区域 -->
+                  <div v-if="canResubmitApplication" class="resubmit-area">
+                    <el-alert
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                      title="申请已被退回，请修改后重新提交"
+                    />
+                    <div class="resubmit-content">
+                      <div class="resubmit-block">
+                        <div class="resubmit-block-title">申请附件</div>
+                        <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
+                          <template #default>
+                            <el-empty
+                              v-if="!detailDialog.attachments.list.length"
+                              description="暂无附件"
+                              :image-size="60"
+                              class="empty-attachment"
+                            />
+                            <el-table
+                              v-else
+                              :data="detailDialog.attachments.list"
+                              size="small"
+                              class="attachment-table"
+                              :row-class-name="getAttachmentRowClass"
+                            >
+                              <el-table-column
+                                prop="name"
+                                label="文件名"
+                                min-width="150"
+                                show-overflow-tooltip
+                              />
+                              <el-table-column label="状态" width="80">
+                                <template #default="scope">
+                                  <el-tag size="small" :type="getAttachmentStatusMeta(scope.row).type">
+                                    {{ getAttachmentStatusMeta(scope.row).label }}
+                                  </el-tag>
                                 </template>
-                                <template v-else>撤销</template>
-                              </el-button>
-                            </el-space>
+                              </el-table-column>
+                              <el-table-column label="操作" width="120" align="center">
+                                <template #default="scope">
+                                  <el-space :size="4">
+                                    <el-button
+                                      text
+                                      size="small"
+                                      :icon="Download"
+                                      @click="handleDownloadAttachment(scope.row)"
+                                    />
+                                    <el-button
+                                      text
+                                      :type="scope.row.isRemoved ? 'primary' : 'danger'"
+                                      size="small"
+                                      :icon="Delete"
+                                      @click="handleRemoveAttachmentLocal(scope.row)"
+                                    />
+                                  </el-space>
+                                </template>
+                              </el-table-column>
+                            </el-table>
                           </template>
-                        </el-table-column>
-                      </el-table>
-                    </template>
-                  </el-skeleton>
-                  <div class="attachment-upload-area">
-                    <div class="attachment-upload-header">
-                      <span>可重新上传补充材料</span>
-                      <small>单个文件大小不超过 {{ APPLICATION_FILE_LIMIT_MB }}MB</small>
+                        </el-skeleton>
+                        <div class="attachment-upload-area">
+                          <el-upload
+                            ref="resubmitUploadRef"
+                            action=""
+                            :show-file-list="false"
+                            :auto-upload="false"
+                            :disabled="
+                              detailDialog.attachments.isLoading || detailDialog.resubmit.loading
+                            "
+                            :on-change="handleAttachmentFileQueued"
+                          >
+                            <el-button
+                              type="primary"
+                              text
+                              :icon="Upload"
+                              :loading="detailDialog.resubmit.loading"
+                              >上传补充材料</el-button
+                            >
+                          </el-upload>
+                        </div>
+                      </div>
                     </div>
-                    <el-upload
-                      ref="resubmitUploadRef"
-                      action=""
-                      :show-file-list="false"
-                      :auto-upload="false"
-                      :disabled="
-                        detailDialog.attachments.isLoading || detailDialog.resubmit.loading
-                      "
-                      :on-change="handleAttachmentFileQueued"
-                    >
+                  </div>
+
+                  <!-- 审批意见展示 -->
+                  <div v-if="detailDialog.timeline.find(i => i.id === detailDialog.audit.selectedId)?.result" class="audit-result-display">
+                    <div class="result-label">审批意见：</div>
+                    <div class="result-content">
+                      {{ detailDialog.timeline.find(i => i.id === detailDialog.audit.selectedId)?.result }}
+                    </div>
+                  </div>
+
+                  <!-- 管理员操作区域 -->
+                  <div
+                    v-if="isAdmin() && detailDialog.data?.status === 'pending' && detailDialog.timeline.length > 0 && detailDialog.timeline[detailDialog.timeline.length - 1]?.id === detailDialog.audit.selectedId"
+                    class="audit-action-area"
+                  >
+                    <div class="action-divider">审批操作</div>
+                    <el-input
+                      v-model="detailDialog.audit.result"
+                      type="textarea"
+                      :rows="3"
+                      maxlength="200"
+                      show-word-limit
+                      placeholder="请填写审核意见"
+                    />
+                    <div class="audit-action-buttons">
                       <el-button
-                        type="primary"
-                        text
-                        :icon="Upload"
-                        :loading="detailDialog.resubmit.loading"
-                        >选择文件</el-button
+                        type="warning"
+                        :loading="detailDialog.audit.loading"
+                        :icon="RefreshLeft"
+                        @click="handleDialogAudit('return')"
+                        >退回修改</el-button
                       >
-                    </el-upload>
-                    <div class="attachment-upload-tip">
-                      支持常见文档、图片及压缩包格式，变更仅在重新提交后生效。
+                      <el-button
+                        type="danger"
+                        :loading="detailDialog.audit.loading"
+                        :icon="Close"
+                        @click="handleDialogAudit('reject')"
+                        >驳回申请</el-button
+                      >
+                      <el-button
+                        type="success"
+                        :loading="detailDialog.audit.loading"
+                        :icon="Check"
+                        @click="handleDialogAudit('approve')"
+                        >通过申请</el-button
+                      >
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div
-              v-if="isAdmin() && detailDialog.data?.status === 'pending'"
-              class="audit-action-area"
-            >
-              <el-input
-                v-model="detailDialog.audit.result"
-                type="textarea"
-                :rows="3"
-                maxlength="200"
-                show-word-limit
-                placeholder="请填写审核意见"
-              />
-            </div>
+              </el-col>
+            </el-row>
           </el-collapse-item>
         </el-collapse>
       </template>
@@ -982,29 +973,6 @@ onMounted(fetchApplications)
           @click="handleResubmitApplication"
           >重新提交审核</el-button
         >
-        <template v-if="isAdmin() && detailDialog.data?.status === 'pending'">
-          <el-button
-            type="warning"
-            :loading="detailDialog.audit.loading"
-            :icon="RefreshLeft"
-            @click="handleDialogAudit('return')"
-            >退回</el-button
-          >
-          <el-button
-            type="danger"
-            :loading="detailDialog.audit.loading"
-            :icon="Close"
-            @click="handleDialogAudit('reject')"
-            >驳回</el-button
-          >
-          <el-button
-            type="success"
-            :loading="detailDialog.audit.loading"
-            :icon="Check"
-            @click="handleDialogAudit('approve')"
-            >批准</el-button
-          >
-        </template>
       </div>
     </template>
   </el-dialog>
@@ -1021,7 +989,6 @@ onMounted(fetchApplications)
   line-height: 1.6;
 }
 .attachment-section {
-  margin-top: 20px;
   padding: 16px;
   border: 1px solid #ebeef5;
   border-radius: 8px;
@@ -1066,7 +1033,6 @@ onMounted(fetchApplications)
   background-color: #f0f9ff;
 }
 .audit-action-area {
-  margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1077,7 +1043,6 @@ onMounted(fetchApplications)
   gap: 12px;
 }
 .resubmit-area {
-  margin-top: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1108,37 +1073,79 @@ onMounted(fetchApplications)
   max-height: 420px;
   padding-right: 8px;
   overflow-y: auto;
+  padding-top: 10px;
 }
-.audit-step {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  line-height: 1.6;
-}
-.audit-step-card {
+
+.audit-record-card {
   border: 1px solid #ebeef5;
   border-radius: 6px;
-  background-color: #f8fafc;
+  background-color: #fff;
+  cursor: pointer;
+  transition: all 0.3s;
 }
-.audit-step-bold-text {
-  color: #000000;
+.audit-record-card:hover {
+  border-color: #c0c4cc;
 }
-.audit-step-label {
+.audit-record-card.is-selected {
+  border-color: #409EFF;
+  background-color: #ecf5ff;
+}
+
+.audit-cell {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.audit-divider {
+  height: 1px;
+  background-color: #ebeef5;
+  margin: 0;
+}
+
+.cell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.subject-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cell-header .subject {
   font-weight: 600;
   color: #303133;
-  font-size: 15px;
 }
-.audit-step-operator {
+
+.cell-header .time {
+  color: #909399;
+  font-size: 12px;
+}
+
+.cell-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
   color: #606266;
 }
-.audit-step-action {
-  color: #606266;
+
+.result-text {
+  color: #303133;
 }
-.audit-step-result {
-  color: #606266;
-}
-.audit-step-placeholder {
-  color: #606266;
+
+.placeholder-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #909399;
+  font-size: 13px;
+  padding: 4px 0;
 }
 .dialog-footer {
   display: flex;
@@ -1150,5 +1157,53 @@ onMounted(fetchApplications)
 }
 .custom-descriptions :deep(.el-descriptions__content) {
   color: #606266;
+}
+
+.audit-timeline-col {
+  border-right: 1px solid #ebeef5;
+  padding-right: 20px;
+}
+
+.audit-detail-col {
+  padding-left: 20px;
+}
+
+.detail-content {
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.detail-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #909399;
+}
+
+.audit-result-display {
+  padding: 12px;
+  background-color: #f4f4f5;
+  border-radius: 4px;
+}
+
+.result-label {
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #303133;
+}
+
+.action-divider {
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #303133;
+  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 4px;
+}
+
+.empty-attachment {
+  padding: 10px 0;
 }
 </style>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"server/global"
 	"server/logger"
@@ -124,6 +126,21 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 	if err != nil {
 		return nil, err
 	}
+
+	// 自动关联到最近一次提交记录 (修复初次提交时 audit_files 为空的问题)
+	var latestAudit model.Audit
+	if err := global.DB.WithContext(ctx).
+		Where("application_id = ?", applicationID).
+		Order("created_at DESC").
+		First(&latestAudit).Error; err == nil {
+
+		if latestAudit.Action == model.ActionSubmit || latestAudit.Action == model.ActionReSubmit {
+			if err := global.DB.WithContext(ctx).Model(&latestAudit).Association("Files").Append(newFile); err != nil {
+				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
+			}
+		}
+	}
+
 	return newFile, nil
 }
 
@@ -133,6 +150,7 @@ func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.F
 	if err != nil {
 		return nil, err
 	}
+
 	return newFile, nil
 }
 
@@ -289,6 +307,131 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 		logger.Warnf("failed to remove dataset directory %s: %v", datasetID, err)
 	}
 	return nil
+}
+
+func (s *FileService) DeleteFilesByApplication(applicationID string) error {
+	ctx := context.Background()
+	files, err := s.ListFiles(ctx, applicationID, applicationOwnerType)
+	if err != nil {
+		return fmt.Errorf("failed to query files for application %s: %w", applicationID, err)
+	}
+
+	for _, file := range files {
+		removePhysicalFile(file.GetPath())
+	}
+
+	res := global.DB.WithContext(ctx).
+		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
+		Delete(&model.File{})
+	if res.Error != nil {
+		return fmt.Errorf("failed to delete files for application %s: %w", applicationID, res.Error)
+	}
+
+	if err := os.RemoveAll(model.GetDir(applicationOwnerType, applicationID)); err != nil && !os.IsNotExist(err) {
+		logger.Warnf("failed to remove application directory %s: %v", applicationID, err)
+	}
+	return nil
+}
+
+// SyncApplicationFiles 同步申请的附件（用于重新提交）
+// 1. 检查保留的文件是否存在
+// 2. 上传新文件
+// 3. 返回最终的文件列表（用于关联到 Audit）
+func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader) ([]model.File, func(bool), error) {
+	cleanup := func(bool) {}
+	kept := make(map[string]struct{})
+	for _, id := range keptFileIDs {
+		if id == "" {
+			continue
+		}
+		kept[id] = struct{}{}
+	}
+
+	var existingFiles []model.File
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
+		Find(&existingFiles).Error; err != nil {
+		return nil, cleanup, fmt.Errorf("failed to query attachments for application %s: %w", applicationID, err)
+	}
+
+	// 收集被保留的文件对象
+	var finalFiles []model.File
+	for _, file := range existingFiles {
+		if _, ok := kept[file.ID]; ok {
+			finalFiles = append(finalFiles, file)
+		}
+	}
+	// 注意：不再物理删除未保留的文件，因为它们属于历史版本
+
+	var newFilePaths []string
+	for _, header := range newFiles {
+		if header == nil {
+			continue
+		}
+		fileRecord, storedPath, err := s.UploadFile(ctx, tx, applicationID, applicationOwnerType, creatorID, header)
+		if err != nil {
+			return nil, cleanup, err
+		}
+		newFilePaths = append(newFilePaths, storedPath)
+		if fileRecord != nil {
+			finalFiles = append(finalFiles, *fileRecord)
+		}
+	}
+
+	cleanup = func(success bool) {
+		if !success {
+			// 只有在事务失败时，才清理刚刚上传的新文件
+			for _, path := range newFilePaths {
+				removePhysicalFile(path)
+			}
+		}
+	}
+
+	return finalFiles, cleanup, nil
+}
+
+// GetLatestApplicationFiles 获取申请当前版本（最新一次提交）的文件列表
+func (s *FileService) GetLatestApplicationFiles(applicationID string) ([]model.File, error) {
+	ctx := context.Background()
+	var latestAudit model.Audit
+
+	// 1. 查找最近一次 Submit 或 ReSubmit 的 Audit
+	err := global.DB.WithContext(ctx).
+		Where("application_id = ? AND action IN ?", applicationID, []model.ActionType{model.ActionSubmit, model.ActionReSubmit}).
+		Order("created_at DESC").
+		Preload("Files").
+		First(&latestAudit).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 如果找不到提交记录（可能是旧数据或刚创建未关联），回退到查询所有归属该 App 的文件
+			// 这是一个兼容性回退，防止初次提交时文件未关联到 Audit 导致列表为空
+			var fallbackFiles []model.File
+			if err := global.DB.WithContext(ctx).
+				Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
+				Find(&fallbackFiles).Error; err != nil {
+				return nil, err
+			}
+			return fallbackFiles, nil
+		}
+		return nil, fmt.Errorf("failed to query latest audit: %w", err)
+	}
+
+	// 2. 如果 Audit 关联了文件，直接返回
+	if len(latestAudit.Files) > 0 {
+		return latestAudit.Files, nil
+	}
+
+	// 3. 如果是初次提交且没有关联文件（可能是因为文件是在创建 App 后单独上传的），
+	// 尝试查找所有未被其他 Audit 关联的“孤儿”文件？或者直接回退到所有文件。
+	// 简单起见，如果 Audit 没文件，回退到 Owner 查找。
+	var fallbackFiles []model.File
+	if err := global.DB.WithContext(ctx).
+		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
+		Find(&fallbackFiles).Error; err != nil {
+		return nil, err
+	}
+	return fallbackFiles, nil
 }
 
 func (s *FileService) DeleteApplicationFile(applicationID, fileID string) error {

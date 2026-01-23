@@ -81,6 +81,65 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 	})
 }
 
+func (a *ApplicationApi) Delete(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		return
+	}
+
+	if err := a.service.DeleteDraftApplication(id, userIDStr); err != nil {
+		if errors.Is(err, service.ErrApplicationPermissionDenied) {
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			return
+		}
+		if errors.Is(err, service.ErrApplicationNotEditable) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "cannot delete submitted application"})
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete application"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+}
+
+func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
+
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		return
+	}
+
+	if err := a.service.SubmitDraftApplication(id, userIDStr); err != nil {
+		if errors.Is(err, service.ErrApplicationPermissionDenied) {
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			return
+		}
+		if errors.Is(err, service.ErrApplicationAlreadyProcessed) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already submitted"})
+			return
+		}
+		logger.Errorf("failed to submit application %s: %v", id, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to submit application"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+}
+
 func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
@@ -156,63 +215,48 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	})
 }
 
-func (a *ApplicationApi) GetAudits(ctx *gin.Context) {
+func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 	id := ctx.Param("id")
-	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+	auditID := ctx.Param("auditID")
+	if id == "" || auditID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid parameters"})
 		return
 	}
 
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		status := http.StatusUnauthorized
-		if errors.Is(err, errInvalidUser) {
-			status = http.StatusInternalServerError
-		}
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
 
 	if err := ensureApplicationReadable(ctx, currentUser, id); err != nil {
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
-		case errors.Is(err, errPermissionDenied):
-			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
-		default:
-			logger.Errorf("failed to verify application %s: %v", id, err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application audits"})
-		}
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
 		return
 	}
 
-	audits, err := a.service.GetApplicationAudits(id)
+	detail, err := a.service.GetApplicationAuditDetail(id, auditID)
 	if err != nil {
-		logger.Errorf("failed to load audits for application %s: %v", id, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application audits"})
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "audit record not found"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"audits":  audits,
-	})
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "audit": detail})
 }
 
 func (a *ApplicationApi) Approve(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
 		return a.service.ApproveApplication(id, auditorID, result)
 	}, "approve")
 }
 
 func (a *ApplicationApi) Reject(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
 		return a.service.RejectApplication(id, auditorID, result)
 	}, "reject")
 }
 
 func (a *ApplicationApi) Return(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationListItem, error) {
+	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
 		return a.service.ReturnApplication(id, auditorID, result)
 	}, "return")
 }
@@ -290,7 +334,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	})
 }
 
-type auditActionFunc func(id, auditorID, result string) (*model.ApplicationListItem, error)
+type auditActionFunc func(id, auditorID, result string) (*model.ApplicationDetail, error)
 
 func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionFunc, actionName string) {
 	id := ctx.Param("id")
