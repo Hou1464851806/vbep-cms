@@ -10,7 +10,6 @@ import {
   Upload,
   Delete,
   Refresh,
-  Loading,
   Timer,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -18,6 +17,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize, formatShortId } from '@/utils/format.js'
+import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
@@ -32,7 +32,6 @@ const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${i
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
 
-const APPLICATION_FILE_LIMIT_MB = 20
 const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
 const ALLOWED_EXTENSIONS = [
   '.pdf',
@@ -132,20 +131,18 @@ const activeNames = ref(['2'])
 
 const statusMetaMap = {
   pending: { label: '等待审批', type: 'warning' },
-  approved: { label: '通过申请', type: 'success' },
-  rejected: { label: '驳回申请', type: 'danger' },
-  returned: { label: '退回修改', type: 'warning' },
+  approved: { label: '已批准', type: 'success' },
+  rejected: { label: '已拒绝', type: 'danger' },
+  returned: { label: '已退回', type: 'warning' },
 }
 
 const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
-const getActionButtonLabel = (row) => {
-  return '查看详情'
-}
 
 const normalizeApplication = (item = {}) => ({
   id: item.id,
   status: item.status,
   statusMeta: getStatusMeta(item.status),
+  version: item.version,
   dataset: {
     id: item.dataset?.id,
     title: item.dataset?.title,
@@ -155,21 +152,13 @@ const normalizeApplication = (item = {}) => ({
     nickname: item.applicant?.nickname,
     email: item.applicant?.email,
   },
-  auditor: item.auditor
-    ? {
-        id: item.auditor.id,
-        nickname: item.auditor.nickname,
-        email: item.auditor.email,
-      }
-    : null,
-  auditorResult: item.auditorResult || '',
   createdAt: formatDateTime(item.createdAt),
   auditedAt: formatDateTime(item.updatedAt),
 })
 
 const auditActionMap = {
-  submit: { label: '申请已提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
-  approve: {
+  pending: { label: '申请已提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
+  approved: {
     label: '管理员审批',
     color: '#C0C4CC',
     operatorLabel: '审批人',
@@ -177,15 +166,15 @@ const auditActionMap = {
     resultLabel: '审批理由',
     showActionDetail: true,
   },
-  reject: {
+  rejected: {
     label: '管理员审批',
     color: '#C0C4CC',
     operatorLabel: '审批人',
-    actionDetail: '驳回申请',
+    actionDetail: '拒绝申请',
     resultLabel: '审批理由',
     showActionDetail: true,
   },
-  return: {
+  returned: {
     label: '管理员审批',
     color: '#C0C4CC',
     operatorLabel: '审批人',
@@ -193,7 +182,6 @@ const auditActionMap = {
     resultLabel: '审批理由',
     showActionDetail: true,
   },
-  resubmit: { label: '申请已重新提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
 }
 
 const normalizeAudit = (item = {}) => {
@@ -214,11 +202,6 @@ const normalizeAudit = (item = {}) => {
     createdAt: formatDateTime(item.createdAt),
     actionDetail: meta.actionDetail || '',
   }
-}
-
-const buildAuditTimeline = (list = [], status = '') => {
-  // 后端按 ASC 排序 (旧 -> 新)，前端保持顺序，使得时间轴从上到下为 旧 -> 新
-  return list
 }
 
 const normalizeApplicationFiles = (files = []) =>
@@ -466,7 +449,7 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.timeline = []
-  detailDialog.audit.result = ''
+  detailDialog.audit.result = '' // 重置
   activeNames.value = ['2']
   resetAttachmentState()
   try {
@@ -476,8 +459,7 @@ const handleViewDetail = async (row) => {
       detailDialog.data = normalizeApplication(detailRes.data.application)
       
       const normalizedAudits = (detailRes.data.application.audits || []).map((item) => normalizeAudit(item))
-      const currentStatus = detailDialog.data?.status || row.status
-      detailDialog.timeline = buildAuditTimeline(normalizedAudits, currentStatus)
+      detailDialog.timeline = normalizedAudits
       
       // 默认选中最新的一条（最后一条）
       if (detailDialog.timeline.length > 0) {
@@ -515,9 +497,15 @@ const auditActionAPIMap = {
 }
 
 const auditActionSuccessMessage = {
-  approve: '申请已通过',
-  reject: '申请已驳回',
+  approve: '申请已批准',
+  reject: '申请已拒绝',
   return: '申请已退回',
+}
+
+const auditConfirmMessages = {
+  approve: '您即将执行批准操作，批准后用户将有权访问该数据集下的所有文件',
+  reject: '您即将执行拒绝操作，拒绝后用户将无法修改并重新提交申请',
+  return: '您即将执行退回操作，退回后用户可以修改并重新提交申请',
 }
 
 const handleDialogAudit = async (action) => {
@@ -526,6 +514,16 @@ const handleDialogAudit = async (action) => {
   const result = detailDialog.audit.result.trim()
   if (!result) {
     ElMessage.warning('请填写审核意见')
+    return
+  }
+
+  try {
+    await ElMessageBox.confirm(auditConfirmMessages[action], '操作确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: action === 'reject' ? 'error' : 'warning',
+    })
+  } catch {
     return
   }
 
@@ -538,10 +536,10 @@ const handleDialogAudit = async (action) => {
     if (res.data?.message === 'success' && res.data.application) {
       const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
-      detailDialog.audit.result = normalized.auditorResult
+      detailDialog.audit.result = normalized.result
 
       const normalizedAudits = (res.data.application.audits || []).map((item) => normalizeAudit(item))
-      detailDialog.timeline = buildAuditTimeline(normalizedAudits, normalized.status)
+      detailDialog.timeline = normalizedAudits
 
       ElMessage.success(auditActionSuccessMessage[action] || '操作成功')
     } else {
@@ -579,7 +577,7 @@ const handleResubmitApplication = async () => {
 
       // 重新提交后刷新时间轴
       const normalizedAudits = (appData.audits || []).map(item => normalizeAudit(item))
-      detailDialog.timeline = buildAuditTimeline(normalizedAudits, appData.status)
+      detailDialog.timeline = normalizedAudits
 
       // 选中新的（最新的）提交记录（最后一条）
       if (detailDialog.timeline.length > 0) {
@@ -599,20 +597,20 @@ const handleResubmitApplication = async () => {
 }
 
 const isPendingAction = (action) => {
-  return action === 'submit' || action === 'resubmit'
+  return action === 'pending'
 }
 
 const getActionTagType = (action) => {
-  if (action === 'approve') return 'success'
-  if (action === 'reject') return 'danger'
-  if (action === 'return') return 'warning'
+  if (action === 'approved') return 'success'
+  if (action === 'rejected') return 'danger'
+  if (action === 'returned') return 'warning'
   return 'info'
 }
 
 watch(
   () => detailDialog.data,
   (value) => {
-    detailDialog.audit.result = value?.auditorResult || ''
+    detailDialog.audit.result = ''
     if (!value) {
       resetAttachmentState()
       resetResubmitState()
@@ -652,12 +650,18 @@ onMounted(fetchApplications)
 
     <el-skeleton :rows="5" animated :loading="isLoading">
       <el-table :data="applicationList" style="width: 100%">
-        <el-table-column label="申请人">
+        <el-table-column label="内部ID" width="100">
+          <template #default="{ row }">
+            <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
+              <span class="monospace-id">
+                {{ formatShortId(row.id) }}
+              </span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column label="申请人" width="120">
           <template #default="scope">
             <div>{{ scope.row.applicant.nickname }}</div>
-            <small v-if="scope.row.applicant.email" class="table-sub-text">{{
-              scope.row.applicant.email
-            }}</small>
           </template>
         </el-table-column>
         <el-table-column label="申请的数据集">
@@ -665,7 +669,7 @@ onMounted(fetchApplications)
             {{ scope.row.dataset.title || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="申请时间" width="180" />
+        <el-table-column prop="createdAt" label="初次申请时间" width="180" />
         <el-table-column label="状态" width="120">
           <template #default="scope">
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
@@ -675,7 +679,7 @@ onMounted(fetchApplications)
           <template #default="scope">
             <el-space direction="vertical" :size="0" alignment="start">
               <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
-                {{ getActionButtonLabel(scope.row) }}
+                查看详情
               </el-button>
             </el-space>
           </template>
@@ -690,10 +694,13 @@ onMounted(fetchApplications)
         <el-collapse v-model="activeNames">
           <el-collapse-item title="基本信息" name="1">
             <el-descriptions border :column="2" v-if="detailDialog.data" class="custom-descriptions">
-              <el-descriptions-item label="当前状态" :span="2">
+              <el-descriptions-item label="当前状态">
                 <el-tag :type="detailDialog.data.statusMeta.type">{{
                   detailDialog.data.statusMeta.label
                 }}</el-tag>
+              </el-descriptions-item>
+              <el-descriptions-item label="修改次数">
+                {{ detailDialog.data.version > 1 ? detailDialog.data.version - 1 : 0 }}
               </el-descriptions-item>
               <el-descriptions-item label="申请数据集">
                 {{ detailDialog.data.dataset.title }}
@@ -724,7 +731,7 @@ onMounted(fetchApplications)
                 <el-empty v-if="!detailDialog.timeline.length" description="暂无审批记录" />
                 <el-timeline v-else class="audit-log-steps">
                   <el-timeline-item
-                    v-for="item in detailDialog.timeline"
+                    v-for="(item, index) in detailDialog.timeline"
                     :key="item.id"
                     :timestamp="item.time"
                     :color="item.color"
@@ -742,12 +749,17 @@ onMounted(fetchApplications)
                       <div class="audit-cell user-cell">
                         <div class="cell-header">
                           <div class="subject-wrapper">
-                            <el-tag type="primary" size="small" effect="dark" class="action-tag">
-                              {{ item.action === 'resubmit' ? '重新提交' : '提交申请' }}
-                            </el-tag>
-                            <span class="subject">{{ detailDialog.data.applicant.nickname }}</span>
+                            <span class="prefix">申请人：</span>
+                            <el-tooltip :content="detailDialog.data.applicant.email" placement="top">
+                              <span class="subject">{{ detailDialog.data.applicant.nickname }}</span>
+                            </el-tooltip>
                           </div>
-                          <span class="time">{{ item.createdAt }}</span>
+                          <div class="meta-wrapper">
+                            <span class="time">{{ item.createdAt }}</span>
+                            <el-tag type="primary" size="small" effect="dark" class="action-tag">
+                              {{ index === 0 ? '初次提交' : '重新提交' }}
+                            </el-tag>
+                          </div>
                         </div>
                       </div>
 
@@ -765,12 +777,17 @@ onMounted(fetchApplications)
                         <template v-else>
                           <div class="cell-header">
                             <div class="subject-wrapper">
+                              <span class="prefix">经办人：</span>
+                              <el-tooltip :content="item.operator?.email || '未知'" placement="top">
+                                <span class="subject">{{ item.operator?.nickname || '管理员' }}</span>
+                              </el-tooltip>
+                            </div>
+                            <div class="meta-wrapper">
+                              <span class="time">{{ item.time }}</span>
                               <el-tag :type="getActionTagType(item.action)" size="small" effect="dark" class="action-tag">
                                 {{ item.actionDetail }}
                               </el-tag>
-                              <span class="subject">{{ item.operator?.nickname || '管理员' }}</span>
                             </div>
-                            <span class="time">{{ item.time }}</span>
                           </div>
                         </template>
                       </div>
@@ -945,7 +962,7 @@ onMounted(fetchApplications)
                         :loading="detailDialog.audit.loading"
                         :icon="Close"
                         @click="handleDialogAudit('reject')"
-                        >驳回申请</el-button
+                        >拒绝申请</el-button
                       >
                       <el-button
                         type="success"
@@ -1117,12 +1134,23 @@ onMounted(fetchApplications)
   gap: 8px;
 }
 
+.meta-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .cell-header .subject {
   font-weight: 600;
   color: #303133;
 }
 
 .cell-header .time {
+  color: #909399;
+  font-size: 12px;
+}
+
+.prefix {
   color: #909399;
   font-size: 12px;
 }
@@ -1151,11 +1179,20 @@ onMounted(fetchApplications)
   display: flex;
   gap: 12px;
 }
+
+.custom-descriptions {
+  width: 90%;
+  margin: 0 auto;
+}
+
 .custom-descriptions :deep(.el-descriptions__label) {
-  font-weight: 600;
-  color: #303133;
+  background-color: #fafafa;
+  font-weight: 500;
+  color: #606266;
+  width: 120px;
 }
 .custom-descriptions :deep(.el-descriptions__content) {
+  background-color: #fff;
   color: #606266;
 }
 

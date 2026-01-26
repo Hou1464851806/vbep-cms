@@ -244,20 +244,20 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 }
 
 func (a *ApplicationApi) Approve(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.ApproveApplication(id, auditorID, result)
+	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
+		return a.service.ApproveApplication(id, operatorID, result)
 	}, "approve")
 }
 
 func (a *ApplicationApi) Reject(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.RejectApplication(id, auditorID, result)
+	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
+		return a.service.RejectApplication(id, operatorID, result)
 	}, "reject")
 }
 
 func (a *ApplicationApi) Return(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, auditorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.ReturnApplication(id, auditorID, result)
+	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
+		return a.service.ReturnApplication(id, operatorID, result)
 	}, "return")
 }
 
@@ -334,7 +334,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	})
 }
 
-type auditActionFunc func(id, auditorID, result string) (*model.ApplicationDetail, error)
+type auditActionFunc func(id, operatorID, result string) (*model.ApplicationDetail, error)
 
 func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionFunc, actionName string) {
 	id := ctx.Param("id")

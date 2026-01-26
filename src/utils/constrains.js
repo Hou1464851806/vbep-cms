@@ -1,0 +1,2 @@
+export const DATASET_FILE_LIMIT_MB = 500
+export const APPLICATION_FILE_LIMIT_MB = 20

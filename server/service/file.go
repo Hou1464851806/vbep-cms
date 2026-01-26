@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	maxUploadSize = 500 * 1024 * 1024
 	publicOwnerID = "system"
 )
 
@@ -45,8 +44,19 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 	if fileHeader == nil {
 		return nil, "", fmt.Errorf("file header cannot be empty")
 	}
-	if fileHeader.Size > maxUploadSize {
-		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", maxUploadSize/(1024*1024))
+
+	limitMB := global.CFG.File.UploadLimitApplication
+	if creatorID != "" {
+		var user model.User
+		if err := global.DB.Select("role").Where("id = ?", creatorID).First(&user).Error; err == nil {
+			if user.Role > model.Common {
+				limitMB = global.CFG.File.UploadLimitDataset
+			}
+		}
+	}
+
+	if fileHeader.Size > int64(limitMB)*1024*1024 {
+		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", limitMB)
 	}
 
 	src, err := fileHeader.Open()
@@ -134,7 +144,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 		Order("created_at DESC").
 		First(&latestAudit).Error; err == nil {
 
-		if latestAudit.Action == model.ActionSubmit || latestAudit.Action == model.ActionReSubmit {
+		if latestAudit.Action == model.PENDING {
 			if err := global.DB.WithContext(ctx).Model(&latestAudit).Association("Files").Append(newFile); err != nil {
 				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
 			}
@@ -397,7 +407,7 @@ func (s *FileService) GetLatestApplicationFiles(applicationID string) ([]model.F
 
 	// 1. 查找最近一次 Submit 或 ReSubmit 的 Audit
 	err := global.DB.WithContext(ctx).
-		Where("application_id = ? AND action IN ?", applicationID, []model.ActionType{model.ActionSubmit, model.ActionReSubmit}).
+		Where("application_id = ? AND action = ?", applicationID, model.PENDING).
 		Order("created_at DESC").
 		Preload("Files").
 		First(&latestAudit).Error

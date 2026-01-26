@@ -21,6 +21,7 @@ import {
   formatShortId,
   formatFileSize,
 } from '@/utils/format.js'
+import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -59,7 +60,6 @@ const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
   })
 }
 
-const DATASET_FILE_LIMIT_MB = 500
 const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
 
 const APPLICATION_FILE_LIMIT_MB = 20

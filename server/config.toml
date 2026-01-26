@@ -21,3 +21,7 @@ time_zone = "Asia/Shanghai"
 addr = "127.0.0.1:6379"
 password = ""
 db = 0
+
+[file]
+upload_limit_application = 20
+upload_limit_dataset = 500

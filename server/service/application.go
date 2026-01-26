@@ -40,7 +40,7 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 		}
 
 		audit := &model.Audit{
-			Action:        model.ActionSubmit,
+			Action:        model.PENDING,
 			ApplicationID: app.ID,
 		}
 
@@ -116,7 +116,7 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 
 		now := time.Now()
 		if err := tx.Model(&model.Audit{}).
-			Where("application_id = ? AND action = ?", id, model.ActionSubmit).
+			Where("application_id = ? AND action = ?", id, model.PENDING).
 			Updates(map[string]interface{}{"created_at": now}).Error; err != nil {
 			return err
 		}
@@ -131,17 +131,12 @@ func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Appl
 
 	db := global.DB.WithContext(ctx).
 		Model(&model.Application{}).
-		Order("created_at DESC").
+		Order("updated_at DESC").
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, title")
-		}).
-		Preload("Audits", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
-				return db.Select("id, nick_name, email")
-			})
 		})
 
 	// 只允许用户查询自己的申请
@@ -175,7 +170,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDe
 			return db.Select("id, title")
 		}).
 		Preload("Audits", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC").Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC").Preload("Operator", func(db *gorm.DB) *gorm.DB {
 				return db.Select("id, nick_name, email")
 			})
 		}).
@@ -207,19 +202,19 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 	return nil
 }
 
-func (s *ApplicationService) ApproveApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, auditorID, result, model.APPROVED, model.ActionApprove)
+func (s *ApplicationService) ApproveApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
+	return s.updateApplicationStatus(id, operatorID, result, model.APPROVED)
 }
 
-func (s *ApplicationService) RejectApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, auditorID, result, model.REJECTED, model.ActionReject)
+func (s *ApplicationService) RejectApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
+	return s.updateApplicationStatus(id, operatorID, result, model.REJECTED)
 }
 
-func (s *ApplicationService) ReturnApplication(id, auditorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, auditorID, result, model.RETURNED, model.ActionReturn)
+func (s *ApplicationService) ReturnApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
+	return s.updateApplicationStatus(id, operatorID, result, model.RETURNED)
 }
 
-func (s *ApplicationService) updateApplicationStatus(id, auditorID, result string, status model.ApplicationStatus, action model.ActionType) (*model.ApplicationDetail, error) {
+func (s *ApplicationService) updateApplicationStatus(id, operatorID, result string, status model.ApplicationStatus) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.Application
@@ -249,9 +244,9 @@ func (s *ApplicationService) updateApplicationStatus(id, auditorID, result strin
 		}
 
 		updates := map[string]interface{}{
-			"action":         action,
-			"auditor_result": result,
-			"auditor_id":     auditorID,
+			"action":      status,
+			"result":      result,
+			"operator_id": operatorID,
 		}
 
 		if err := tx.Model(&lastAudit).Updates(updates).Error; err != nil {
@@ -272,7 +267,7 @@ func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID st
 	err := global.DB.WithContext(context.Background()).
 		Where("id = ? AND application_id = ?", auditID, applicationID).
 		Preload("Files").
-		Preload("Auditor", func(db *gorm.DB) *gorm.DB {
+		Preload("Operator", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
 		Preload("Application", func(db *gorm.DB) *gorm.DB {
@@ -286,6 +281,7 @@ func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID st
 		return nil, err
 	}
 	detail := audit.ToDetail()
+
 	return &detail, nil
 }
 
@@ -328,7 +324,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 		}
 
 		audit := &model.Audit{
-			Action:        model.ActionReSubmit,
+			Action:        model.PENDING,
 			ApplicationID: id,
 			Files:         newAuditFiles,
 		}
