@@ -21,10 +21,7 @@ import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
 
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
-const approveApplicationAPI = (id, data) =>
-  apiClient.post(`/api/v1/applications/${id}/approve`, data)
-const rejectApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/reject`, data)
-const returnApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/return`, data)
+const auditApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/audit`, data)
 const resubmitApplicationAPI = (id, data, config = {}) =>
   apiClient.post(`/api/v1/applications/${id}/resubmit`, data, config)
 const fetchAuditDetailAPI = (appId, auditId) => apiClient.get(`/api/v1/applications/${appId}/audits/${auditId}`)
@@ -490,12 +487,6 @@ const updateApplicationEntry = (nextData) => {
   }
 }
 
-const auditActionAPIMap = {
-  approve: approveApplicationAPI,
-  reject: rejectApplicationAPI,
-  return: returnApplicationAPI,
-}
-
 const auditActionSuccessMessage = {
   approve: '申请已批准',
   reject: '申请已拒绝',
@@ -527,12 +518,12 @@ const handleDialogAudit = async (action) => {
     return
   }
 
-  const api = auditActionAPIMap[action]
-  if (!api) return
-
   detailDialog.audit.loading = true
   try {
-    const res = await api(current.id, { result })
+    const res = await auditApplicationAPI(current.id, {
+      action: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned',
+      result,
+    })
     if (res.data?.message === 'success' && res.data.application) {
       const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)

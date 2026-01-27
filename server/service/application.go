@@ -202,19 +202,11 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 	return nil
 }
 
-func (s *ApplicationService) ApproveApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, operatorID, result, model.APPROVED)
-}
-
-func (s *ApplicationService) RejectApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, operatorID, result, model.REJECTED)
-}
-
-func (s *ApplicationService) ReturnApplication(id, operatorID, result string) (*model.ApplicationDetail, error) {
-	return s.updateApplicationStatus(id, operatorID, result, model.RETURNED)
-}
-
-func (s *ApplicationService) updateApplicationStatus(id, operatorID, result string, status model.ApplicationStatus) (*model.ApplicationDetail, error) {
+// ProcessApplicationAudit handles the approval, rejection, or return of an application.
+// It updates the application's status and the latest audit record.
+// This function replaces ApproveApplication, RejectApplication, and ReturnApplication.
+func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result string, status model.ApplicationStatus) (*model.ApplicationDetail, error) {
+	// Validate the incoming status to ensure it's an audit action
 	ctx := context.Background()
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.Application

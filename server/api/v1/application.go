@@ -36,6 +36,7 @@ type createApplicationParam struct {
 }
 
 type auditApplicationParam struct {
+	Action string `json:"action" binding:"required"` // e.g., "approved", "rejected", "returned"
 	Result string `json:"result" binding:"required"`
 }
 
@@ -243,22 +244,52 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "success", "audit": detail})
 }
 
-func (a *ApplicationApi) Approve(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.ApproveApplication(id, operatorID, result)
-	}, "approve")
-}
+func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		return
+	}
 
-func (a *ApplicationApi) Reject(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.RejectApplication(id, operatorID, result)
-	}, "reject")
-}
+	var param auditApplicationParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
 
-func (a *ApplicationApi) Return(ctx *gin.Context) {
-	a.handleAuditAction(ctx, func(id, operatorID, result string) (*model.ApplicationDetail, error) {
-		return a.service.ReturnApplication(id, operatorID, result)
-	}, "return")
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, errInvalidUserID) {
+			status = http.StatusInternalServerError
+		}
+		ctx.JSON(status, gin.H{"message": err.Error()})
+		return
+	}
+
+	actionStatus, err := model.ParseApplicationStatus(param.Action)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	application, err := a.service.ProcessApplicationAudit(id, userIDStr, param.Result, actionStatus)
+	if err != nil {
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			return
+		case errors.Is(err, service.ErrApplicationAlreadyProcessed):
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already processed"})
+			return
+		default:
+			logger.Errorf("failed to process application %s with action %s: %v", id, param.Action, err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to process application"})
+			return
+		}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "success", "application": *application})
 }
 
 func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
@@ -324,53 +355,6 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		default:
 			logger.Errorf("failed to resubmit application %s: %v", id, err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to resubmit application"})
-			return
-		}
-	}
-
-	ctx.JSON(http.StatusOK, gin.H{
-		"message":     "success",
-		"application": *application,
-	})
-}
-
-type auditActionFunc func(id, operatorID, result string) (*model.ApplicationDetail, error)
-
-func (a *ApplicationApi) handleAuditAction(ctx *gin.Context, action auditActionFunc, actionName string) {
-	id := ctx.Param("id")
-	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
-		return
-	}
-
-	var param auditApplicationParam
-	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return
-	}
-
-	userIDStr, err := getUserIDFromContext(ctx)
-	if err != nil {
-		status := http.StatusUnauthorized
-		if errors.Is(err, errInvalidUserID) {
-			status = http.StatusInternalServerError
-		}
-		ctx.JSON(status, gin.H{"message": err.Error()})
-		return
-	}
-
-	application, err := action(id, userIDStr, param.Result)
-	if err != nil {
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
-			return
-		case errors.Is(err, service.ErrApplicationAlreadyProcessed):
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already processed"})
-			return
-		default:
-			logger.Errorf("failed to %s application %s: %v", actionName, id, err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to process application"})
 			return
 		}
 	}

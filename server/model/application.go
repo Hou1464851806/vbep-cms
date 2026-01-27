@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type ApplicationStatus uint
 
@@ -11,19 +14,33 @@ const (
 	RETURNED
 )
 
-func (s ApplicationStatus) String() string {
-	switch s {
-	case PENDING:
-		return "pending"
-	case APPROVED:
-		return "approved"
-	case REJECTED:
-		return "rejected"
-	case RETURNED:
-		return "returned"
-	default:
-		return "unknown"
+var (
+	statusToString = map[ApplicationStatus]string{
+		PENDING:  "pending",
+		APPROVED: "approved",
+		REJECTED: "rejected",
+		RETURNED: "returned",
 	}
+	stringToStatus = map[string]ApplicationStatus{
+		"pending":  PENDING,
+		"approved": APPROVED,
+		"rejected": REJECTED,
+		"returned": RETURNED,
+	}
+)
+
+func (s ApplicationStatus) String() string {
+	if str, ok := statusToString[s]; ok {
+		return str
+	}
+	return "unknown"
+}
+
+func ParseApplicationStatus(s string) (ApplicationStatus, error) {
+	if v, ok := stringToStatus[s]; ok {
+		return v, nil
+	}
+	return PENDING, errors.New("invalid application status string")
 }
 
 // Application 申请信息
