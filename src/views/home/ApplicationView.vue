@@ -688,7 +688,7 @@ onMounted(fetchApplications)
               <el-descriptions-item label="申请数据集">
                 {{ detailDialog.data.dataset.title }}
                 <el-tooltip :content="detailDialog.data.dataset.id" placement="top">
-                  <span class="info-sub-text">
+                  <span class="sub-text">
                     (ID: {{ formatShortId(detailDialog.data.dataset.id) }})
                   </span>
                 </el-tooltip>
@@ -696,7 +696,7 @@ onMounted(fetchApplications)
               <el-descriptions-item label="申请人">
                 {{ detailDialog.data.applicant.nickname }}
                 <span v-if="detailDialog.data.applicant.email" class="info-sub-text"
-                  >({{ detailDialog.data.applicant.email }})</span
+                  >({{ detailDialog.data.applicant.email }})</span>
                 >
               </el-descriptions-item>
               <el-descriptions-item label="初次申请时间">
@@ -979,11 +979,6 @@ onMounted(fetchApplications)
 </template>
 
 <style scoped>
-.table-sub-text,
-.info-sub-text {
-  color: #909399;
-  font-size: 12px;
-}
 .reason-block {
   white-space: pre-wrap;
   line-height: 1.6;
@@ -1157,10 +1152,6 @@ onMounted(fetchApplications)
   color: #909399;
   font-size: 13px;
   padding: 4px 0;
-}
-.dialog-footer {
-  display: flex;
-  gap: 12px;
 }
 
 .custom-descriptions {

@@ -870,8 +870,10 @@ const handleCancelApplication = async () => {
         <el-table :data="fileDialog.list" height="450px">
           <el-table-column property="name" label="文件名">
             <template #default="scope">
-              <el-icon style="vertical-align: middle; margin-right: 5px"><Document /></el-icon>
-              <span>{{ scope.row.name }}</span>
+              <div class="file-name-cell">
+                <el-icon class="file-icon"><Document /></el-icon>
+                <span class="file-name-text" :title="scope.row.name">{{ scope.row.name }}</span>
+              </div>
             </template>
           </el-table-column>
           <el-table-column label="大小" width="140">

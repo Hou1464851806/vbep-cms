@@ -521,7 +521,7 @@ const currentPageTitle = computed(() => {
         <div class="info-row danger-row">
           <div class="row-label danger-label">账户控制</div>
           <div class="row-content">
-            <span class="danger-desc">注销后无法恢复，请谨慎操作</span>
+            <span class="sub-text">注销后无法恢复，请谨慎操作</span>
           </div>
           <div class="row-action">
             <el-button type="danger" link size="small" @click="handleDeleteAccount">
@@ -675,9 +675,5 @@ const currentPageTitle = computed(() => {
 }
 .danger-label {
   color: #f56c6c; /* Element Plus 的 Danger 红色 */
-}
-.danger-desc {
-  font-size: 12px;
-  color: #909399;
 }
 </style>

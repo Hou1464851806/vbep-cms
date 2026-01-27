@@ -225,20 +225,4 @@ onMounted(() => {
 .upload-btn-wrapper {
   display: inline-flex;
 }
-.file-name-cell {
-  display: flex;
-  align-items: center;
-}
-.file-icon {
-  margin-right: 8px;
-  font-size: 16px;
-  color: #909399;
-}
-.file-name-text {
-  font-weight: 500;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 </style>
