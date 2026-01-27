@@ -660,13 +660,11 @@ onMounted(fetchApplications)
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140">
+        <el-table-column label="操作" width="140" fixed="right" align="center">
           <template #default="scope">
-            <el-space direction="vertical" :size="0" alignment="start">
-              <el-button type="primary" text :icon="View" @click="handleViewDetail(scope.row)">
-                查看详情
-              </el-button>
-            </el-space>
+            <el-button type="primary" link :icon="View" @click="handleViewDetail(scope.row)">
+              查看详情
+            </el-button>
           </template>
         </el-table-column>
       </el-table>

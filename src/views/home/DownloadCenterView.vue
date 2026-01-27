@@ -172,7 +172,7 @@ onMounted(() => {
       </div>
     </template>
 
-    <el-table :data="fileList" stripe style="width: 100%" v-loading="isLoading">
+    <el-table :data="fileList" style="width: 100%" v-loading="isLoading">
       <el-table-column label="文件名" min-width="300">
         <template #default="{ row }">
           <div class="file-name-cell">

@@ -150,7 +150,7 @@ const handleSave = async (originalRow) => {
       </div>
     </template>
 
-    <el-table :data="userList" stripe style="width: 100%" v-loading="isLoading">
+    <el-table :data="userList" style="width: 100%" v-loading="isLoading">
       <el-table-column label="内部ID" width="100">
         <template #default="{ row }">
           <el-tooltip effect="dark" :content="row.userID" placement="top" :show-after="500">

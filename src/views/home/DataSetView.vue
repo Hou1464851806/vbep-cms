@@ -728,7 +728,7 @@ const handleCancelApplication = async () => {
       </template>
 
       <el-skeleton :rows="6" animated :loading="isDataLoading">
-        <el-table :data="datasetList" stripe style="width: 100%">
+        <el-table :data="datasetList" style="width: 100%">
           <el-table-column label="内部ID" width="100">
             <template #default="{ row }">
               <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
@@ -748,17 +748,17 @@ const handleCancelApplication = async () => {
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
           <el-table-column prop="creator" label="创建者" width="120" />
           <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column label="操作" width="280" fixed="right" align="center">
+          <el-table-column label="操作" width="260" fixed="right" align="center">
             <template #default="scope">
               <template v-if="isAdmin()">
-                <el-button size="small" :icon="Document" @click="handleViewFiles(scope.row)"
+                <el-button link type="primary" :icon="Document" @click="handleViewFiles(scope.row)"
                   >管理文件</el-button
                 >
-                <el-button size="small" type="primary" :icon="Edit" @click="handleEdit(scope.row)"
+                <el-button link type="primary" :icon="Edit" @click="handleEdit(scope.row)"
                   >编辑</el-button
                 >
                 <el-button
-                  size="small"
+                  link
                   type="danger"
                   :icon="Delete"
                   @click="handleDelete(scope.row)"
@@ -769,9 +769,9 @@ const handleCancelApplication = async () => {
               <template v-else>
                 <el-button
                   v-if="scope.row.hasAccess"
-                  type="success"
+                  type="primary"
+                  link
                   :icon="Download"
-                  size="small"
                   @click="handleViewDetail(scope.row)"
                 >
                   下载文件
@@ -782,7 +782,6 @@ const handleCancelApplication = async () => {
                     type="primary"
                     link
                     :icon="View"
-                    size="small"
                     @click="handleViewDetail(scope.row)"
                   >
                     查看详情
@@ -790,8 +789,8 @@ const handleCancelApplication = async () => {
 
                   <el-button
                     type="primary"
+                    link
                     :icon="Promotion"
-                    size="small"
                     @click="handleApply(scope.row)"
                   >
                     申请使用
@@ -868,7 +867,7 @@ const handleCancelApplication = async () => {
         </div>
       </div>
       <el-skeleton :rows="5" animated :loading="fileDialog.isLoading">
-        <el-table :data="fileDialog.list" stripe height="450px">
+        <el-table :data="fileDialog.list" height="450px">
           <el-table-column property="name" label="文件名">
             <template #default="scope">
               <el-icon style="vertical-align: middle; margin-right: 5px"><Document /></el-icon>
@@ -885,19 +884,19 @@ const handleCancelApplication = async () => {
               {{ scope.row.createdAt || '-' }}
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" align="center">
+          <el-table-column label="操作" width="180" fixed="right" align="center">
             <template #default="scope">
               <el-button
-                type="success"
+                type="primary"
+                link
                 :icon="Download"
-                size="small"
                 @click="handleDownloadFile(fileDialog.currentDataset.id, scope.row)"
                 >下载</el-button
               >
               <el-button
                 type="danger"
+                link
                 :icon="Delete"
-                size="small"
                 @click="handleDeleteFile(scope.row)"
                 >删除</el-button
               >
@@ -1023,7 +1022,7 @@ const handleCancelApplication = async () => {
           <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px">文件列表</div>
 
           <div v-if="detailDialog.data.hasAccess">
-            <el-table :data="detailDialog.files" stripe border height="300px">
+            <el-table :data="detailDialog.files" border height="300px">
               <el-table-column prop="name" label="文件名" />
               <el-table-column prop="size" label="大小" width="120">
                 <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
