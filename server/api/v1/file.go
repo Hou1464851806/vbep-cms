@@ -53,18 +53,18 @@ func NewFileApi() *FileApi {
 func (a *FileApi) ListByDataset(ctx *gin.Context) {
 	datasetID := ctx.Param("id")
 	if datasetID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的数据集ID"})
 		return
 	}
 
 	files, err := a.service.GetFilesByDataset(datasetID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
 		logger.Errorf("failed to list files for dataset %s: %v", datasetID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load files"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
 
@@ -80,43 +80,41 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"files":   resp,
+		"files": resp,
 	})
 }
 
 func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 	datasetID := ctx.Param("id")
 	if datasetID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的数据集ID"})
 		return
 	}
 
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请上传文件"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
 	file, err := a.service.CreateDatasetFile(datasetID, user.ID, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
 		logger.Errorf("failed to upload file for dataset %s: %v", datasetID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
 		"file": datasetFileResponse{
 			ID:        file.ID,
 			Name:      file.Name,
@@ -131,7 +129,7 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 	datasetID := ctx.Param("id")
 	fileID := ctx.Param("fileID")
 	if datasetID == "" || fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的数据集或文件ID"})
 		return
 	}
 
@@ -174,33 +172,33 @@ func (a *FileApi) DeleteFromDataset(ctx *gin.Context) {
 	datasetID := ctx.Param("id")
 	fileID := ctx.Param("fileID")
 	if datasetID == "" || fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid dataset or file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的数据集或文件ID"})
 		return
 	}
 
 	if err := a.service.DeleteDatasetFile(datasetID, fileID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to delete file %s for dataset %s: %v", fileID, datasetID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
 func (a *FileApi) ListByApplication(ctx *gin.Context) {
 	applicationID := ctx.Param("id")
 	if applicationID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
@@ -210,18 +208,18 @@ func (a *FileApi) ListByApplication(ctx *gin.Context) {
 	}
 
 	if !canAccessApplicationFiles(user, application) {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	files, err := a.service.GetLatestApplicationFiles(applicationID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		}
 		logger.Errorf("failed to list files for application %s: %v", applicationID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load files"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
 
@@ -230,19 +228,19 @@ func (a *FileApi) ListByApplication(ctx *gin.Context) {
 		resp = append(resp, buildApplicationFileResponse(file))
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "files": resp})
+	ctx.JSON(http.StatusOK, gin.H{"files": resp})
 }
 
 func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 	applicationID := ctx.Param("id")
 	if applicationID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
@@ -252,41 +250,41 @@ func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 	}
 
 	if !canUploadApplicationFiles(user, application) {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "only applicant can upload attachments before approval"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "只有申请人可以在审批前上传附件"})
 		return
 	}
 
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请上传文件"})
 		return
 	}
 
 	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		}
 		logger.Errorf("failed to upload file for application %s: %v", applicationID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "file": buildApplicationFileResponse(*file)})
+	ctx.JSON(http.StatusOK, gin.H{"file": buildApplicationFileResponse(*file)})
 }
 
 func (a *FileApi) DownloadByApplication(ctx *gin.Context) {
 	applicationID := ctx.Param("id")
 	fileID := ctx.Param("fileID")
 	if applicationID == "" || fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application or file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请或文件ID"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
@@ -296,18 +294,18 @@ func (a *FileApi) DownloadByApplication(ctx *gin.Context) {
 	}
 
 	if !canAccessApplicationFiles(user, application) {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	file, err := a.service.GetApplicationFile(applicationID, fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to get file %s for application %s: %v", fileID, applicationID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to download file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载文件失败"})
 		return
 	}
 
@@ -325,13 +323,13 @@ func (a *FileApi) DeleteFromApplication(ctx *gin.Context) {
 	applicationID := ctx.Param("id")
 	fileID := ctx.Param("fileID")
 	if applicationID == "" || fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application or file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请或文件ID"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
@@ -341,33 +339,33 @@ func (a *FileApi) DeleteFromApplication(ctx *gin.Context) {
 	}
 
 	if !canDeleteApplicationFiles(user, application) {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	if err := a.service.DeleteApplicationFile(applicationID, fileID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to delete file %s for application %s: %v", fileID, applicationID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
 func (a *FileApi) ListPublic(ctx *gin.Context) {
 	if _, ok := getUserFromContext(ctx); !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
 	files, err := a.service.GetPublicFiles()
 	if err != nil {
 		logger.Errorf("failed to list public files: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load files"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
 
@@ -381,19 +379,19 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		})
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "files": resp})
+	ctx.JSON(http.StatusOK, gin.H{"files": resp})
 }
 
 func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
 	if _, ok := getUserFromContext(ctx); !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
 	files, description, err := a.service.GetPublicTemplateFiles()
 	if err != nil {
 		logger.Errorf("failed to list public template files: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load template files"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载模版文件失败"})
 		return
 	}
 
@@ -408,7 +406,6 @@ func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":     "success",
 		"files":       resp,
 		"description": description,
 	})
@@ -417,28 +414,28 @@ func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
 func (a *FileApi) UploadPublic(ctx *gin.Context) {
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 	if user.Role != model.SuperAdmin {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	fileHeader, err := ctx.FormFile("file")
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "file is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请上传文件"})
 		return
 	}
 
 	file, err := a.service.CreatePublicFile(user.ID, fileHeader)
 	if err != nil {
 		logger.Errorf("failed to upload public file: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to save file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "file": publicFileResponse{
+	ctx.JSON(http.StatusOK, gin.H{"file": publicFileResponse{
 		ID:        file.ID,
 		Name:      file.Name,
 		Size:      file.Size,
@@ -449,23 +446,23 @@ func (a *FileApi) UploadPublic(ctx *gin.Context) {
 func (a *FileApi) DownloadPublic(ctx *gin.Context) {
 	fileID := ctx.Param("fileID")
 	if fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的文件ID"})
 		return
 	}
 
 	if _, ok := getUserFromContext(ctx); !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
 	file, err := a.service.GetPublicFile(fileID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to get public file %s: %v", fileID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "download failed"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载失败"})
 		return
 	}
 
@@ -482,42 +479,42 @@ func (a *FileApi) DownloadPublic(ctx *gin.Context) {
 func (a *FileApi) DeletePublic(ctx *gin.Context) {
 	fileID := ctx.Param("fileID")
 	if fileID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid file id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的文件ID"})
 		return
 	}
 
 	user, ok := getUserFromContext(ctx)
 	if !ok {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 	if user.Role != model.SuperAdmin {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	if err := a.service.DeletePublicFile(fileID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "file not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
 		logger.Errorf("failed to delete public file %s: %v", fileID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete file"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
 func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*model.ApplicationDetail, bool) {
 	application, err := a.applicationService.GetApplicationByID(applicationID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return nil, false
 		}
 		logger.Errorf("failed to get application %s: %v", applicationID, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请失败"})
 		return nil, false
 	}
 	return application, true

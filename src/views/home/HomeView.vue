@@ -30,7 +30,7 @@ const deleteUserAPI = (userId) => apiClient.delete(`/api/v1/users/${userId}`)
 const router = useRouter()
 const route = useRoute()
 const userInfo = reactive({
-  id: '',
+  userID: '',
   nickname: '',
   email: '',
   phone: '',
@@ -43,22 +43,22 @@ const isUserLoading = ref(true)
 onMounted(async () => {
   isUserLoading.value = true
   try {
-    const storedUserId = localStorage.getItem('user_id')
+    const storedUserId = localStorage.getItem('userID')
     if (!storedUserId) {
       ElMessage.error('无法获取用户信息，请重新登录')
       router.push('/login')
       return
     }
     const res = await fetchUserInfoAPI(storedUserId)
-    if (res && res.data?.message === 'success' && res.data.data) {
-      const { id, nickname, email, phone, role } = res.data.data
+    if (res && res.data?.data) {
+      const { userID, nickname, email, phone, role } = res.data.data
       const roleNum = Number(role)
       // let roleStr = 'user'
       // if (roleNum === 1) roleStr = 'admin'
       // if (roleNum === 2) roleStr = 'super_admin'
 
       Object.assign(userInfo, {
-        id,
+        userID,
         nickname,
         email,
         phone,
@@ -96,7 +96,7 @@ const handleLogout = async () => {
     }
 
     clearAuthToken()
-    localStorage.removeItem('user_id')
+    localStorage.removeItem('userID')
     ElMessage.success('已安全退出')
     router.push('/login')
   } catch (e) {
@@ -180,7 +180,7 @@ const saveField = async (field, labelName) => {
   // 3. 发送请求
   try {
     const payload = { [field]: newValue }
-    const res = await updateUserAPI(userInfo.id, payload)
+    const res = await updateUserAPI(userInfo.userID, payload)
 
     if (res.status === 200) {
       ElMessage.success(`${labelName}已更新`)
@@ -212,14 +212,14 @@ const handleDeleteAccount = () => {
     .then(async () => {
       try {
         // 2. 调用后端接口
-        const res = await deleteUserAPI(userInfo.id)
+        const res = await deleteUserAPI(userInfo.userID)
 
         // 3. 处理响应
         if (res.status === 200) {
           ElMessage.success('账户已注销')
           // 清除本地信息并跳转
           clearAuthToken()
-          localStorage.removeItem('user_id')
+          localStorage.removeItem('userID')
           profileDialogVisible.value = false // 关闭弹窗
           router.push('/login')
         }
@@ -276,13 +276,13 @@ const submitPassword = async () => {
     if (valid) {
       try {
         const payload = { password: passwordForm.password }
-        const res = await updateUserAPI(userInfo.id, payload)
+        const res = await updateUserAPI(userInfo.userID, payload)
 
         if (res.status === 200) {
           ElMessage.success('密码修改成功，请重新登录')
           passwordDialogVisible.value = false
           clearAuthToken()
-          localStorage.removeItem('user_id')
+          localStorage.removeItem('userID')
           router.push('/login')
         }
       } catch (error) {

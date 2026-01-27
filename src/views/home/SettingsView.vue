@@ -19,17 +19,17 @@
         <div class="info-row">
           <div class="row-label">公邮地址</div>
           <div class="row-content">
-            <span v-if="!editState.public_email">{{ settings.public_email || '未设置' }}</span>
-            <el-input v-else v-model="tempSettings.public_email" size="small" />
+            <span v-if="!editState.publicEmail">{{ settings.publicEmail || '未设置' }}</span>
+            <el-input v-else v-model="tempSettings.publicEmail" size="small" />
           </div>
           <div class="row-action">
             <template v-if="canEdit">
-              <el-button v-if="!editState.public_email" type="primary" link :icon="Edit" @click="startEdit('public_email')">
+              <el-button v-if="!editState.publicEmail" type="primary" link :icon="Edit" @click="startEdit('publicEmail')">
                 修改
               </el-button>
               <template v-else>
-                <el-button type="success" link :icon="Check" @click="saveField('public_email', '公邮地址')">确定</el-button>
-                <el-button type="info" link :icon="Close" @click="cancelEdit('public_email')">取消</el-button>
+                <el-button type="success" link :icon="Check" @click="saveField('publicEmail', '公邮地址')">确定</el-button>
+                <el-button type="info" link :icon="Close" @click="cancelEdit('publicEmail')">取消</el-button>
               </template>
             </template>
           </div>
@@ -56,24 +56,24 @@
         <div class="info-row">
           <div class="row-label">模版文件</div>
           <div class="row-content">
-            <span v-if="!editState.template_file">{{ getPublicFileNames(settings.template_file) || '未设置' }}</span>
-            <el-select v-else v-model="tempSettings.template_file" multiple collapse-tags collapse-tags-tooltip size="small" placeholder="请选择文件" clearable filterable style="width: 100%">
+            <span v-if="!editState.templateFile">{{ getPublicFileNames(settings.templateFile) || '未设置' }}</span>
+            <el-select v-else v-model="tempSettings.templateFile" multiple collapse-tags collapse-tags-tooltip size="small" placeholder="请选择文件" clearable filterable style="width: 100%">
               <el-option
                 v-for="file in publicFiles"
-                :key="getFileId(file)"
+                :key="file.fileID"
                 :label="file.name"
-                :value="getFileId(file)"
+                :value="file.fileID"
               />
             </el-select>
           </div>
           <div class="row-action">
             <template v-if="canEdit">
-              <el-button v-if="!editState.template_file" type="primary" link :icon="Edit" @click="startEdit('template_file')">
+              <el-button v-if="!editState.templateFile" type="primary" link :icon="Edit" @click="startEdit('templateFile')">
                 修改
               </el-button>
               <template v-else>
-                <el-button type="success" link :icon="Check" @click="saveField('template_file', '模版文件')">确定</el-button>
-                <el-button type="info" link :icon="Close" @click="cancelEdit('template_file')">取消</el-button>
+                <el-button type="success" link :icon="Check" @click="saveField('templateFile', '模版文件')">确定</el-button>
+                <el-button type="info" link :icon="Close" @click="cancelEdit('templateFile')">取消</el-button>
               </template>
             </template>
           </div>
@@ -83,7 +83,7 @@
         <div class="info-row">
           <div class="row-label">模版描述</div>
           <div class="row-content">
-            <span>{{ formatDescription(settings.template_description) }}</span>
+            <span>{{ formatDescription(settings.templateDescription) }}</span>
           </div>
           <div class="row-action">
             <template v-if="canEdit">
@@ -107,7 +107,7 @@
     :close-on-press-escape="false"
   >
     <el-input
-      v-model="tempSettings.template_description"
+      v-model="tempSettings.templateDescription"
       type="textarea"
       :rows="6"
       placeholder="请输入模版描述"
@@ -156,7 +156,7 @@ const descriptionDialogVisible = ref(false);
 const fetchSettings = async () => {
   try {
     const response = await axios.get('/api/v1/settings');
-    if (response.data.message === 'success') {
+    if (response.status === 200) {
       settings.value = response.data.data;
     } else {
       ElMessage.error(response.data.message || '获取设置失败');
@@ -169,7 +169,7 @@ const fetchSettings = async () => {
 const fetchPublicFiles = async () => {
   try {
     const response = await axios.get('/api/v1/files/public');
-    if (response.data.message === 'success') {
+    if (response.status === 200) {
       publicFiles.value = response.data.files || [];
     }
   } catch (error) {
@@ -177,16 +177,11 @@ const fetchPublicFiles = async () => {
   }
 };
 
-const getFileId = (file) => {
-  // 兼容各种可能的 ID 字段名
-  return file.id || file.fileID || file.fileId || file.FileID || file.FileId || file.ID || file.fileid;
-};
-
 const getPublicFileNames = (idsStr) => {
   if (!idsStr) return '';
   const ids = idsStr.split(',');
   const names = ids.map(id => {
-    const file = publicFiles.value.find(f => getFileId(f) === id);
+    const file = publicFiles.value.find(f => f.fileID === id);
     return file ? file.name : '未知文件';
   });
   return names.join(', ');
@@ -208,7 +203,7 @@ onMounted(async () => {
 const startEdit = async (field) => {
   
   // Refresh the file list when starting to edit the template file
-  if (field === 'template_file') {
+  if (field === 'templateFile') {
     await fetchPublicFiles();
     // Convert comma-separated string to array for multiple select
     const val = settings.value[field];
@@ -233,7 +228,7 @@ const saveField = async (field, labelName) => {
   const oldValue = settings.value[field] || '';
 
   // Diff check: if value hasn't changed, just exit edit mode
-  if (field === 'template_file') {
+  if (field === 'templateFile') {
     // Compare array vs string
     const newStr = Array.isArray(newValue) ? newValue.join(',') : '';
     if (newStr === oldValue) {
@@ -248,7 +243,7 @@ const saveField = async (field, labelName) => {
   }
 
   // Basic validation (can be expanded)
-  if (field === 'public_email' && newValue) { // Validate only if not empty
+  if (field === 'publicEmail' && newValue) { // Validate only if not empty
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(newValue)) {
       ElMessage.warning('请输入有效的邮箱地址');
@@ -259,10 +254,10 @@ const saveField = async (field, labelName) => {
   try {
     const payload = { [field]: newValue };
     const response = await axios.patch('/api/v1/settings', payload);
-    if (response.data.message === 'success') {
+    if (response.status === 200) {
       ElMessage.success(`${labelName}已更新`);
       // Update local state
-      if (field === 'template_file' && Array.isArray(newValue)) {
+      if (field === 'templateFile' && Array.isArray(newValue)) {
         settings.value[field] = newValue.join(',');
       } else {
         settings.value[field] = newValue;
@@ -278,19 +273,19 @@ const saveField = async (field, labelName) => {
 };
 
 const openDescriptionDialog = () => {
-  tempSettings.template_description = settings.value.template_description || '';
+  tempSettings.templateDescription = settings.value.templateDescription || '';
   descriptionDialogVisible.value = true;
 };
 
 const saveDescription = async () => {
-  const newValue = tempSettings.template_description || '';
+  const newValue = tempSettings.templateDescription || '';
   
   try {
-    const payload = { template_description: newValue };
+    const payload = { templateDescription: newValue };
     const response = await axios.patch('/api/v1/settings', payload);
-    if (response.data.message === 'success') {
+    if (response.status === 200) {
       ElMessage.success('模版描述已更新');
-      settings.value.template_description = newValue;
+      settings.value.templateDescription = newValue;
       descriptionDialogVisible.value = false;
     } else {
       ElMessage.error(response.data.message || '保存失败');

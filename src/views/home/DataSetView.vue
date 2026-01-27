@@ -184,7 +184,7 @@ const normalizeOneDataset = (item) => {
     description: item.description,
     fileCount: item.fileCount || (item.files ? item.files.length : 0),
     creator: item.creator,
-    createdAt: formatDateTime(item.createdAt || item.created_at),
+    createdAt: formatDateTime(item.createdAt),
     hasAccess: item.hasAccess,
     raw: item,
   }
@@ -193,10 +193,10 @@ const normalizeDatasets = (datasets = []) => datasets.map(normalizeOneDataset)
 
 const normalizeDatasetFiles = (files = []) =>
   files.map((item) => ({
-    id: item.id || item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
-    name: item.name || item.Name || '未命名文件',
-    size: Number(item.size ?? item.Size ?? 0),
-    createdAt: formatDateTime(item.createdAt || item.created_at),
+    id: item.fileID,
+    name: item.name || '未命名文件',
+    size: Number(item.size ?? 0),
+    createdAt: formatDateTime(item.createdAt),
     raw: item,
   }))
 
@@ -242,7 +242,7 @@ const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
     const res = await fetchDatasetListAPI()
-    if (res && res.data?.message === 'success') {
+    if (res && res.status === 200) {
       datasetList.value = normalizeDatasets(res.data.datasets)
       return
     }
@@ -285,7 +285,7 @@ const handleEdit = async (row) => {
   try {
     // 调用 GetOne 获取完整信息 (包含 Description)
     const res = await fetchDatasetDetailAPI(row.id)
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       const detail = res.data.dataset
       datasetFormDialog.form = {
         id: detail.id,
@@ -315,7 +315,7 @@ const handleSaveDataset = async () => {
         title: form.name,
         description: form.description,
       })
-      if (res.data?.message === 'success') {
+      if (res.status === 200) {
         ElMessage.success('更新成功')
         await fetchDatasets()
         datasetFormDialog.visible = false
@@ -325,7 +325,7 @@ const handleSaveDataset = async () => {
     } else {
       // 新增
       const res = await createDatasetAPI({ title: form.name, description: form.description })
-      if (res.data?.message === 'success') {
+      if (res.status === 200) {
         ElMessage.success('创建成功')
         await fetchDatasets()
         datasetFormDialog.visible = false
@@ -346,7 +346,7 @@ const handleDelete = (row) => {
     .then(async () => {
       try {
         const res = await deleteDatasetAPI(row.id)
-        if (res.data?.message === 'success') {
+        if (res.status === 200) {
           ElMessage.success(`数据集 "${row.name}" 已删除`)
           await fetchDatasets()
         } else {
@@ -370,7 +370,7 @@ const handleViewDetail = async (row) => {
   try {
     const res = await fetchDatasetDetailAPI(row.id)
     // 后端现在返回结构为: { message: "success", dataset: {...}, hasAccess: true/false }
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       const data = res.data.dataset
 
       // 关键：将后端返回的 hasAccess 状态合并到 dialog 数据中
@@ -426,9 +426,8 @@ const loadFilesForDataset = async (datasetId) => {
   fileDialog.isLoading = true
   fileDialog.list = []
   try {
-    console.log('文件列表', datasetId)
     const res = await fetchFilesForDatasetAPI(datasetId)
-    if (res?.data?.message === 'success') {
+    if (res?.status === 200) {
       fileDialog.list = normalizeDatasetFiles(res.data.files)
     } else {
       ElMessage.error('文件列表加载失败')
@@ -443,7 +442,6 @@ const handleViewFiles = (row) => {
   fileDialog.currentDataset = row
   fileDialog.visible = true
   fileDialog.uploadTasks = []
-  console.log(row.id)
   loadFilesForDataset(row.id)
 }
 const handleDatasetFileUpload = async (options) => {
@@ -464,7 +462,7 @@ const handleDatasetFileUpload = async (options) => {
         onProgress?.({ percent: percentage })
       },
     })
-    if (res?.data?.message === 'success') {
+    if (res?.status === 200) {
       ElMessage.success(`${file.name} 上传成功`)
       await loadFilesForDataset(fileDialog.currentDataset.id)
       onSuccess?.(res.data)
@@ -530,7 +528,7 @@ const handleDeleteFile = (file) => {
     .then(async () => {
       try {
         const res = await deleteDatasetFileAPI(fileDialog.currentDataset.id, file.id)
-        if (res?.data?.message === 'success') {
+        if (res?.status === 200) {
           ElMessage.success('文件已删除')
           await loadFilesForDataset(fileDialog.currentDataset.id)
         } else {
@@ -559,7 +557,7 @@ const handleApply = async (row) => {
 
   try {
     const res = await fetchPublicTemplateFilesAPI()
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       applicationDialog.template.description = res.data.description || '暂无说明'
       applicationDialog.template.files = normalizeDatasetFiles(res.data.files || [])
     } else {
@@ -595,9 +593,9 @@ const handleNextStep = async () => {
     applicationDialog.isSubmitting = true
     try {
       const res = await submitApplicationAPI({
-        datasetId: applicationDialog.dataset.id,
+        datasetID: applicationDialog.dataset.id,
       })
-      if (res.data?.message === 'success' && res.data.id) {
+      if (res.status === 200 && res.data.applicationID) {
         applicationDialog.optional.createdApplicationId = res.data.id
         applicationDialog.currentStep = 2
       } else {

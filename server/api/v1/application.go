@@ -17,10 +17,10 @@ import (
 )
 
 var (
-	errUserNotAuthenticated = errors.New("user not authenticated")
-	errInvalidUserID        = errors.New("invalid user id")
-	errInvalidUser          = errors.New("invalid user")
-	errPermissionDenied     = errors.New("permission denied")
+	errUserNotAuthenticated = errors.New("用户未登录")
+	errInvalidUserID        = errors.New("无效的用户ID")
+	errInvalidUser          = errors.New("无效的用户")
+	errPermissionDenied     = errors.New("权限不足")
 )
 
 type ApplicationApi struct {
@@ -32,7 +32,7 @@ func NewApplicationApi() *ApplicationApi {
 }
 
 type createApplicationParam struct {
-	DatasetID string `json:"datasetId" binding:"required"`
+	DatasetID string `json:"datasetID" binding:"required"`
 }
 
 type auditApplicationParam struct {
@@ -68,24 +68,23 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 
 	if err := a.service.CreateApplication(app); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "dataset not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
 		logger.Errorf("failed to create application: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to create application"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "创建申请失败"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"id":      app.ID,
+		"applicationID": app.ID,
 	})
 }
 
 func (a *ApplicationApi) Delete(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
@@ -97,24 +96,24 @@ func (a *ApplicationApi) Delete(ctx *gin.Context) {
 
 	if err := a.service.DeleteDraftApplication(id, userIDStr); err != nil {
 		if errors.Is(err, service.ErrApplicationPermissionDenied) {
-			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
 		}
 		if errors.Is(err, service.ErrApplicationNotEditable) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "cannot delete submitted application"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "无法删除已提交的申请"})
 			return
 		}
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to delete application"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除申请失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
 func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
@@ -126,19 +125,19 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 
 	if err := a.service.SubmitDraftApplication(id, userIDStr); err != nil {
 		if errors.Is(err, service.ErrApplicationPermissionDenied) {
-			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
 		}
 		if errors.Is(err, service.ErrApplicationAlreadyProcessed) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already submitted"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "申请已提交"})
 			return
 		}
 		logger.Errorf("failed to submit application %s: %v", id, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to submit application"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "提交申请失败"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success"})
+	ctx.JSON(http.StatusOK, gin.H{})
 }
 
 func (a *ApplicationApi) GetAll(ctx *gin.Context) {
@@ -165,12 +164,11 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	applications, err := a.service.ListApplications(filterID)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load applications"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请列表失败"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":      "success",
 		"applications": applications,
 	})
 }
@@ -178,7 +176,7 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
@@ -196,22 +194,21 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	application, err := a.service.GetApplicationByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		}
 		logger.Errorf("failed to get application %s: %v", id, err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to load application"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请失败"})
 		return
 	}
 
 	// 3. 鉴权逻辑：如果是普通用户，且该申请的申请人不是当前用户 -> 403 Forbidden
 	if currentUser.Role == model.Common && application.Applicant.ID != currentUser.ID {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied: you do not own this application"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足：您不是该申请的所有者"})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":     "success",
 		"application": *application,
 	})
 }
@@ -220,7 +217,7 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 	id := ctx.Param("id")
 	auditID := ctx.Param("auditID")
 	if id == "" || auditID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid parameters"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "参数无效"})
 		return
 	}
 
@@ -231,23 +228,43 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 	}
 
 	if err := ensureApplicationReadable(ctx, currentUser, id); err != nil {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
 	detail, err := a.service.GetApplicationAuditDetail(id, auditID)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, gin.H{"message": "audit record not found"})
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "审批记录不存在"})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "audit": detail})
+	// 构造符合前端命名规范的文件列表
+	var fileResps []applicationFileResponse
+	if len(detail.Files) > 0 {
+		fileResps = make([]applicationFileResponse, 0, len(detail.Files))
+		for _, f := range detail.Files {
+			fileResps = append(fileResps, applicationFileResponse{
+				ID:            f.ID,
+				Name:          f.Name,
+				Size:          f.Size,
+				ApplicationID: f.OwnerID,
+				CreatedAt:     f.CreatedAt,
+			})
+		}
+	} else {
+		fileResps = []applicationFileResponse{}
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"audit": struct {
+		*model.AuditDetail
+		Files []applicationFileResponse `json:"files"`
+	}{detail, fileResps}})
 }
 
 func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
@@ -277,25 +294,25 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		case errors.Is(err, service.ErrApplicationAlreadyProcessed):
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application already processed"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "申请已处理"})
 			return
 		default:
 			logger.Errorf("failed to process application %s with action %s: %v", id, param.Action, err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to process application"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "处理申请失败"})
 			return
 		}
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "success", "application": *application})
+	ctx.JSON(http.StatusOK, gin.H{"application": *application})
 }
 
 func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid application id"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
 		return
 	}
 
@@ -305,16 +322,16 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	)
 
 	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
-		keptRaw := ctx.PostForm("keptFileIds")
+		keptRaw := ctx.PostForm("keptFileIDs")
 		if keptRaw != "" {
 			if err := json.Unmarshal([]byte(keptRaw), &keptFileIDs); err != nil {
-				ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid keptFileIds"})
+				ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的保留文件ID列表"})
 				return
 			}
 		}
 		form, err := ctx.MultipartForm()
 		if err != nil && err != http.ErrNotMultipart {
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "invalid attachment payload"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的附件数据"})
 			return
 		}
 		if form != nil {
@@ -344,23 +361,22 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "application not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		case errors.Is(err, service.ErrApplicationPermissionDenied):
-			ctx.JSON(http.StatusForbidden, gin.H{"message": "permission denied"})
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
 		case errors.Is(err, service.ErrApplicationNotEditable):
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "application cannot be resubmitted"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "申请无法重新提交"})
 			return
 		default:
 			logger.Errorf("failed to resubmit application %s: %v", id, err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "failed to resubmit application"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "重新提交申请失败"})
 			return
 		}
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":     "success",
 		"application": *application,
 	})
 }

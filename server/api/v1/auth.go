@@ -21,7 +21,7 @@ func NewAuthApi() *AuthApi {
 }
 
 type LoginParam struct {
-	UserInfo string `json:"user_info" binding:"required"`
+	UserInfo string `json:"userInfo" binding:"required"`
 	PWDHash  string `json:"password" binding:"required"`
 }
 
@@ -47,15 +47,14 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	token, err := jwt.GenerateToken(user.ID)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": fmt.Sprintf("failed to generate token: %v", err),
+			"message": fmt.Sprintf("生成令牌失败: %v", err),
 		})
 		return
 	}
 	// 返回
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"token":   token,
-		"user_id": user.ID,
+		"token":  token,
+		"userID": user.ID,
 	})
 }
 
@@ -63,7 +62,7 @@ func (a *AuthApi) Logout(ctx *gin.Context) {
 	// 1. 改为从 Header 获取 Token
 	authHeader := ctx.GetHeader("Authorization")
 	if authHeader == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "no token in header"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请求头中缺少令牌"})
 		return
 	}
 	parts := strings.SplitN(authHeader, " ", 2)
@@ -76,7 +75,7 @@ func (a *AuthApi) Logout(ctx *gin.Context) {
 	claims, err := jwt.ParseToken(tokenString)
 	if err != nil {
 		// 即使 Token 只有效性有问题，也告诉前端“注销成功”，让它删掉本地存储
-		ctx.JSON(http.StatusOK, gin.H{"message": "logout success"})
+		ctx.JSON(http.StatusOK, gin.H{"message": "注销成功"})
 		return
 	}
 
@@ -90,7 +89,5 @@ func (a *AuthApi) Logout(ctx *gin.Context) {
 	}
 
 	// 4. 不需要 SetCookie("", -1) 了，直接返回
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "logout success",
-	})
+	ctx.JSON(http.StatusOK, gin.H{})
 }

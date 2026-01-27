@@ -28,10 +28,10 @@ const uploadPublicFileAPI = (file) => {
   })
 }
 
-const deletePublicFileAPI = (fileId) => apiClient.delete(`/api/v1/files/public/${fileId}`)
+const deletePublicFileAPI = (fileID) => apiClient.delete(`/api/v1/files/public/${fileID}`)
 
-const downloadPublicFileAPI = (fileId) =>
-  apiClient.get(`/api/v1/files/public/${fileId}/download`, { responseType: 'blob' })
+const downloadPublicFileAPI = (fileID) =>
+  apiClient.get(`/api/v1/files/public/${fileID}/download`, { responseType: 'blob' })
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
@@ -62,7 +62,7 @@ const loadFiles = async () => {
   isLoading.value = true
   try {
     const res = await fetchPublicFilesAPI()
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       fileList.value = res.data.files || []
     } else {
       ElMessage.error(res.data?.message || '加载文件列表失败')
@@ -88,7 +88,7 @@ const handleUpload = async (options) => {
   isUploading.value = true
   try {
     const res = await uploadPublicFileAPI(file)
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       ElMessage.success(`文件 "${file.name}" 上传成功`)
       loadFiles()
     } else {
@@ -132,7 +132,7 @@ const handleDelete = (row) => {
     .then(async () => {
       try {
         const res = await deletePublicFileAPI(row.fileID)
-        if (res.data?.message === 'success') {
+        if (res.status === 200) {
           ElMessage.success('删除成功')
           loadFiles()
         } else {

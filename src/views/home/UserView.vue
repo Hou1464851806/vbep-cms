@@ -47,13 +47,9 @@ const fetchUsers = async () => {
   isLoading.value = true
   try {
     const res = await fetchUserListAPI()
-    if (res && res.data?.message === 'success' && Array.isArray(res.data.data)) {
+    if (res && Array.isArray(res.data?.data)) {
       // 直接赋值，后端 GORM 已经过滤了软删除用户，这里不需要再前端 filter
-      userList.value = res.data.data.map((item) => ({
-        ...item,
-        // 做一个简单的兼容，防止后端字段首字母大小写不一致
-        createdAt: item.createdAt || item.CreatedAt || item.created_at,
-      }))
+      userList.value = res.data.data
     } else {
       ElMessage.error(res?.data?.message || '用户列表加载失败')
     }
@@ -70,22 +66,22 @@ onMounted(fetchUsers)
 // --- 编辑逻辑 ---
 
 // 判断某一行是否处于编辑模式
-const isEditing = (id) => !!editMap[id]
+const isEditing = (id) => !!editMap[id] // id here refers to userID
 
 // 进入编辑模式
 const handleEdit = (row) => {
   // 深拷贝当前行数据到 editMap，作为临时修改区
-  editMap[row.id] = { ...row }
+  editMap[row.userID] = { ...row }
 }
 
 // 取消编辑
-const handleCancel = (id) => {
+const handleCancel = (id) => { // id is userID
   delete editMap[id]
 }
 
 // 保存修改
 const handleSave = async (originalRow) => {
-  const draft = editMap[originalRow.id]
+  const draft = editMap[originalRow.userID]
   if (!draft) return
 
   // 1. 简单校验
@@ -112,20 +108,20 @@ const handleSave = async (originalRow) => {
 
   // 如果没有变化，直接退出编辑模式，不发送请求
   if (Object.keys(changes).length === 0) {
-    handleCancel(originalRow.id)
+    handleCancel(originalRow.userID)
     ElMessage.info('未检测到数据变更')
     return
   }
 
   // 3. 发送 API 请求
   try {
-    const res = await updateUserAPI(originalRow.id, changes)
+    const res = await updateUserAPI(originalRow.userID, changes)
     if (res.status === 200) {
       ElMessage.success('用户信息更新成功')
       // 更新本地视图数据
       Object.assign(originalRow, changes)
       // 退出编辑
-      handleCancel(originalRow.id)
+      handleCancel(originalRow.userID)
     } else {
       ElMessage.error(res.data?.message || '更新失败')
     }
@@ -157,9 +153,9 @@ const handleSave = async (originalRow) => {
     <el-table :data="userList" stripe style="width: 100%" v-loading="isLoading">
       <el-table-column label="内部ID" width="100">
         <template #default="{ row }">
-          <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
+          <el-tooltip effect="dark" :content="row.userID" placement="top" :show-after="500">
             <span class="monospace-id">
-              {{ formatShortId(row.id) }}
+              {{ formatShortId(row.userID) }}
             </span>
           </el-tooltip>
         </template>
@@ -167,36 +163,36 @@ const handleSave = async (originalRow) => {
 
       <el-table-column label="姓名" min-width="120">
         <template #default="{ row }">
-          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].nickname" size="small" />
+          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].nickname" size="small" />
           <span v-else>{{ row.nickname }}</span>
         </template>
       </el-table-column>
 
       <el-table-column label="邮箱" min-width="180">
         <template #default="{ row }">
-          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].email" size="small" />
+          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].email" size="small" />
           <span v-else>{{ row.email || '-' }}</span>
         </template>
       </el-table-column>
 
       <el-table-column label="手机号" width="140">
         <template #default="{ row }">
-          <el-input v-if="isEditing(row.id)" v-model="editMap[row.id].phone" size="small" />
+          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].phone" size="small" />
           <span v-else>{{ row.phone || '-' }}</span>
         </template>
       </el-table-column>
 
       <el-table-column label="注册时间" width="180">
         <template #default="{ row }">
-          {{ formatDateTime(row.createdAt || row.created_at) }}
+          {{ formatDateTime(row.createdAt) }}
         </template>
       </el-table-column>
 
       <el-table-column label="权限组" width="140" align="center">
         <template #default="{ row }">
           <el-select
-            v-if="isEditing(row.id) && isSuperAdmin"
-            v-model="editMap[row.id].role"
+            v-if="isEditing(row.userID) && isSuperAdmin"
+            v-model="editMap[row.userID].role"
             size="small"
           >
             <el-option label="普通用户" :value="0" />
@@ -212,9 +208,9 @@ const handleSave = async (originalRow) => {
 
       <el-table-column label="操作" width="150" fixed="right" align="center">
         <template #default="{ row }">
-          <template v-if="isEditing(row.id)">
+          <template v-if="isEditing(row.userID)">
             <el-button type="success" link :icon="Check" @click="handleSave(row)">确定</el-button>
-            <el-button type="info" link :icon="Close" @click="handleCancel(row.id)">取消</el-button>
+            <el-button type="info" link :icon="Close" @click="handleCancel(row.userID)">取消</el-button>
           </template>
 
           <template v-else>

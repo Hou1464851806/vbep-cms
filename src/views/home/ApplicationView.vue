@@ -90,7 +90,7 @@ const DENIED_EXTENSIONS = [
 const readStoredUserId = () => {
   if (typeof window === 'undefined') return ''
   try {
-    return window.localStorage.getItem('user_id') || ''
+    return window.localStorage.getItem('userID') || ''
   } catch {
     return ''
   }
@@ -133,12 +133,10 @@ const statusMetaMap = {
   returned: { label: '已退回', type: 'warning' },
 }
 
-const getStatusMeta = (status) => statusMetaMap[status] || { label: '未知', type: 'info' }
-
 const normalizeApplication = (item = {}) => ({
   id: item.id,
   status: item.status,
-  statusMeta: getStatusMeta(item.status),
+  statusMeta: statusMetaMap[item.status] || { label: '未知', type: 'info' },
   version: item.version,
   dataset: {
     id: item.dataset?.id,
@@ -203,10 +201,10 @@ const normalizeAudit = (item = {}) => {
 
 const normalizeApplicationFiles = (files = []) =>
   files.map((item) => ({
-    id: item.id || item.file_id || item.fileId || item.fileID || item.FileId || item.FileID,
-    name: item.name || item.Name || '未命名文件',
-    size: Number(item.size ?? item.Size ?? 0),
-    createdAt: formatDateTime(item.createdAt || item.CreatedAt || item.Time?.CreatedAt),
+    id: item.fileID,
+    name: item.name || '未命名文件',
+    size: Number(item.size ?? 0),
+    createdAt: formatDateTime(item.createdAt),
   }))
 
 const toEditableAttachment = (item = {}) => ({
@@ -252,7 +250,7 @@ const loadApplicationFiles = async (applicationId) => {
   detailDialog.attachments.isLoading = true
   try {
     const res = await fetchApplicationFilesAPI(applicationId)
-    if (res?.data?.message === 'success') {
+    if (res?.status === 200) {
       const normalized = normalizeApplicationFiles(res.data.files)
       detailDialog.attachments.originalList = normalized.map((item) => ({ ...item }))
       detailDialog.attachments.list = normalized.map((item) => toEditableAttachment(item))
@@ -283,7 +281,7 @@ const handleAuditClick = async (auditItem) => {
   
   try {
     const res = await fetchAuditDetailAPI(detailDialog.data.id, auditItem.id)
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       const files = normalizeApplicationFiles(res.data.audit.files || [])
       detailDialog.attachments.list = files.map(toEditableAttachment)
       detailDialog.attachments.currentApplicationId = detailDialog.data.id
@@ -428,7 +426,7 @@ const fetchApplications = async () => {
   isLoading.value = true
   try {
     const res = await fetchApplicationListAPI()
-    if (res.data?.message === 'success') {
+    if (res.status === 200) {
       applicationList.value = res.data.applications.map((item) => normalizeApplication(item))
     } else {
       ElMessage.error(res.data?.message || '申请列表加载失败')
@@ -452,7 +450,7 @@ const handleViewDetail = async (row) => {
   try {
     const detailRes = await fetchApplicationDetailAPI(row.id)
 
-    if (detailRes.data?.message === 'success') {
+    if (detailRes.status === 200) {
       detailDialog.data = normalizeApplication(detailRes.data.application)
       
       const normalizedAudits = (detailRes.data.application.audits || []).map((item) => normalizeAudit(item))
@@ -524,7 +522,7 @@ const handleDialogAudit = async (action) => {
       action: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned',
       result,
     })
-    if (res.data?.message === 'success' && res.data.application) {
+    if (res.status === 200 && res.data.application) {
       const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
       detailDialog.audit.result = normalized.result
@@ -548,9 +546,9 @@ const handleResubmitApplication = async () => {
   const current = detailDialog.data
   if (!current?.id) return
 
-  const { keptFileIds, newFiles } = getAttachmentDiff()
+  const { keptFileIds: keptFileIDs, newFiles } = getAttachmentDiff()
   const formData = new FormData()
-  formData.append('keptFileIds', JSON.stringify(keptFileIds))
+  formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
   newFiles.forEach((item) => {
     if (item.file) {
       formData.append('files', item.file, item.name)
@@ -562,7 +560,7 @@ const handleResubmitApplication = async () => {
     const res = await resubmitApplicationAPI(current.id, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
-    if (res.data?.message === 'success' && res.data.application) {
+    if (res.status === 200 && res.data.application) {
       const appData = res.data.application
       updateApplicationEntry(appData)
 
@@ -585,10 +583,6 @@ const handleResubmitApplication = async () => {
   } finally {
     detailDialog.resubmit.loading = false
   }
-}
-
-const isPendingAction = (action) => {
-  return action === 'pending'
 }
 
 const getActionTagType = (action) => {
@@ -759,7 +753,7 @@ onMounted(fetchApplications)
 
                       <!-- 下半部分：管理员审批信息 -->
                       <div class="audit-cell admin-cell">
-                        <template v-if="isPendingAction(item.action)">
+                        <template v-if="item.action === 'pending'">
                           <div class="placeholder-content">
                             <el-icon><Timer /></el-icon>
                             <span>等待管理员审批</span>

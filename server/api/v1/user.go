@@ -52,7 +52,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	param.Phone = strings.TrimSpace(param.Phone)
 	param.NickName = strings.TrimSpace(param.NickName)
 	if param.Email == "" && param.Phone == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Either email or phone must be provided"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "必须提供邮箱或手机号"})
 		return
 	}
 
@@ -91,8 +91,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 
 	// 返回user id
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"user_id": newUser.ID,
+		"userID": newUser.ID,
 	})
 }
 
@@ -100,7 +99,7 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 	// 1. 获取 URL 参数中的目标 ID
 	targetID := ctx.Param("id")
 	if targetID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "User ID is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "用户ID不能为空"})
 		return
 	}
 
@@ -109,13 +108,13 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 	obj, exists := ctx.Get(global.CTXUserObj)
 	if !exists {
 		// 理论上中间件已经拦截了，但为了防御性编程加上此判断
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "User not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 
 	currentUser, ok := obj.(*model.User)
 	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to parse user info"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "解析用户信息失败"})
 		return
 	}
 
@@ -129,7 +128,7 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 
 	if !isSelf && !isAdmin {
 		ctx.JSON(http.StatusForbidden, gin.H{
-			"message": "Permission denied: You can only delete your own account",
+			"message": "权限不足：您只能注销自己的账户",
 		})
 		return
 	}
@@ -139,34 +138,33 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 	if err != nil {
 		// 如果是“未找到用户”，返回 404；其他错误返回 500
 		if err.Error() == "user not found" {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": "User not found"})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "用户不存在"})
 			return
 		}
 
 		logger.Errorf("Failed to delete user: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "Internal server error",
+			"message": "服务器内部错误",
 		})
 		return
 	}
 
 	// 5. 成功响应
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":    "User deleted successfully",
-		"deleted_id": targetID,
+		"deletedID": targetID,
 	})
 }
 
 func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	targetID := ctx.Param("id")
 	if targetID == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "User ID is required"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "用户ID不能为空"})
 		return
 	}
 
 	var param UpdateUserParam
 	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid parameters: " + err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "参数错误: " + err.Error()})
 		return
 	}
 
@@ -180,7 +178,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	isManager := operator.Role >= model.Admin // Admin 或 SuperAdmin
 
 	if !isSelf && !isManager {
-		ctx.JSON(http.StatusForbidden, gin.H{"message": "Permission denied: insufficient privileges"})
+		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 		return
 	}
 
@@ -193,7 +191,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		// 规则：只有 SuperAdmin 有资格修改 Role
 		if operator.Role != model.SuperAdmin {
 			ctx.JSON(http.StatusForbidden, gin.H{
-				"message": "Permission denied: only SuperAdmin can change roles",
+				"message": "权限不足：只有超级管理员可以修改角色",
 			})
 			return
 		}
@@ -229,7 +227,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	}
 
 	if len(updates) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "No fields to update"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "没有需要更新的字段"})
 		return
 	}
 
@@ -247,12 +245,12 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 			ctx.JSON(http.StatusConflict, gin.H{"message": err.Error()})
 		} else {
 			logger.Errorf("UpdateUser error: %v", err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Internal server error"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "服务器内部错误"})
 		}
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"message": "User updated successfully", "id": targetID})
+	ctx.JSON(http.StatusOK, gin.H{"userID": targetID})
 }
 
 func (u *UserApi) GetUser(ctx *gin.Context) {
@@ -262,21 +260,20 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{
-				"message": "user not found",
+				"message": "用户不存在",
 			})
 			return
 		}
 		logger.Errorf("failed to query user: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to get user info",
+			"message": "获取用户信息失败",
 		})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
 		"data": gin.H{
-			"id":       user.ID,
+			"userID":   user.ID,
 			"nickname": user.NickName,
 			"email":    user.Email,
 			"phone":    user.Phone,
@@ -291,7 +288,7 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	if err != nil {
 		logger.Errorf("failed to query all users: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to get user list",
+			"message": "获取用户列表失败",
 		})
 		return
 	}
@@ -301,7 +298,7 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	var userList []gin.H
 	for _, user := range users {
 		userList = append(userList, gin.H{
-			"id":        user.ID,
+			"userID":    user.ID,
 			"nickname":  user.NickName,
 			"email":     user.Email,
 			"phone":     user.Phone,
@@ -312,7 +309,6 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 
 	// 3. 返回 JSON
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"data":    userList, // 这里直接放入数组
+		"data": userList, // 这里直接放入数组
 	})
 }

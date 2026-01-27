@@ -56,7 +56,6 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":  "success",
 		"datasets": datasets,
 	})
 }
@@ -85,9 +84,28 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 		dataset.Files = []model.File{} // 如果没权限，连文件列表都不给看
 	}
 
+	// 构造符合前端命名规范的文件列表
+	var fileResps []datasetFileResponse
+	if len(dataset.Files) > 0 {
+		fileResps = make([]datasetFileResponse, 0, len(dataset.Files))
+		for _, f := range dataset.Files {
+			fileResps = append(fileResps, datasetFileResponse{
+				ID:        f.ID,
+				Name:      f.Name,
+				Size:      f.Size,
+				DatasetID: f.OwnerID,
+				CreatedAt: f.CreatedAt,
+			})
+		}
+	} else {
+		fileResps = []datasetFileResponse{}
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{
-		"message":   "success",
-		"dataset":   dataset,
+		"dataset": struct {
+			*model.Dataset
+			Files []datasetFileResponse `json:"files"`
+		}{dataset, fileResps},
 		"hasAccess": hasAccess,
 	})
 }
@@ -115,12 +133,12 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 	// 从 JWT 获取 userID
 	userID, exists := ctx.Get("user_id")
 	if !exists {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "user not authenticated"})
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 		return
 	}
 	uidStr, ok := userID.(string)
 	if !ok {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "user id type error"})
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "用户ID类型错误"})
 		return
 	}
 
@@ -139,8 +157,7 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"id":      newDataset.ID,
+		"datasetID": newDataset.ID,
 	})
 }
 
@@ -148,7 +165,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid dataset id",
+			"message": "无效的数据集ID",
 		})
 		return
 	}
@@ -165,19 +182,18 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{
-				"message": "dataset not found",
+				"message": "数据集不存在",
 			})
 			return
 		}
 		logger.Errorf("failed to update dataset %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to update dataset",
+			"message": "更新数据集失败",
 		})
 		return
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
 		"dataset": dataset,
 	})
 }
@@ -186,7 +202,7 @@ func (a *DatasetApi) Delete(ctx *gin.Context) {
 	id := ctx.Param("id")
 	if id == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "invalid dataset id",
+			"message": "无效的数据集ID",
 		})
 		return
 	}
@@ -194,18 +210,16 @@ func (a *DatasetApi) Delete(ctx *gin.Context) {
 	if err := a.service.DeleteDataset(id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{
-				"message": "dataset not found",
+				"message": "数据集不存在",
 			})
 			return
 		}
 		logger.Errorf("failed to delete dataset %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to delete dataset",
+			"message": "删除数据集失败",
 		})
 		return
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{
-		"message": "success",
-	})
+	ctx.JSON(http.StatusOK, gin.H{})
 }

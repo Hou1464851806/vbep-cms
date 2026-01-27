@@ -17,7 +17,7 @@ const router = useRouter()
 const saveUserId = (userId) => {
   if (userId === undefined || userId === null) return
   try {
-    localStorage.setItem('user_id', String(userId))
+    localStorage.setItem('userID', String(userId))
   } catch (error) {
     console.error('Failed to persist user id', error)
   }
@@ -44,7 +44,7 @@ const submitLoginFrom = async () => {
     isLoading.value = true
     // 步骤 B: 准备并发送 API 请求
     const requestData = {
-      user_info: loginForm.userInfo,
+      userInfo: loginForm.userInfo,
       password: loginForm.password,
     }
     const response = await apiClient.post('/api/v1/users/login', requestData)
@@ -56,7 +56,7 @@ const submitLoginFrom = async () => {
     } else {
       console.warn('登录响应中未找到 token')
     }
-    saveUserId(response.data?.user_id)
+    saveUserId(response.data?.userID)
     ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
     // 跳转到主页或用户仪表盘
     setTimeout(() => {

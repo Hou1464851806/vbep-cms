@@ -14,26 +14,35 @@ func GetSetting(c *gin.Context) {
 	if err != nil {
 		logger.Errorf("failed to get setting: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to get setting",
+			"message": "获取设置失败",
 		})
 		return
 	}
 
+	// Map snake_case (DB) to camelCase (Frontend)
+	resp := map[string]interface{}{
+		"templateFile":        setting.TemplateFile,
+		"publicEmail":         setting.PublicEmail,
+		"templateDescription": setting.TemplateDescription,
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "success",
-		"data":    setting,
+		"data": resp,
 	})
 }
 
 func SetSetting(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "Parameter error: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "参数错误: " + err.Error()})
 		return
 	}
 
-	// Handle template_file: if it's an array, join it to a comma-separated string
-	if val, ok := req["template_file"]; ok {
+	// Map camelCase (Frontend) to snake_case (DB)
+	dbReq := make(map[string]interface{})
+
+	// Handle templateFile -> template_file
+	if val, ok := req["templateFile"]; ok {
 		switch v := val.(type) {
 		case []interface{}:
 			var strIDs []string
@@ -42,17 +51,23 @@ func SetSetting(c *gin.Context) {
 					strIDs = append(strIDs, s)
 				}
 			}
-			req["template_file"] = strings.Join(strIDs, ",")
+			dbReq["template_file"] = strings.Join(strIDs, ",")
 		}
 	}
+	if val, ok := req["publicEmail"]; ok {
+		dbReq["public_email"] = val
+	}
+	if val, ok := req["templateDescription"]; ok {
+		dbReq["template_description"] = val
+	}
 
-	if err := service.SetSetting(req); err != nil {
+	if err := service.SetSetting(dbReq); err != nil {
 		logger.Errorf("failed to set setting: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"message": "failed to set setting",
+			"message": "保存设置失败",
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "success"})
+	c.JSON(http.StatusOK, gin.H{})
 }
