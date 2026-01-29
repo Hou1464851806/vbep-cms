@@ -22,5 +22,6 @@ func (r *DatasetRouter) InitDatasetRouter(router *gin.RouterGroup) {
 		datasetRouter.POST("/", middleware.AuthRole(model.Admin), datasetApi.New)
 		datasetRouter.PATCH("/:id", middleware.AuthRole(model.Admin), datasetApi.Update)
 		datasetRouter.DELETE("/:id", middleware.AuthRole(model.Admin), datasetApi.Delete)
+		datasetRouter.GET("/:id/statistics", middleware.AuthRole(model.Admin), datasetApi.GetStatistics)
 	}
 }

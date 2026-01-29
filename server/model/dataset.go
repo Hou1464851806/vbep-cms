@@ -33,3 +33,11 @@ func (d Dataset) ToBrief() DatasetBrief {
 		Title: d.Title,
 	}
 }
+
+type DatasetStatistics struct {
+	TotalApplications      int64         `json:"totalApplications"`
+	TotalAudits            int64         `json:"totalAudits"`
+	ApprovedCount          int64         `json:"approvedCount"`
+	ApprovalRate           float64       `json:"approvalRate"`
+	SubmissionDistribution map[int]int64 `json:"submissionDistribution"`
+}

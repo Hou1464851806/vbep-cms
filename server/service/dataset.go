@@ -150,3 +150,58 @@ func (s *DatasetService) DeleteDataset(id string) error {
 	}
 	return nil
 }
+
+func (s *DatasetService) GetDatasetStatistics(datasetID string) (*model.DatasetStatistics, error) {
+	var stats model.DatasetStatistics
+	ctx := context.Background()
+
+	// 1. 本数据集的申请总量
+	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
+		Where("dataset_id = ?", datasetID).
+		Count(&stats.TotalApplications).Error; err != nil {
+		return nil, fmt.Errorf("failed to count applications: %w", err)
+	}
+
+	// 2. 申请提交（Audit）总次数
+	// 假设 audits 表通过 application_id 关联 applications 表
+	if err := global.DB.WithContext(ctx).Model(&model.Audit{}).
+		Joins("JOIN applications ON audits.application_id = applications.id").
+		Where("applications.dataset_id = ?", datasetID).
+		Count(&stats.TotalAudits).Error; err != nil {
+		return nil, fmt.Errorf("failed to count audits: %w", err)
+	}
+
+	// 3. 数据集申请通过总量
+	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
+		Where("dataset_id = ? AND status = ?", datasetID, model.APPROVED).
+		Count(&stats.ApprovedCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to count approved applications: %w", err)
+	}
+
+	// 4. 通过率
+	if stats.TotalApplications > 0 {
+		stats.ApprovalRate = float64(stats.ApprovedCount) / float64(stats.TotalApplications)
+	}
+
+	// 5. 提交次数分布 (基于 application.version)
+	// version=0 为草稿(未提交)，version=1 为首次提交，version>1 为重新提交
+	stats.SubmissionDistribution = make(map[int]int64)
+	rows, err := global.DB.WithContext(ctx).Model(&model.Application{}).
+		Select("version, count(*) as count").
+		Where("dataset_id = ?", datasetID).
+		Group("version").
+		Rows()
+
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var version int
+			var count int64
+			if rows.Scan(&version, &count) == nil {
+				stats.SubmissionDistribution[version] = count
+			}
+		}
+	}
+
+	return &stats, nil
+}

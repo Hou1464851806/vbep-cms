@@ -223,3 +223,20 @@ func (a *DatasetApi) Delete(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{})
 }
+
+func (a *DatasetApi) GetStatistics(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的数据集ID"})
+		return
+	}
+
+	stats, err := a.service.GetDatasetStatistics(id)
+	if err != nil {
+		logger.Errorf("failed to get statistics for dataset %s: %v", id, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "获取统计数据失败"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"statistics": stats})
+}

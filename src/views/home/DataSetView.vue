@@ -1,6 +1,6 @@
 <!-- src/views/dataset/DatasetList.vue -->
 <script setup>
-import { ref, onMounted, inject, reactive, watch } from 'vue'
+import { ref, onMounted, inject, reactive, watch, nextTick, onBeforeUnmount, getCurrentInstance } from 'vue'
 import {
   Plus,
   Edit,
@@ -11,6 +11,9 @@ import {
   Promotion,
   View,
   Refresh,
+  DataAnalysis,
+  QuestionFilled,
+  Setting,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -26,6 +29,7 @@ import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`)
+const fetchDatasetStatisticsAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}/statistics`)
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
 const deleteDatasetAPI = (uuid) => apiClient.delete(`/api/v1/datasets/${uuid}`)
@@ -131,6 +135,14 @@ const isAdmin = inject('isAdmin')
 const datasetList = ref([])
 const isDataLoading = ref(true)
 
+// 获取全局 echarts 实例
+const { proxy } = getCurrentInstance()
+const echarts = proxy.$echarts
+
+// ECharts 实例
+const chartRef = ref(null)
+let chartInstance = null
+
 // 状态1: 新增/编辑数据集对话框
 const datasetFormDialog = reactive({
   visible: false,
@@ -138,12 +150,14 @@ const datasetFormDialog = reactive({
   form: { id: null, name: '', description: '' },
 })
 
-// 状态2: 文件管理对话框
-const fileDialog = reactive({
+// 状态2: 管理对话框 (合并了编辑、删除、文件管理)
+const manageDialog = reactive({
   visible: false,
-  currentDataset: null,
-  list: [],
-  isLoading: false,
+  loading: false,
+  id: null,
+  form: { title: '', description: '' },
+  fileList: [],
+  isFilesLoading: false,
   isUploading: false,
   uploadTasks: [],
 })
@@ -177,6 +191,13 @@ const detailDialog = reactive({
   files: [],
 })
 
+// 状态5: 统计信息对话框 (管理员)
+const statisticsDialog = reactive({
+  visible: false,
+  loading: false,
+  data: null,
+})
+
 const normalizeOneDataset = (item) => {
   return {
     id: item.id,
@@ -201,11 +222,11 @@ const normalizeDatasetFiles = (files = []) =>
   }))
 
 const updateUploadingState = () => {
-  fileDialog.isUploading = fileDialog.uploadTasks.some((task) => task.status === 'uploading')
+  manageDialog.isUploading = manageDialog.uploadTasks.some((task) => task.status === 'uploading')
 }
 
 const ensureUploadTask = (file) => {
-  const existing = fileDialog.uploadTasks.find((task) => task.uid === file.uid)
+  const existing = manageDialog.uploadTasks.find((task) => task.uid === file.uid)
   if (existing) return existing
   const task = {
     uid: file.uid,
@@ -213,13 +234,13 @@ const ensureUploadTask = (file) => {
     percentage: 0,
     status: 'uploading',
   }
-  fileDialog.uploadTasks.push(task)
+  manageDialog.uploadTasks.push(task)
   updateUploadingState()
   return task
 }
 
 const updateUploadTask = (uid, payload = {}) => {
-  const task = fileDialog.uploadTasks.find((item) => item.uid === uid)
+  const task = manageDialog.uploadTasks.find((item) => item.uid === uid)
   if (task) {
     Object.assign(task, payload)
   }
@@ -227,8 +248,8 @@ const updateUploadTask = (uid, payload = {}) => {
 
 const removeUploadTask = (uid, delay = 0) => {
   const remover = () => {
-    const index = fileDialog.uploadTasks.findIndex((item) => item.uid === uid)
-    if (index !== -1) fileDialog.uploadTasks.splice(index, 1)
+    const index = manageDialog.uploadTasks.findIndex((item) => item.uid === uid)
+    if (index !== -1) manageDialog.uploadTasks.splice(index, 1)
     updateUploadingState()
   }
   if (delay > 0) {
@@ -256,6 +277,13 @@ const fetchDatasets = async () => {
 // --- 生命周期钩子 ---
 onMounted(() => {
   fetchDatasets()
+  window.addEventListener('resize', handleResize)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (chartInstance) {
+    chartInstance.dispose()
+  }
 })
 
 watch(
@@ -268,39 +296,18 @@ watch(
   },
 )
 
+const handleResize = () => {
+  if (chartInstance) {
+    chartInstance.resize()
+  }
+}
+
 // --- 数据集 CRUD 事件处理 ---
 const handleAdd = () => {
   datasetFormDialog.title = '新增数据集'
   datasetFormDialog.form = { id: null, name: '', description: '' }
   datasetFormDialog.visible = true
   datasetFormDialog.loading = false
-}
-const handleEdit = async (row) => {
-  datasetFormDialog.title = '编辑数据集'
-  datasetFormDialog.visible = true
-  datasetFormDialog.loading = true
-  // 先重置表单防止闪烁，保留 ID 和 Name (列表里有) 作为占位
-  datasetFormDialog.form = { id: row.id, name: row.name, description: '' }
-
-  try {
-    // 调用 GetOne 获取完整信息 (包含 Description)
-    const res = await fetchDatasetDetailAPI(row.id)
-    if (res.status === 200) {
-      const detail = res.data.dataset
-      datasetFormDialog.form = {
-        id: detail.id,
-        name: detail.title,
-        description: detail.description || '',
-      }
-    } else {
-      ElMessage.error('获取详情失败，无法编辑完整信息')
-    }
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('获取详情失败')
-  } finally {
-    datasetFormDialog.loading = false
-  }
 }
 const handleSaveDataset = async () => {
   const form = datasetFormDialog.form
@@ -310,19 +317,8 @@ const handleSaveDataset = async () => {
   }
 
   try {
-    if (form.id) {
-      const res = await updateDatasetAPI(form.id, {
-        title: form.name,
-        description: form.description,
-      })
-      if (res.status === 200) {
-        ElMessage.success('更新成功')
-        await fetchDatasets()
-        datasetFormDialog.visible = false
-      } else {
-        ElMessage.error(res.data?.message || '更新失败')
-      }
-    } else {
+    // 仅处理新增，编辑逻辑已移至 manageDialog
+    if (!form.id) {
       // 新增
       const res = await createDatasetAPI({ title: form.name, description: form.description })
       if (res.status === 200) {
@@ -347,7 +343,7 @@ const handleDelete = (row) => {
       try {
         const res = await deleteDatasetAPI(row.id)
         if (res.status === 200) {
-          ElMessage.success(`数据集 "${row.name}" 已删除`)
+          ElMessage.success(`数据集已删除`)
           await fetchDatasets()
         } else {
           ElMessage.error(res.data?.message || '删除失败')
@@ -405,6 +401,56 @@ const handleApplyFromDetail = () => {
   handleApply(normalizeOneDataset(detailDialog.data))
 }
 
+const handleViewStatistics = async (row) => {
+  statisticsDialog.visible = true
+  statisticsDialog.loading = true
+  statisticsDialog.data = null
+
+  try {
+    const res = await fetchDatasetStatisticsAPI(row.id)
+    if (res.status === 200) {
+      statisticsDialog.data = res.data.statistics
+      // 显式设置 loading 为 false，确保 DOM 更新（Skeleton 消失，内容显示）后再初始化图表
+      statisticsDialog.loading = false
+      nextTick(() => {
+        if (chartRef.value) {
+          if (chartInstance) chartInstance.dispose()
+          chartInstance = echarts.init(chartRef.value)
+
+          const distribution = statisticsDialog.data.submissionDistribution || {}
+          // 确保按版本号排序 (key 是字符串 "0", "1" 等)
+          const versions = Object.keys(distribution).sort((a, b) => Number(a) - Number(b))
+          const counts = versions.map((v) => distribution[v])
+          const categories = versions.map((v) => (v == 0 ? '草稿' : `${v}`))
+
+          chartInstance.setOption({
+            tooltip: {
+              trigger: 'axis',
+              axisPointer: { type: 'shadow' },
+            },
+            grid: {
+              top: '15%',
+              left: '3%',
+              right: '16%',
+              bottom: '3%',
+              containLabel: true,
+            },
+            xAxis: { type: 'category', data: categories, name: '提交次数' },
+            yAxis: { type: 'value', minInterval: 1, name: '计数' },
+            series: [{ data: counts, type: 'bar', barWidth: '40%', color: '#409eff' }],
+          })
+        }
+      })
+    } else {
+      ElMessage.error(res.data?.message || '获取统计数据失败')
+      statisticsDialog.loading = false
+    }
+  } catch (error) {
+    ElMessage.error('获取统计数据失败')
+    statisticsDialog.loading = false
+  }
+}
+
 // --- 文件管理事件处理 ---
 const handleBeforeUpload = (rawFile) => {
   if (rawFile.size > DATASET_FILE_LIMIT_BYTES) {
@@ -414,39 +460,71 @@ const handleBeforeUpload = (rawFile) => {
   return true
 }
 
-const handleFileDialogClose = () => {
-  fileDialog.visible = false
-  fileDialog.currentDataset = null
-  fileDialog.list = []
-  fileDialog.uploadTasks = []
-  fileDialog.isUploading = false
+const handleManage = async (row) => {
+  manageDialog.visible = true
+  manageDialog.id = row.id
+  manageDialog.form = { title: row.name, description: '' }
+  manageDialog.loading = true
+  
+  // 重置文件状态
+  manageDialog.fileList = []
+  manageDialog.uploadTasks = []
+  manageDialog.isUploading = false
+
+  // 1. 获取详情 (为了描述)
+  try {
+    const res = await fetchDatasetDetailAPI(row.id)
+    if (res.status === 200) {
+      const d = res.data.dataset
+      manageDialog.form.title = d.title
+      manageDialog.form.description = d.description || ''
+    }
+  } catch (e) {
+    console.error(e)
+  } finally {
+    manageDialog.loading = false
+  }
+
+  // 2. 加载文件
+  loadFilesForManageDialog(row.id)
 }
 
-const loadFilesForDataset = async (datasetId) => {
-  fileDialog.isLoading = true
-  fileDialog.list = []
+const handleUpdateDatasetInfo = async () => {
+  if (!manageDialog.form.title.trim()) {
+    ElMessage.warning('数据集名称不能为空')
+    return
+  }
+  try {
+    const res = await updateDatasetAPI(manageDialog.id, manageDialog.form)
+    if (res.status === 200) {
+      ElMessage.success('基本信息更新成功')
+      await fetchDatasets()
+    } else {
+      ElMessage.error(res.data?.message || '更新失败')
+    }
+  } catch {
+    ElMessage.error('更新失败')
+  }
+}
+
+const loadFilesForManageDialog = async (datasetId) => {
+  manageDialog.isFilesLoading = true
   try {
     const res = await fetchFilesForDatasetAPI(datasetId)
     if (res?.status === 200) {
-      fileDialog.list = normalizeDatasetFiles(res.data.files)
+      manageDialog.fileList = normalizeDatasetFiles(res.data.files)
     } else {
       ElMessage.error('文件列表加载失败')
     }
   } catch {
     ElMessage.error('文件列表加载失败')
   } finally {
-    fileDialog.isLoading = false
+    manageDialog.isFilesLoading = false
   }
-}
-const handleViewFiles = (row) => {
-  fileDialog.currentDataset = row
-  fileDialog.visible = true
-  fileDialog.uploadTasks = []
-  loadFilesForDataset(row.id)
 }
 const handleDatasetFileUpload = async (options) => {
   const { file, onError, onSuccess, onProgress } = options
-  if (!fileDialog.currentDataset?.id) {
+  if (!manageDialog.id) {
     const err = new Error('未选择数据集，无法上传文件')
     onError?.(err)
     ElMessage.error(err.message)
@@ -455,7 +533,7 @@ const handleDatasetFileUpload = async (options) => {
   const task = ensureUploadTask(file)
   onProgress?.({ percent: 0 })
   try {
-    const res = await uploadDatasetFileAPI(fileDialog.currentDataset.id, file, {
+    const res = await uploadDatasetFileAPI(manageDialog.id, file, {
       onUploadProgress: (event) => {
         const percentage = event.total ? Math.round((event.loaded / event.total) * 100) : 0
         updateUploadTask(task.uid, { percentage })
@@ -464,7 +542,7 @@ const handleDatasetFileUpload = async (options) => {
     })
     if (res?.status === 200) {
       ElMessage.success(`${file.name} 上传成功`)
-      await loadFilesForDataset(fileDialog.currentDataset.id)
+      await loadFilesForManageDialog(manageDialog.id)
       onSuccess?.(res.data)
       updateUploadTask(task.uid, { status: 'success', percentage: 100 })
       updateUploadingState()
@@ -519,7 +597,7 @@ const handleDownloadFile = async (datasetId, file) => {
   }
 }
 const handleDeleteFile = (file) => {
-  if (!fileDialog.currentDataset?.id) return
+  if (!manageDialog.id) return
   ElMessageBox.confirm(`确定要删除文件 "${file.name}" 吗？`, '提示', {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
@@ -527,10 +605,10 @@ const handleDeleteFile = (file) => {
   })
     .then(async () => {
       try {
-        const res = await deleteDatasetFileAPI(fileDialog.currentDataset.id, file.id)
+        const res = await deleteDatasetFileAPI(manageDialog.id, file.id)
         if (res?.status === 200) {
           ElMessage.success('文件已删除')
-          await loadFilesForDataset(fileDialog.currentDataset.id)
+          await loadFilesForManageDialog(manageDialog.id)
         } else {
           ElMessage.error(res?.data?.message || '删除失败')
         }
@@ -751,12 +829,8 @@ const handleCancelApplication = async () => {
           <el-table-column label="操作" width="260" fixed="right" align="center">
             <template #default="scope">
               <template v-if="isAdmin()">
-                <el-button link type="primary" :icon="Document" @click="handleViewFiles(scope.row)"
-                  >管理文件</el-button
-                >
-                <el-button link type="primary" :icon="Edit" @click="handleEdit(scope.row)"
-                  >编辑</el-button
-                >
+                <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
+                <el-button link type="primary" :icon="DataAnalysis" @click="handleViewStatistics(scope.row)">统计</el-button>
                 <el-button
                   link
                   type="danger"
@@ -811,12 +885,12 @@ const handleCancelApplication = async () => {
         <el-form-item label="数据集名称">
           <el-input v-model="datasetFormDialog.form.name" placeholder="请输入数据集名称" />
         </el-form-item>
-        <el-form-item label="描述">
+        <el-form-item label="简介">
           <el-input
             v-model="datasetFormDialog.form.description"
             type="textarea"
             :rows="5"
-            placeholder="请输入详细的数据集描述信息..."
+            placeholder="请输入详细的数据集简介信息..."
           />
         </el-form-item>
       </el-form>
@@ -826,33 +900,54 @@ const handleCancelApplication = async () => {
       </template>
     </el-dialog>
 
-    <!-- 对话框2：文件列表 (管理员) -->
+    <!-- 对话框2：管理数据集 (管理员) -->
     <el-dialog
-      v-model="fileDialog.visible"
-      :title="`文件列表 - ${fileDialog.currentDataset?.name}`"
+      v-model="manageDialog.visible"
+      title="管理数据集"
       width="70%"
       top="5vh"
-      @close="handleFileDialogClose"
     >
-      <div class="file-dialog-toolbar">
-        <el-upload
-          action="#"
-          :show-file-list="false"
-          :disabled="!fileDialog.currentDataset"
-          multiple
-          :before-upload="handleBeforeUpload"
-          :http-request="handleDatasetFileUpload"
-        >
-          <el-button type="primary" :icon="Upload" :loading="fileDialog.isUploading"
-            >上传文件</el-button
-          >
-          <template #tip>
-            <div class="el-upload__tip">单个文件不超过 {{ DATASET_FILE_LIMIT_MB }}MB</div>
-          </template>
-        </el-upload>
+      <!-- 上半部分：基本信息管理 -->
+      <div class="manage-section">
+        <div class="manage-section-header">
+          <span class="manage-section-title">基本信息管理</span>
+          <el-button type="primary" size="small" @click="handleUpdateDatasetInfo">保存</el-button>
+        </div>
+        <div class="manage-content-wrapper">
+          <el-form :model="manageDialog.form" label-width="80px" v-loading="manageDialog.loading">
+            <el-form-item label="名称">
+              <el-input v-model="manageDialog.form.title" placeholder="数据集名称" style="width: 90%" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="manageDialog.form.description" type="textarea" :rows="2" placeholder="数据集描述" style="width: 90%" />
+            </el-form-item>
+          </el-form>
+        </div>
       </div>
-      <div v-if="fileDialog.uploadTasks.length" class="upload-progress-list">
-        <div v-for="task in fileDialog.uploadTasks" :key="task.uid" class="upload-progress-item">
+
+      <el-divider />
+
+      <!-- 下半部分：文件管理 -->
+      <div class="manage-section">
+        <div class="manage-section-header">
+          <span class="manage-section-title">文件管理</span>
+          <div class="header-actions">
+            <span class="upload-tip">限 {{ DATASET_FILE_LIMIT_MB }}MB/个</span>
+                <el-upload
+                  action="#"
+                  :show-file-list="false"
+                  :disabled="!manageDialog.id"
+                  multiple
+                  :before-upload="handleBeforeUpload"
+                  :http-request="handleDatasetFileUpload"
+                >
+                  <el-button type="primary" size="small" :icon="Upload" :loading="manageDialog.isUploading">上传文件</el-button>
+                </el-upload>
+          </div>
+        </div>
+        <div class="manage-content-wrapper">
+        <div v-if="manageDialog.uploadTasks.length" class="upload-progress-list">
+        <div v-for="task in manageDialog.uploadTasks" :key="task.uid" class="upload-progress-item">
           <span class="upload-progress-name">{{ task.name }}</span>
           <el-progress
             :percentage="task.percentage"
@@ -865,9 +960,9 @@ const handleCancelApplication = async () => {
             "
           />
         </div>
-      </div>
-      <el-skeleton :rows="5" animated :loading="fileDialog.isLoading">
-        <el-table :data="fileDialog.list" height="450px">
+        </div>
+        <el-skeleton :rows="5" animated :loading="manageDialog.isFilesLoading">
+        <el-table :data="manageDialog.fileList" height="200px">
           <el-table-column property="name" label="文件名">
             <template #default="scope">
               <div class="file-name-cell">
@@ -876,12 +971,12 @@ const handleCancelApplication = async () => {
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="大小" width="140">
+          <el-table-column label="大小" width="100">
             <template #default="scope">
               {{ formatFileSize(scope.row.size) }}
             </template>
           </el-table-column>
-          <el-table-column property="createdAt" label="上传时间" width="180">
+          <el-table-column property="createdAt" label="上传时间" width="160">
             <template #default="scope">
               {{ scope.row.createdAt || '-' }}
             </template>
@@ -892,7 +987,7 @@ const handleCancelApplication = async () => {
                 type="primary"
                 link
                 :icon="Download"
-                @click="handleDownloadFile(fileDialog.currentDataset.id, scope.row)"
+                @click="handleDownloadFile(manageDialog.id, scope.row)"
                 >下载</el-button
               >
               <el-button
@@ -905,9 +1000,11 @@ const handleCancelApplication = async () => {
             </template>
           </el-table-column>
         </el-table>
-      </el-skeleton>
+        </el-skeleton>
+        </div>
+      </div>
       <template #footer>
-        <el-button @click="handleFileDialogClose">关闭</el-button>
+        <el-button @click="manageDialog.visible = false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -1062,6 +1159,55 @@ const handleCancelApplication = async () => {
           </div>
         </div>
       </el-skeleton>
+    </el-dialog>
+
+    <!-- 对话框5：统计数据 (管理员) -->
+    <el-dialog v-model="statisticsDialog.visible" title="数据集统计概览" width="700px">
+      <el-skeleton :rows="4" animated :loading="statisticsDialog.loading">
+        <div v-if="statisticsDialog.data" class="statistics-container">
+          <el-row :gutter="40">
+            <!-- 左侧：申请人次、提交次数、图表 -->
+            <el-col :span="16" class="stats-left-col">
+              <div class="stats-top-row">
+                <div class="stat-item">
+                  <el-statistic title="申请(人次)" :value="statisticsDialog.data.totalApplications" />
+                </div>
+                <div class="stat-item">
+                  <el-statistic :value="statisticsDialog.data.totalAudits">
+                    <template #title>
+                      <div class="statistic-header-wrapper">
+                        <span>申请提交(次)</span>
+                        <el-tooltip content="包括退回重新提交" placement="top">
+                          <el-icon class="help-icon"><QuestionFilled /></el-icon>
+                        </el-tooltip>
+                      </div>
+                    </template>
+                  </el-statistic>
+                </div>
+              </div>
+              
+              <div class="chart-wrapper">
+                <div class="chart-title el-statistic__head">申请提交分布</div>
+                <div ref="chartRef" style="width: 100%; height: 220px;"></div>
+              </div>
+            </el-col>
+
+            <!-- 右侧：被批准、通过率 -->
+            <el-col :span="8" class="stats-right-col">
+              <div class="stat-item-right">
+                <el-statistic title="被批准的申请(人次)" :value="statisticsDialog.data.approvedCount" />
+              </div>
+              <div class="stat-item-right">
+                <el-statistic title="通过率" :value="statisticsDialog.data.approvalRate * 100" :precision="1" suffix="%" />
+              </div>
+            </el-col>
+          </el-row>
+        </div>
+        <el-empty v-else description="暂无数据" />
+      </el-skeleton>
+      <template #footer>
+        <el-button @click="statisticsDialog.visible = false">关闭</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
@@ -1310,5 +1456,69 @@ const handleCancelApplication = async () => {
   color: #909399;
   font-size: 14px;
   margin: 0;
+}
+
+.statistics-container {
+  padding: 10px 20px;
+}
+
+.statistic-header-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.help-icon {
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.chart-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.chart-title {
+  margin-bottom: 8px;
+}
+
+.stats-left-col {
+  border-right: 1px solid #ebeef5;
+}
+.stats-top-row {
+  display: flex;
+  gap: 40px;
+  margin-bottom: 20px;
+}
+.stats-right-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.manage-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.manage-section-title {
+  font-size: 14px;
+  font-weight: normal;
+  color: #303133;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+}
+.manage-content-wrapper {
+  padding: 10px 0;
+}
+.file-name-text {
+  font-weight: normal;
 }
 </style>
