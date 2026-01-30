@@ -188,6 +188,23 @@ const confirmSendOTP = async () => {
     sendOtpLoading.value = false
   }
 }
+
+const agreementDialogVisible = ref(false)
+const agreementContent = ref('')
+
+const showAgreement = async () => {
+  try {
+    const res = await axios.get('/api/v1/agreement')
+    agreementContent.value = res.data.content || '暂无协议内容'
+    agreementDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error('获取用户协议失败')
+  }
+}
+const confirmAgreement = () => {
+  registerForm.agreement = true
+  agreementDialogVisible.value = false
+}
 </script>
 
 <template>
@@ -301,7 +318,7 @@ const confirmSendOTP = async () => {
 
             <el-form-item prop="agreement">
               <el-checkbox v-model="registerForm.agreement">
-                我已阅读并同意 <a href="#" @click.prevent>《用户协议》</a>
+                我已阅读并同意 <a href="#" @click.prevent="showAgreement">《用户协议》</a>
               </el-checkbox>
             </el-form-item>
 
@@ -328,6 +345,15 @@ const confirmSendOTP = async () => {
           <el-button @click="captchaDialogVisible = false">取消</el-button>
           <el-button type="primary" :loading="sendOtpLoading" @click="confirmSendOTP">确定</el-button>
         </span>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="agreementDialogVisible" title="用户协议" width="600px" append-to-body>
+      <div style="white-space: pre-wrap; max-height: 50vh; overflow-y: auto; line-height: 1.6; padding: 10px;">
+        {{ agreementContent }}
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="confirmAgreement">我已阅读并同意</el-button>
       </template>
     </el-dialog>
   </div>

@@ -135,7 +135,7 @@ const handleSave = async (originalRow) => {
 <template>
   <el-alert
     v-if="isSimpleAdmin"
-    title="只有超级管理员可以修改用户的权限组"
+    title="目前您仅可浏览用户信息，只有超级管理员方可修改"
     type="warning"
     show-icon
     style="margin-bottom: 20px"
@@ -206,7 +206,7 @@ const handleSave = async (originalRow) => {
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="150" fixed="right" align="center">
+      <el-table-column v-if="isSuperAdmin" label="操作" width="150" fixed="right" align="center">
         <template #default="{ row }">
           <template v-if="isEditing(row.userID)">
             <el-button type="success" link :icon="Check" @click="handleSave(row)">确定</el-button>
@@ -214,7 +214,7 @@ const handleSave = async (originalRow) => {
           </template>
 
           <template v-else>
-            <el-button type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
+            <el-button v-if="isSuperAdmin" type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
           </template>
         </template>
       </el-table-column>

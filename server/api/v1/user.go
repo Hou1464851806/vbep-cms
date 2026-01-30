@@ -175,7 +175,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	// 2. 基础鉴权：有没有资格碰到这个 User？
 	// 规则：只有 "自己" 或 "管理员(Admin+)" 才能发起修改请求
 	isSelf := operator.ID == targetID
-	isManager := operator.Role >= model.Admin // Admin 或 SuperAdmin
+	isManager := operator.Role == model.SuperAdmin // Only SuperAdmin
 
 	if !isSelf && !isManager {
 		ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})

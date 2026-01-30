@@ -24,6 +24,7 @@ func GetSetting(c *gin.Context) {
 		"templateFile":        setting.TemplateFile,
 		"publicEmail":         setting.PublicEmail,
 		"templateDescription": setting.TemplateDescription,
+		"userAgreement":       setting.UserAgreement,
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -60,6 +61,9 @@ func SetSetting(c *gin.Context) {
 	if val, ok := req["templateDescription"]; ok {
 		dbReq["template_description"] = val
 	}
+	if val, ok := req["userAgreement"]; ok {
+		dbReq["user_agreement"] = val
+	}
 
 	if err := service.SetSetting(dbReq); err != nil {
 		logger.Errorf("failed to set setting: %v", err)
@@ -70,4 +74,16 @@ func SetSetting(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{})
+}
+
+func GetUserAgreement(c *gin.Context) {
+	setting, err := service.GetSetting()
+	if err != nil {
+		logger.Errorf("failed to get setting: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "获取协议失败"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"content": setting.UserAgreement,
+	})
 }

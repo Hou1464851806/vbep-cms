@@ -12,6 +12,8 @@ type SettingRouter struct {
 }
 
 func (r *SettingRouter) InitSettingRouter(Router *gin.RouterGroup) {
+	Router.GET("agreement", v1.GetUserAgreement)
+
 	settingRouter := Router.Group("settings").Use(middleware.JWTAuth())
 	{
 		settingRouter.GET("", middleware.AuthRole(model.Admin), v1.GetSetting)
