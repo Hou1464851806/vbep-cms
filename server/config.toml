@@ -25,3 +25,7 @@ db = 0
 [file]
 upload_limit_application = 20
 upload_limit_dataset = 500
+
+[cron]
+# 只需指定小时数（24小时制），默认整点执行
+daily_task_run_time = 3

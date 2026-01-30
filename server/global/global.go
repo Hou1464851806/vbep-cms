@@ -1,6 +1,7 @@
 package global
 
 import (
+	"github.com/go-co-op/gocron/v2"
 	"server/config"
 
 	"github.com/redis/go-redis/v9"
@@ -16,6 +17,7 @@ var (
 	SLOG  *zap.SugaredLogger
 	DB    *gorm.DB
 	REDIS *redis.Client
+	CRON  gocron.Scheduler
 )
 
 const (

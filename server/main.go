@@ -16,4 +16,5 @@ func initializeServer() {
 	global.VP = initialize.NewViper()
 	global.DB = initialize.NewDB()
 	global.REDIS = initialize.Redis()
+	global.CRON = initialize.NewCron(global.DB)
 }
