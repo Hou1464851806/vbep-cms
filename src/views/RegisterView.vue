@@ -1,6 +1,6 @@
 <script setup>
-import { Lock, User, Iphone, Message, CircleCheckFilled } from '@element-plus/icons-vue'
-import { reactive, ref } from 'vue'
+import { Lock, User, Message, CircleCheckFilled, Refresh, CircleCheck } from '@element-plus/icons-vue'
+import { reactive, ref, onBeforeUnmount, watch } from 'vue'
 import axios from 'axios'
 import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
@@ -12,55 +12,66 @@ const router = useRouter()
 const registerFormRef = ref()
 const registerForm = reactive({
   nickname: '',
-  phone: '',
   email: '',
   password: '',
+  otp: '',
+  agreement: false,
 })
 const isRegisterSuccess = ref(false)
 
+const passwordStatus = reactive({
+  length: false,
+  upper: false,
+  lower: false,
+  number: false,
+  special: false,
+  count: 0
+})
+
+const checkPassword = (val) => {
+  const v = val || ''
+  const length = v.length >= 6 && v.length <= 20
+  const upper = /[A-Z]/.test(v)
+  const lower = /[a-z]/.test(v)
+  const number = /\d/.test(v)
+  const special = /[~!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(v)
+  let count = 0
+  if (upper) count++
+  if (lower) count++
+  if (number) count++
+  if (special) count++
+  return { length, upper, lower, number, special, count }
+}
+
+watch(() => registerForm.password, (val) => {
+  Object.assign(passwordStatus, checkPassword(val))
+})
+
 const validatePassword = (rule, value, callback) => {
-  if (value.length < 6 || value.length > 20) {
+  const { length, count } = checkPassword(value)
+  if (!length) {
     return callback(new Error('密码长度不符合要求'))
   }
-  let complexity = 0
-  // 小写字母
-  if (/[a-z]/.test(value)) {
-    complexity++
-  }
-  // 大写字母
-  if (/[A-Z]/.test(value)) {
-    complexity++
-  }
-  // 数字
-  if (/\d/.test(value)) {
-    complexity++
-  }
-  // 特殊字符
-  if (/[~!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(value)) {
-    complexity++
-  }
-
-  if (complexity < 3) {
+  if (count < 3) {
     return callback(new Error('密码未包含大写字母、小写字母、数字、特殊字符中的至少3项'))
   }
-
   callback()
 }
 
 const registerFormRules = reactive({
-  nickname: [{ required: true, message: '真实姓名不能为空', trigger: 'blur' }],
-  phone: [
-    { required: true, message: '手机号不能为空', trigger: 'blur' },
-    { pattern: /^1[3-9]\d{9}$/, message: '请输入正确的手机号格式', trigger: 'blur' },
-  ],
+  nickname: [{ required: true, message: '真实姓名不能为空', trigger: 'submit' }],
   email: [
-    { required: true, message: '邮箱不能为空', trigger: 'blur' },
-    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'blur' },
+    { required: true, message: '邮箱不能为空', trigger: 'submit' },
+    { type: 'email', message: '请输入正确的邮箱格式', trigger: 'submit' },
   ],
   password: [
-    { required: true, message: '密码不能为空', trigger: 'change' },
-    { validator: validatePassword, trigger: 'blur' },
+    { required: true, message: '密码不能为空', trigger: 'submit' },
+    { validator: validatePassword, trigger: 'submit' },
   ],
+  otp: [{ required: true, message: '验证码不能为空', trigger: 'submit' }],
+  agreement: [
+    { validator: (rule, value, cb) => value ? cb() : cb(new Error('请同意用户协议')), trigger: 'submit' }
+  ]
 })
 
 const isLoading = ref(false)
@@ -74,9 +85,9 @@ const submitRegisterForm = async () => {
     isLoading.value = true
     const requestData = {
       email: registerForm.email,
-      phone: registerForm.phone,
       nickname: registerForm.nickname,
       password: registerForm.password,
+      otp: registerForm.otp,
     }
     await axios.post('/api/v1/users/', requestData)
     isLoading.value = false
@@ -98,6 +109,83 @@ const submitRegisterForm = async () => {
     }
   } finally {
     isLoading.value = false
+  }
+}
+
+const sendOtpLoading = ref(false)
+const countdown = ref(0)
+let timer = null
+
+const startCountdown = () => {
+  countdown.value = 60
+  timer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      clearInterval(timer)
+      timer = null
+    }
+  }, 1000)
+}
+
+const captchaDialogVisible = ref(false)
+const captchaData = reactive({
+  id: '',
+  image: '',
+  answer: ''
+})
+const otpTarget = ref('')
+
+const fetchCaptcha = async () => {
+  try {
+    const res = await axios.get('/api/v1/users/captcha')
+    captchaData.id = res.data.captchaID
+    captchaData.image = res.data.question
+    captchaData.answer = ''
+  } catch (e) {
+    ElMessage.error('获取验证码失败')
+  }
+}
+
+onBeforeUnmount(() => {
+  if (timer) clearInterval(timer)
+})
+
+const handleSendOTP = async () => {
+  if (!registerFormRef.value) return
+  
+  // 单独校验邮箱字段
+  registerFormRef.value.validateField('email', async (isValid) => {
+    if (isValid) {
+      otpTarget.value = registerForm.email
+      await fetchCaptcha()
+      captchaDialogVisible.value = true
+    } else {
+      ElMessage.warning('请输入有效的邮箱地址')
+    }
+  })
+}
+
+const confirmSendOTP = async () => {
+  if (!captchaData.answer) {
+    ElMessage.warning('请输入验证码')
+    return
+  }
+  try {
+    sendOtpLoading.value = true
+    await axios.post('/api/v1/users/otp', {
+      target: otpTarget.value,
+      captchaID: captchaData.id,
+      captchaAnswer: captchaData.answer
+    })
+    ElMessage.success('验证码已发送')
+    captchaDialogVisible.value = false
+    startCountdown()
+  } catch (e) {
+    console.error(e)
+    ElMessage.error(e.response?.data?.message || '发送失败')
+    fetchCaptcha() // 失败刷新验证码
+  } finally {
+    sendOtpLoading.value = false
   }
 }
 </script>
@@ -150,19 +238,6 @@ const submitRegisterForm = async () => {
               </el-input>
             </el-form-item>
 
-            <el-form-item class="login-group" label="手机号" prop="phone">
-              <el-input
-                class="login-info"
-                size="large"
-                v-model="registerForm.phone"
-                placeholder="请输入手机号"
-              >
-                <template #prefix
-                  ><el-icon><Iphone /></el-icon
-                ></template>
-              </el-input>
-            </el-form-item>
-
             <el-form-item class="login-group" label="邮箱" prop="email">
               <el-input
                 class="login-info"
@@ -176,26 +251,59 @@ const submitRegisterForm = async () => {
               </el-input>
             </el-form-item>
 
-            <el-form-item class="login-group" label="密码" prop="password">
+            <el-form-item class="login-group" label="验证码" prop="otp">
               <el-input
                 class="login-info"
                 size="large"
-                v-model="registerForm.password"
-                placeholder="请输入密码"
-                type="password"
-                show-password
+                v-model="registerForm.otp"
+                placeholder="请输入6位验证码"
               >
-                <template #prefix
-                  ><el-icon><Lock /></el-icon
-                ></template>
+                <template #append>
+                  <el-button :loading="sendOtpLoading" @click="handleSendOTP" :disabled="countdown > 0">
+                    {{ countdown > 0 ? `${countdown}s` : '发送验证码' }}
+                  </el-button>
+                </template>
               </el-input>
             </el-form-item>
 
-            <div class="footer-links" style="padding-left: 80px">
-              <p class="forgot-password">
-                密码需包含大写、小写、数字、特殊字符中的至少3项 (6-20位)
-              </p>
-            </div>
+            <el-form-item class="login-group" label="密码" prop="password">
+              <el-popover placement="right" :width="270" trigger="focus" popper-class="register-password-popover">
+                <template #reference>
+                  <el-input
+                    class="login-info"
+                    size="large"
+                    v-model="registerForm.password"
+                    placeholder="请输入密码"
+                    type="password"
+                    show-password
+                  >
+                    <template #prefix><el-icon><Lock /></el-icon></template>
+                  </el-input>
+                </template>
+                <div class="password-strength-popover">
+                  <div class="strength-item" :class="{ active: passwordStatus.length }">
+                    <el-icon><component :is="passwordStatus.length ? CircleCheckFilled : CircleCheck" /></el-icon>
+                    <span>长度为 6-20 个字符</span>
+                  </div>
+                  <div class="strength-item" :class="{ active: passwordStatus.count >= 3 }">
+                    <el-icon><component :is="passwordStatus.count >= 3 ? CircleCheckFilled : CircleCheck" /></el-icon>
+                    <span>包含以下至少 3 种字符：</span>
+                  </div>
+                  <div class="strength-sub-items">
+                    <span :class="{ active: passwordStatus.upper }">大写</span>
+                    <span :class="{ active: passwordStatus.lower }">小写</span>
+                    <span :class="{ active: passwordStatus.number }">数字</span>
+                    <span :class="{ active: passwordStatus.special }">特殊</span>
+                  </div>
+                </div>
+              </el-popover>
+            </el-form-item>
+
+            <el-form-item prop="agreement">
+              <el-checkbox v-model="registerForm.agreement">
+                我已阅读并同意 <a href="#" @click.prevent>《用户协议》</a>
+              </el-checkbox>
+            </el-form-item>
 
             <el-form-item class="login-group login-button-item">
               <el-button class="login-btn" type="primary" @click="submitRegisterForm"
@@ -206,6 +314,22 @@ const submitRegisterForm = async () => {
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="captchaDialogVisible" title="安全验证" width="310px" append-to-body>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <img :src="captchaData.image" style="height: 50px; border: 1px solid #eee; border-radius: 4px;" />
+          <el-button :icon="Refresh" circle @click="fetchCaptcha" />
+        </div>
+        <el-input v-model="captchaData.answer" placeholder="请输入图片字符(不分大小写)" @keyup.enter="confirmSendOTP" />
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="captchaDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="sendOtpLoading" @click="confirmSendOTP">确定</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -222,15 +346,11 @@ const submitRegisterForm = async () => {
   font-weight: 500;
 }
 
-.footer-links {
-  display: flex;
-  justify-content: flex-start;
-  margin-bottom: 20px;
-}
-.forgot-password {
+.password-hint {
+  padding-left: 80px;
+  margin-bottom: 10px;
   font-size: 12px;
-  color: #f32b2b;
-  margin: 0;
+  color: var(--el-text-color-secondary);
   line-height: 1.5;
   text-align: left;
 }
@@ -266,5 +386,32 @@ const submitRegisterForm = async () => {
     opacity: 1;
     transform: translateY(0);
   }
+}
+</style>
+
+<style>
+.register-password-popover .password-strength-popover {
+  font-size: 12px;
+  color: #606266;
+}
+.register-password-popover .strength-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #909399;
+}
+.register-password-popover .strength-item.active {
+  color: #67c23a;
+}
+.register-password-popover .strength-sub-items {
+  padding-left: 24px;
+  display: flex;
+  gap: 10px;
+  color: #909399;
+}
+.register-password-popover .strength-sub-items span.active {
+  color: #67c23a;
+  font-weight: bold;
 }
 </style>

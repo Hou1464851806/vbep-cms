@@ -31,8 +31,8 @@ const loginForm = reactive({
 const isLoading = ref(false)
 
 const loginRules = reactive({
-  userInfo: [{ required: true, message: '请输入邮箱或电话', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
+  userInfo: [{ required: true, message: '请输入邮箱或电话', trigger: 'submit' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'submit' }],
 })
 
 const submitLoginFrom = async () => {

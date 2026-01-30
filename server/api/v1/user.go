@@ -26,6 +26,7 @@ type CreateUserParam struct {
 	Phone    string `json:"phone"`
 	Password string `json:"password" binding:"required"`
 	NickName string `json:"nickname"`
+	OTP      string `json:"otp" binding:"required"`
 }
 
 type UpdateUserParam struct {
@@ -34,6 +35,7 @@ type UpdateUserParam struct {
 	NickName *string         `json:"nickname"`
 	Password *string         `json:"password"`
 	Role     *model.UserRole `json:"role"`
+	OTP      *string         `json:"otp"`
 }
 
 func (u *UserApi) CreateUser(ctx *gin.Context) {
@@ -47,37 +49,35 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 		return
 	}
 
-	// 2. 逻辑校验：Email 和 Phone 至少要有一个
+	// 2. 逻辑校验：Email 必填
 	param.Email = strings.TrimSpace(param.Email)
-	param.Phone = strings.TrimSpace(param.Phone)
 	param.NickName = strings.TrimSpace(param.NickName)
-	if param.Email == "" && param.Phone == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "必须提供邮箱或手机号"})
+	if param.Email == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "必须提供邮箱"})
+		return
+	}
+
+	// 校验 OTP
+	if !u.service.VerifyOTP(param.Email, param.OTP) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "验证码错误或已过期"})
 		return
 	}
 
 	// 3. 昵称处理逻辑
-	// 如果没有提供 NickName，则将其设置为 Phone 和 Email 有的那一个
+	// 如果没有提供 NickName，则将其设置为 Email
 	finalNickName := param.NickName
 	if finalNickName == "" {
-		if param.Email != "" {
-			finalNickName = param.Email
-		} else {
-			finalNickName = param.Phone
-		}
+		finalNickName = param.Email
 	}
 
 	// 4. 构建 Model 对象 (入库)
 	newUser := &model.User{
-		PWDHash:  param.Password,
-		NickName: finalNickName,
-		Role:     model.Common,
-	}
-	if param.Email != "" {
-		newUser.Email = &param.Email
-	}
-	if param.Phone != "" {
-		newUser.Phone = &param.Phone
+		PWDHash:         param.Password,
+		NickName:        finalNickName,
+		Role:            model.Common,
+		Email:           param.Email,
+		IsEmailVerified: true, // 注册即验证
+		// Phone is optional and not provided during registration
 	}
 
 	err := u.service.CreateUser(newUser)
@@ -207,18 +207,31 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	if param.Email != nil {
 		cleanEmail := strings.TrimSpace(*param.Email)
 		if cleanEmail == "" {
-			updates["email"] = nil
-		} else {
-			updates["email"] = cleanEmail
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "邮箱不能为空"})
+			return
 		}
+		// 验证 OTP
+		if param.OTP == nil || !u.service.VerifyOTP(cleanEmail, *param.OTP) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "修改邮箱需要正确的验证码"})
+			return
+		}
+		updates["email"] = cleanEmail
+		updates["is_email_verified"] = true
 	}
 
 	if param.Phone != nil {
 		cleanPhone := strings.TrimSpace(*param.Phone)
 		if cleanPhone == "" {
 			updates["phone"] = nil
+			updates["is_phone_verified"] = false
 		} else {
+			// 验证 OTP
+			if param.OTP == nil || !u.service.VerifyOTP(cleanPhone, *param.OTP) {
+				ctx.JSON(http.StatusBadRequest, gin.H{"message": "绑定/修改手机号需要正确的验证码"})
+				return
+			}
 			updates["phone"] = cleanPhone
+			updates["is_phone_verified"] = true
 		}
 	}
 
@@ -311,4 +324,38 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{
 		"data": userList, // 这里直接放入数组
 	})
+}
+
+func (u *UserApi) GetCaptcha(ctx *gin.Context) {
+	id, question := u.service.GenerateCaptcha()
+	ctx.JSON(http.StatusOK, gin.H{
+		"captchaID": id,
+		"question":  question,
+	})
+}
+
+type SendOTPParam struct {
+	Target        string `json:"target" binding:"required"`
+	CaptchaID     string `json:"captchaID" binding:"required"`
+	CaptchaAnswer string `json:"captchaAnswer" binding:"required"`
+}
+
+func (u *UserApi) SendOTP(ctx *gin.Context) {
+	var param SendOTPParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	if !u.service.VerifyCaptcha(param.CaptchaID, param.CaptchaAnswer) {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "验证码错误"})
+		return
+	}
+
+	if err := u.service.SendOTP(param.Target); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "发送失败"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "发送成功"})
 }

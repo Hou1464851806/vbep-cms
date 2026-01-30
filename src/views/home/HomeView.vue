@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, provide, computed } from 'vue'
+import { ref, reactive, onMounted, provide, computed, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   Tickets,
@@ -9,10 +9,9 @@ import {
   Edit,
   SwitchButton,
   Key,
-  Check,
-  Close,
   Setting,
   Download,
+  Refresh,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -115,83 +114,149 @@ const handleCommand = (command) => {
 // ================= 个人信息逻辑 (行内编辑) =================
 const profileDialogVisible = ref(false)
 
-// 用于控制每一行的编辑状态
-const editState = reactive({
-  nickname: false,
-  email: false,
-  phone: false,
-})
-
-// 临时存储正在编辑的值
-const tempProfile = reactive({
-  nickname: '',
-  email: '',
-  phone: '',
-})
-
 const openProfileDialog = () => {
-  // 重置所有编辑状态
-  editState.nickname = false
-  editState.email = false
-  editState.phone = false
   profileDialogVisible.value = true
 }
 
-// 开始编辑某一行
-const startEdit = (field) => {
-  tempProfile[field] = userInfo[field] // 复制当前值到临时变量
-  editState[field] = true
+// --- 新增：独立弹窗修改邮箱/手机号逻辑 ---
+const editDialog = reactive({
+  visible: false,
+  field: '',
+  label: '',
+  value: '',
+  otp: '',
+  loading: false,
+  needsOtp: true
+})
+
+const openEditDialog = (field, label, needsOtp = true) => {
+  editDialog.field = field
+  editDialog.label = label
+  editDialog.value = '' // 默认不填充旧值
+  editDialog.otp = ''
+  editDialog.needsOtp = needsOtp
+  editDialog.visible = true
 }
 
-// 取消编辑
-const cancelEdit = (field) => {
-  editState[field] = false
-}
-
-// 保存单个字段
-const saveField = async (field, labelName) => {
-  const newValue = tempProfile[field]
-  const oldValue = userInfo[field]
-
-  // 1. 简单的空值校验 (手机号除外，允许为空)
-  if (field !== 'phone' && !newValue) {
-    ElMessage.warning(`${labelName}不能为空`)
+const submitEditDialog = async () => {
+  const { field, value, otp, label, needsOtp } = editDialog
+  
+  if (!value) {
+    ElMessage.warning(`请输入新${label}`)
     return
   }
-  // 邮箱格式校验
-  if (field === 'email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(newValue)) {
-      ElMessage.warning('请输入有效的邮箱地址')
-      return
-    }
-  }
-
-  // 2. Diff 检测：如果内容没变，直接切回查看模式
-  // 注意处理 null/undefined 和空字符串的比较
-  const safeNew = newValue || ''
-  const safeOld = oldValue || ''
-
-  if (safeNew === safeOld) {
-    editState[field] = false
+  if (needsOtp && !otp) {
+    ElMessage.warning('请输入验证码')
     return
   }
 
-  // 3. 发送请求
+  // 格式校验
+  if (field === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    ElMessage.warning('请输入有效的邮箱地址')
+    return
+  }
+  if (field === 'phone' && !/^1[3-9]\d{9}$/.test(value)) {
+    ElMessage.warning('请输入有效的手机号')
+    return
+  }
+
+  editDialog.loading = true
   try {
-    const payload = { [field]: newValue }
+    const payload = { [field]: value }
+    if (needsOtp) {
+      payload.otp = otp
+    }
     const res = await updateUserAPI(userInfo.userID, payload)
-
     if (res.status === 200) {
-      ElMessage.success(`${labelName}已更新`)
-      // 更新本地视图
-      userInfo[field] = newValue
-      // 退出编辑模式
-      editState[field] = false
+      ElMessage.success(`${label}已更新`)
+      userInfo[field] = value
+      editDialog.visible = false
     }
   } catch (error) {
     const errorMsg = error.response?.data?.message || '更新失败'
     ElMessage.error(errorMsg)
+  } finally {
+    editDialog.loading = false
+  }
+}
+
+const captchaDialogVisible = ref(false)
+const captchaData = reactive({
+  id: '',
+  image: '',
+  answer: ''
+})
+const otpTarget = ref('')
+const sendOtpLoading = ref(false)
+const otpCountdown = ref(0)
+let otpTimer = null
+
+const startOtpCountdown = () => {
+  otpCountdown.value = 60
+  otpTimer = setInterval(() => {
+    otpCountdown.value--
+    if (otpCountdown.value <= 0) {
+      clearInterval(otpTimer)
+      otpTimer = null
+    }
+  }, 1000)
+}
+
+onBeforeUnmount(() => {
+  if (otpTimer) clearInterval(otpTimer)
+})
+
+const fetchCaptcha = async () => {
+  try {
+    const res = await apiClient.get('/api/v1/users/captcha')
+    captchaData.id = res.data.captchaID
+    captchaData.image = res.data.question
+    captchaData.answer = ''
+  } catch (e) {
+    ElMessage.error('获取验证码失败')
+  }
+}
+
+const handleSendOTP = async (target) => {
+  if (!target) {
+    ElMessage.warning('请先输入目标邮箱或手机号')
+    return
+  }
+  // 简单格式校验
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)
+  const isPhone = /^1[3-9]\d{9}$/.test(target)
+  
+  if (!isEmail && !isPhone) {
+    ElMessage.warning('请输入正确的邮箱或手机号')
+    return
+  }
+
+  otpTarget.value = target
+  await fetchCaptcha()
+  captchaDialogVisible.value = true
+}
+
+const confirmSendOTP = async () => {
+  if (!captchaData.answer) {
+    ElMessage.warning('请输入验证码')
+    return
+  }
+  sendOtpLoading.value = true
+  try {
+    await apiClient.post('/api/v1/users/otp', {
+      target: otpTarget.value,
+      captchaID: captchaData.id,
+      captchaAnswer: captchaData.answer
+    })
+    ElMessage.success('验证码已发送')
+    captchaDialogVisible.value = false
+    startOtpCountdown()
+  } catch (e) {
+    console.error(e)
+    ElMessage.error(e.response?.data?.message || '发送失败')
+    fetchCaptcha()
+  } finally {
+    sendOtpLoading.value = false
   }
 }
 
@@ -255,12 +320,12 @@ const validatePass2 = (rule, value, callback) => {
 const passwordRules = {
   // 加上 required: true 会自动显示红星
   password: [
-    { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于6位', trigger: 'blur' },
+    { required: true, message: '请输入新密码', trigger: 'submit' },
+    { min: 6, message: '密码长度不能少于6位', trigger: 'submit' },
   ],
   confirmPassword: [
-    { required: true, message: '请再次输入密码', trigger: 'blur' }, // 这里加了 required
-    { validator: validatePass2, trigger: 'blur' },
+    { required: true, message: '请再次输入密码', trigger: 'submit' },
+    { validator: validatePass2, trigger: 'submit' },
   ],
 }
 
@@ -438,81 +503,51 @@ const currentPageTitle = computed(() => {
         <div class="info-row">
           <div class="row-label">姓名</div>
           <div class="row-content">
-            <span v-if="!editState.nickname">{{ userInfo.nickname }}</span>
-            <el-input v-else v-model="tempProfile.nickname" size="small" />
+            <span>{{ userInfo.nickname }}</span>
           </div>
           <div class="row-action">
             <el-button
-              v-if="!editState.nickname"
               type="primary"
               link
               :icon="Edit"
-              @click="startEdit('nickname')"
+              @click="openEditDialog('nickname', '姓名', false)"
             >
               修改
             </el-button>
-            <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('nickname', '姓名')"
-                >确定</el-button
-              >
-              <el-button type="info" link :icon="Close" @click="cancelEdit('nickname')"
-                >取消</el-button
-              >
-            </template>
           </div>
         </div>
 
         <div class="info-row">
           <div class="row-label">邮箱</div>
           <div class="row-content">
-            <span v-if="!editState.email">{{ userInfo.email || '未设置' }}</span>
-            <el-input v-else v-model="tempProfile.email" size="small" />
+            <span>{{ userInfo.email || '未设置' }}</span>
           </div>
           <div class="row-action">
             <el-button
-              v-if="!editState.email"
               type="primary"
               link
               :icon="Edit"
-              @click="startEdit('email')"
+              @click="openEditDialog('email', '邮箱')"
             >
               修改
             </el-button>
-            <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('email', '邮箱')"
-                >确定</el-button
-              >
-              <el-button type="info" link :icon="Close" @click="cancelEdit('email')"
-                >取消</el-button
-              >
-            </template>
           </div>
         </div>
 
         <div class="info-row">
           <div class="row-label">手机号</div>
           <div class="row-content">
-            <span v-if="!editState.phone">{{ userInfo.phone || '未设置' }}</span>
-            <el-input v-else v-model="tempProfile.phone" size="small" />
+            <span>{{ userInfo.phone || '未设置' }}</span>
           </div>
           <div class="row-action">
             <el-button
-              v-if="!editState.phone"
               type="primary"
               link
               :icon="Edit"
-              @click="startEdit('phone')"
+              @click="openEditDialog('phone', '手机号')"
             >
               修改
             </el-button>
-            <template v-else>
-              <el-button type="success" link :icon="Check" @click="saveField('phone', '手机号')"
-                >确定</el-button
-              >
-              <el-button type="info" link :icon="Close" @click="cancelEdit('phone')"
-                >取消</el-button
-              >
-            </template>
           </div>
         </div>
 
@@ -562,6 +597,44 @@ const currentPageTitle = computed(() => {
         <span class="dialog-footer">
           <el-button @click="passwordDialogVisible = false">取消</el-button>
           <el-button type="primary" @click="submitPassword">确认修改</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editDialog.visible" :title="'修改' + editDialog.label" width="400px" append-to-body>
+      <el-form label-width="80px" @submit.prevent>
+        <el-form-item :label="'新' + editDialog.label">
+          <el-input v-model="editDialog.value" :placeholder="'请输入新' + editDialog.label" />
+          <div v-if="editDialog.field === 'nickname'" class="dialog-tip">
+            真实姓名需要与申请表和身份证明文件相符
+          </div>
+        </el-form-item>
+        <el-form-item label="验证码" v-if="editDialog.needsOtp">
+          <el-input v-model="editDialog.otp" placeholder="请输入验证码">
+            <template #append>
+              <el-button @click="handleSendOTP(editDialog.value)" :disabled="otpCountdown > 0">{{ otpCountdown > 0 ? `${otpCountdown}s` : '发送' }}</el-button>
+            </template>
+          </el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="editDialog.loading" @click="submitEditDialog">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="captchaDialogVisible" title="安全验证" width="310px" append-to-body>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <img :src="captchaData.image" style="height: 50px; border: 1px solid #eee; border-radius: 4px;" />
+          <el-button :icon="Refresh" circle @click="fetchCaptcha" />
+        </div>
+        <el-input v-model="captchaData.answer" placeholder="请输入图片字符(不分大小写)" @keyup.enter="confirmSendOTP" />
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="captchaDialogVisible = false">取消</el-button>
+          <el-button type="primary" :loading="sendOtpLoading" @click="confirmSendOTP">确定</el-button>
         </span>
       </template>
     </el-dialog>
@@ -652,8 +725,54 @@ const currentPageTitle = computed(() => {
   background-color: #f0f2f5;
 }
 
+.info-row {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
+.info-row.is-editing {
+  align-items: flex-start;
+}
 .row-label {
   width: 60px;
+  flex-shrink: 0;
+  line-height: 32px;
+}
+.row-content {
+  flex: 1;
+  margin-right: 5px;
+}
+.row-action {
+  min-width: 60px;
+  text-align: right;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-left: 5px;
+}
+.edit-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-start;
+  margin-top: 5px;
+}
+
+/* Slide Fade Animation */
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+.slide-fade-leave-active {
+  transition: all 0.2s cubic-bezier(1, 0.5, 0.8, 1);
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
 }
 
 /* 密码 Dialog 提示样式 */
@@ -675,5 +794,12 @@ const currentPageTitle = computed(() => {
 }
 .danger-label {
   color: #f56c6c; /* Element Plus 的 Danger 红色 */
+}
+
+.dialog-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.4;
+  margin-top: 4px;
 }
 </style>

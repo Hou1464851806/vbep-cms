@@ -12,6 +12,7 @@ import (
 )
 
 type UserService struct {
+	otpService OTPService
 }
 
 func (s *UserService) CreateUser(user *model.User) error {
@@ -114,30 +115,9 @@ func (s *UserService) UpdateUser(operator *model.User, targetUserID string, upda
 		}
 	}
 
-	// 3. 邮箱/手机号 约束检查 (Phone/Email at least one)
-	nextEmail := targetUser.Email
-	nextPhone := targetUser.Phone
-
-	if val, ok := updates["email"]; ok {
-		if val == nil {
-			nextEmail = nil
-		} else {
-			v := val.(string)
-			nextEmail = &v
-		}
-	}
-	if val, ok := updates["phone"]; ok {
-		if val == nil {
-			nextPhone = nil
-		} else {
-			v := val.(string)
-			nextPhone = &v
-		}
-	}
-
-	if nextEmail == nil && nextPhone == nil {
-		return fmt.Errorf("constraint violation: user must have at least an email or a phone number")
-	}
+	// 3. 邮箱/手机号 约束检查
+	// Email is now mandatory (string, not null), so we don't need to check if both are nil.
+	// The API layer ensures that if email is updated, it is not empty.
 
 	// 4. 执行更新
 	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", targetUserID).Updates(updates)
@@ -154,4 +134,20 @@ func (s *UserService) UpdateUser(operator *model.User, targetUserID string, upda
 	}
 
 	return nil
+}
+
+func (s *UserService) VerifyOTP(target, code string) bool {
+	return s.otpService.VerifyOTP(target, code)
+}
+
+func (s *UserService) GenerateCaptcha() (string, string) {
+	return s.otpService.GenerateCaptcha()
+}
+
+func (s *UserService) VerifyCaptcha(id, answer string) bool {
+	return s.otpService.VerifyCaptcha(id, answer)
+}
+
+func (s *UserService) SendOTP(target string) error {
+	return s.otpService.SendOTP(target)
 }

@@ -24,6 +24,9 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 		userRouter.GET("/:id", middleware.JWTAuth(), middleware.AuthRole(model.Common), userApi.GetUser)
 		userRouter.GET("/", middleware.JWTAuth(), middleware.AuthRole(model.Admin), userApi.GetAllUsers)
 
+		userRouter.GET("/captcha", userApi.GetCaptcha)
+		userRouter.POST("/otp", userApi.SendOTP)
+
 		// auth
 		userRouter.POST("/login", authApi.Login)
 		userRouter.GET("/logout", middleware.JWTAuth(), middleware.AuthRole(model.Common), authApi.Logout)
