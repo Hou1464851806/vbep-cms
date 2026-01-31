@@ -38,5 +38,9 @@ func NewRouter() *gin.Engine {
 	settingRouter := new(router.SettingRouter)
 	settingRouter.InitSettingRouter(v1)
 
+	// statistic
+	statisticRouter := new(router.StatisticRouter)
+	statisticRouter.InitStatisticRouter(v1)
+
 	return r
 }

@@ -682,8 +682,8 @@ onMounted(fetchApplications)
                   detailDialog.data.statusMeta.label
                 }}</el-tag>
               </el-descriptions-item>
-              <el-descriptions-item label="修改次数">
-                {{ detailDialog.data.version > 1 ? detailDialog.data.version - 1 : 0 }}
+              <el-descriptions-item label="提交次数">
+                {{ detailDialog.data.version }}
               </el-descriptions-item>
               <el-descriptions-item label="申请数据集">
                 {{ detailDialog.data.dataset.title }}
@@ -695,9 +695,9 @@ onMounted(fetchApplications)
               </el-descriptions-item>
               <el-descriptions-item label="申请人">
                 {{ detailDialog.data.applicant.nickname }}
-                <span v-if="detailDialog.data.applicant.email" class="info-sub-text"
-                  >({{ detailDialog.data.applicant.email }})</span>
-                >
+                <span v-if="detailDialog.data.applicant.email" class="sub-text">
+                  ({{ detailDialog.data.applicant.email }})
+                </span>
               </el-descriptions-item>
               <el-descriptions-item label="初次申请时间">
                 {{ detailDialog.data.createdAt }}

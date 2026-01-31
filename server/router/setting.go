@@ -12,11 +12,13 @@ type SettingRouter struct {
 }
 
 func (r *SettingRouter) InitSettingRouter(Router *gin.RouterGroup) {
-	Router.GET("agreement", v1.GetUserAgreement)
+	settingApi := v1.NewSettingApi()
+	Router.GET("/agreement", settingApi.GetUserAgreement)
 
-	settingRouter := Router.Group("settings").Use(middleware.JWTAuth())
+	settingRouter := Router.Group("/settings")
+	settingRouter.Use(middleware.JWTAuth())
 	{
-		settingRouter.GET("", middleware.AuthRole(model.Admin), v1.GetSetting)
-		settingRouter.PATCH("", middleware.AuthRole(model.SuperAdmin), v1.SetSetting)
+		settingRouter.GET("", middleware.AuthRole(model.Admin), settingApi.GetSetting)
+		settingRouter.PATCH("", middleware.AuthRole(model.SuperAdmin), settingApi.SetSetting)
 	}
 }

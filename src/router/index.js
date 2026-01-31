@@ -7,6 +7,7 @@ import ApplicationView from '@/views/home/ApplicationView.vue'
 import UserView from '@/views/home/UserView.vue'
 import SettingsView from '@/views/home/SettingsView.vue'
 import DownloadCenterView from '@/views/home/DownloadCenterView.vue'
+import StatisticView from '@/views/home/StatisticView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -43,6 +44,11 @@ const router = createRouter({
           path: 'downloads',
           name: 'download-center',
           component: DownloadCenterView,
+        },
+        {
+          path: 'statistics',
+          name: 'statistic-view',
+          component: StatisticView,
         },
         {
           path: 'users',

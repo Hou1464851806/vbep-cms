@@ -12,6 +12,7 @@ import {
   Setting,
   Download,
   Refresh,
+  DataLine,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -388,6 +389,9 @@ const currentPageTitle = computed(() => {
   if (route.path.includes('/downloads')) {
     return roleId > 1 ? '公开下载管理' : '下载中心'
   }
+  if (route.path.includes('/statistics')) {
+    return '数据统计'
+  }
   if (route.path.includes('/users')) {
     return '用户管理'
   }
@@ -444,6 +448,11 @@ const currentPageTitle = computed(() => {
                 <span class="separator-end"></span>
               </div>
             </template>
+            <el-menu-item index="/home/statistics">
+              <el-icon><DataLine /></el-icon>
+              <span>数据统计</span>
+            </el-menu-item>
+
             <el-menu-item index="/home/users">
               <el-icon><User /></el-icon>
               <span>用户管理</span>

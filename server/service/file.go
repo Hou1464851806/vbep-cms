@@ -244,7 +244,7 @@ func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
 }
 
 func (s *FileService) GetPublicTemplateFiles() ([]model.File, string, error) {
-	setting, err := GetSetting()
+	setting, err := NewSettingService().GetSetting()
 	if err != nil {
 		return nil, "", err
 	}

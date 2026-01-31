@@ -9,8 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetSetting(c *gin.Context) {
-	setting, err := service.GetSetting()
+type SettingApi struct {
+	service *service.SettingService
+}
+
+func NewSettingApi() *SettingApi {
+	return &SettingApi{service: service.NewSettingService()}
+}
+
+func (a *SettingApi) GetSetting(c *gin.Context) {
+	setting, err := a.service.GetSetting()
 	if err != nil {
 		logger.Errorf("failed to get setting: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -32,7 +40,7 @@ func GetSetting(c *gin.Context) {
 	})
 }
 
-func SetSetting(c *gin.Context) {
+func (a *SettingApi) SetSetting(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "参数错误: " + err.Error()})
@@ -65,7 +73,7 @@ func SetSetting(c *gin.Context) {
 		dbReq["user_agreement"] = val
 	}
 
-	if err := service.SetSetting(dbReq); err != nil {
+	if err := a.service.SetSetting(dbReq); err != nil {
 		logger.Errorf("failed to set setting: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "保存设置失败",
@@ -76,8 +84,8 @@ func SetSetting(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{})
 }
 
-func GetUserAgreement(c *gin.Context) {
-	setting, err := service.GetSetting()
+func (a *SettingApi) GetUserAgreement(c *gin.Context) {
+	setting, err := a.service.GetSetting()
 	if err != nil {
 		logger.Errorf("failed to get setting: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "获取协议失败"})

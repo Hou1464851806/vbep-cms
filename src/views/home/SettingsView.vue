@@ -1,14 +1,16 @@
 <template>
-  <div class="settings-container">
-    <el-alert
-      v-if="isSimpleAdmin"
-      title="目前您仅可浏览设置项，只有超级管理员方可修改"
-      type="warning"
-      show-icon
-      class="full-width-alert"
-    />
+  <el-row :gutter="20">
+    <el-col :span="24" v-if="isSimpleAdmin">
+      <el-alert
+        title="目前您仅可浏览设置项，只有超级管理员方可修改"
+        type="warning"
+        show-icon
+        style="margin-bottom: 20px;"
+      />
+    </el-col>
     <!-- Global Settings Card -->
-    <el-card shadow="never">
+    <el-col :xs="24" :lg="12" class="responsive-mb">
+      <el-card shadow="never" class="h-100">
       <template #header>
         <div class="card-header">
           <span>通用设置</span>
@@ -49,10 +51,12 @@
           </div>
         </div>
       </div>
-    </el-card>
+      </el-card>
+    </el-col>
 
     <!-- Template Settings Card -->
-    <el-card shadow="never">
+    <el-col :xs="24" :lg="12">
+      <el-card shadow="never" class="h-100">
       <template #header>
         <div class="card-header">
           <span>申请模版设置</span>
@@ -81,7 +85,7 @@
             </el-select>
           </div>
           <div class="row-action">
-            <el-button type="primary" link :icon="View" @click="openViewDialog('templateFile')">查看</el-button>
+            <el-button v-if="!editState.templateFile" type="primary" link :icon="View" @click="openViewDialog('templateFile')">查看</el-button>
             <template v-if="canEdit">
               <el-button v-if="!editState.templateFile" type="primary" link :icon="Edit" @click="startEdit('templateFile')">
                 修改
@@ -110,8 +114,9 @@
           </div>
         </div>
       </div>
-    </el-card>
-  </div>
+      </el-card>
+    </el-col>
+  </el-row>
 
   <!-- Long Text Edit Dialog (Description & Agreement) -->
   <el-dialog
@@ -372,25 +377,12 @@ const openViewDialog = (field) => {
 </script>
 
 <style scoped>
-.settings-container {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-  align-items: start;
-}
-
-@media (min-width: 1100px) {
-  .settings-container {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
 .row-label {
   width: 150px;
 }
 
-.full-width-alert {
-  grid-column: 1 / -1;
+.h-100 {
+  height: 100%;
 }
 
 .card-header {
@@ -403,5 +395,11 @@ const openViewDialog = (field) => {
   margin-left: 6px;
   color: #909399;
   cursor: help;
+}
+
+@media (max-width: 1199px) {
+  .responsive-mb {
+    margin-bottom: 20px;
+  }
 }
 </style>
