@@ -25,3 +25,7 @@ db = 0
 [file]
 upload_limit_application = 20
 upload_limit_dataset = 500
+
+[cron]
+interval = 24
+offset = 8

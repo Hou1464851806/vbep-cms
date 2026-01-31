@@ -3,7 +3,6 @@ package v1
 import (
 	"net/http"
 	"server/service"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,7 +30,7 @@ func (s *StatisticApi) GetCurrent(c *gin.Context) {
 // RefreshStats 强制刷新统计数据
 func (s *StatisticApi) RefreshStats(c *gin.Context) {
 	// 使用 24h 间隔，8h 偏移 (北京时间) 进行计算
-	if err := s.service.GenerateStats(24*time.Hour, 8*time.Hour); err != nil {
+	if err := s.service.GenerateStats(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "刷新失败: " + err.Error()})
 		return
 	}

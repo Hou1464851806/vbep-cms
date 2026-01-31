@@ -16,12 +16,24 @@ func NewStatisticService() *StatisticService {
 }
 
 // GenerateStats 计算并持久化统计数据
-// interval: 统计周期/间隔 (如 24h 代表每天, 6h 代表每6小时)
-// offset: 时间偏移量 (用于处理时区或自定义起始时间。例如北京时间为 UTC+8，可传入 8*time.Hour)
+// 读取 config 中的 interval 和 offset
 // 该函数应由 Cron 定时任务调用
-func (s *StatisticService) GenerateStats(interval time.Duration, offset time.Duration) error {
+func (s *StatisticService) GenerateStats() error {
 	db := global.DB
 	now := time.Now()
+
+	// 读取配置并设置默认值 (24h, 8h)
+	intervalHours := global.CFG.Cron.Interval
+	if intervalHours <= 0 {
+		intervalHours = 24
+	}
+	offsetHours := global.CFG.Cron.Offset
+	if offsetHours == 0 {
+		offsetHours = 8
+	}
+
+	interval := time.Duration(intervalHours) * time.Hour
+	offset := time.Duration(offsetHours) * time.Hour
 
 	// 计算当前统计窗口的起始时间
 	// 逻辑：先加上偏移量对齐到"逻辑零时区"，取整后再减去偏移量还原
