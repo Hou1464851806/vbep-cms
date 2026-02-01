@@ -3,7 +3,6 @@
 import { ref, onMounted, inject, reactive, watch, nextTick, onBeforeUnmount, getCurrentInstance } from 'vue'
 import {
   Plus,
-  Edit,
   Delete,
   Document,
   Upload,
@@ -674,7 +673,7 @@ const handleNextStep = async () => {
         datasetID: applicationDialog.dataset.id,
       })
       if (res.status === 200 && res.data.applicationID) {
-        applicationDialog.optional.createdApplicationId = res.data.id
+        applicationDialog.optional.createdApplicationId = res.data.applicationID
         applicationDialog.currentStep = 2
       } else {
         ElMessage.error(res.data?.message || '创建申请失败')

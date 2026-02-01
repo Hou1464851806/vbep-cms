@@ -28,4 +28,4 @@ upload_limit_dataset = 500
 
 [cron]
 interval = 24
-offset = 8
+offset = 3
