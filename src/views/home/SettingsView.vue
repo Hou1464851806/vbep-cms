@@ -148,9 +148,10 @@
         <li v-for="(item, index) in viewDialog.list" :key="index" style="margin-bottom: 5px;">{{ item }}</li>
       </ul>
     </div>
-    <div v-else style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; line-height: 1.6;">
-      {{ viewDialog.content }}
-    </div>
+<!--    <div v-else style="white-space: pre-wrap; max-height: 400px; overflow-y: auto; line-height: 1.6;">-->
+<!--      {{ viewDialog.content }}-->
+<!--    </div>-->
+    <markdown-renderer v-else :model-value="viewDialog.content" />
     <template #footer>
       <el-button @click="viewDialog.visible = false">关闭</el-button>
     </template>
@@ -163,6 +164,7 @@ import axios from '@/request/axios';
 import { ElMessage } from 'element-plus';
 import '@/assets/styles/universal.css';
 import { Edit, Check, Close, QuestionFilled, View } from '@element-plus/icons-vue';
+import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 
 const userInfo = inject('userInfo');
 const canEdit = computed(() => userInfo?.roleId === 2);
@@ -240,7 +242,7 @@ onMounted(async () => {
 
 // Start editing a field
 const startEdit = async (field) => {
-  
+
   // Refresh the file list when starting to edit the template file
   if (field === 'templateFile') {
     await fetchPublicFiles();
@@ -324,7 +326,7 @@ const openLongTextEditDialog = (field) => {
 const saveLongText = async () => {
   const field = currentLongTextField.value;
   const newValue = tempSettings[field] || '';
-  
+
   try {
     const payload = { [field]: newValue };
     const response = await axios.patch('/api/v1/settings', payload);
