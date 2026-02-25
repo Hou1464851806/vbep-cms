@@ -11,8 +11,8 @@ db_path = "./main.sqlite3"
 # postgres
 host = "127.0.0.1"
 port = 5432
-user = "nonbeing"
-password = "hou812712"
+#user = "nonbeing"
+#password = "nonbeing114514"
 db_name = "vbep_cms"
 ssl_mode = "disable"
 time_zone = "Asia/Shanghai"

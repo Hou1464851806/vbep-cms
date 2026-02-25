@@ -11,7 +11,7 @@ func NewLogger() (*zap.Logger, *zap.SugaredLogger) {
 
 	cores := make([]zapcore.Core, 0)
 
-	//cores = append(cores, newFileZapCore())
+	cores = append(cores, newFileZapCore())
 	cores = append(cores, newConsoleZapCore())
 
 	log := zap.New(zapcore.NewTee(cores...), zap.AddCallerSkip(1))
@@ -19,7 +19,11 @@ func NewLogger() (*zap.Logger, *zap.SugaredLogger) {
 }
 
 func newFileZapCore() zapcore.Core {
-	f, err := os.OpenFile("./server.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+	err := os.Mkdir("logs", 0755)
+	if err != nil && !os.IsExist(err) {
+		panic(fmt.Sprintf("create log directory error: %v\n", err))
+	}
+	f, err := os.OpenFile("logs/server.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("open log file error: %v\n", err))
 	}

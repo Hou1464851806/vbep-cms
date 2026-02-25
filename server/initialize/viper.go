@@ -3,9 +3,20 @@ package initialize
 import (
 	"github.com/spf13/viper"
 	"log"
+	"os"
 	"server/global"
 	"server/logger"
+	"strings"
 )
+
+func getSecrets(filePath string, fallback string) string {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Printf("Read secrets file error: %v\n", err)
+		return fallback
+	}
+	return strings.TrimSpace(string(content))
+}
 
 func NewViper() *viper.Viper {
 	v := viper.New()
@@ -18,6 +29,9 @@ func NewViper() *viper.Viper {
 	if err := v.Unmarshal(&global.CFG); err != nil {
 		log.Fatalf("Unmarshal config error: %v\n", err)
 	}
+	// 用docker compose secrets覆盖数据库敏感配置
+	global.CFG.Database.User = getSecrets("/run/secrets/db_user", global.CFG.Database.User)
+	global.CFG.Database.Password = getSecrets("/run/secrets/db_password", global.CFG.Database.Password)
 	logger.Infof("Config: %#v", global.CFG)
 	return v
 }
