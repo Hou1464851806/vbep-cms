@@ -24,6 +24,7 @@ import {
   formatFileSize,
 } from '@/utils/format.js'
 import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
+import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -464,7 +465,7 @@ const handleManage = async (row) => {
   manageDialog.id = row.id
   manageDialog.form = { title: row.name, description: '' }
   manageDialog.loading = true
-  
+
   // 重置文件状态
   manageDialog.fileList = []
   manageDialog.uploadTasks = []
@@ -1111,9 +1112,10 @@ const handleCancelApplication = async () => {
               formatDateTime(detailDialog.data.created_at)
             }}</el-descriptions-item>
             <el-descriptions-item label="描述">
-              <div style="white-space: pre-wrap">
-                {{ detailDialog.data.description || '暂无描述' }}
-              </div>
+              <markdown-renderer
+                v-if="detailDialog.data.description"
+                :model-value="detailDialog.data.description" />
+              <span v-else>暂无描述</span>
             </el-descriptions-item>
           </el-descriptions>
 
@@ -1184,7 +1186,7 @@ const handleCancelApplication = async () => {
                   </el-statistic>
                 </div>
               </div>
-              
+
               <div class="chart-wrapper">
                 <div class="chart-title el-statistic__head">申请提交分布</div>
                 <div ref="chartRef" style="width: 100%; height: 220px;"></div>
