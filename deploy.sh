@@ -87,7 +87,7 @@ echo "[*] 当前各服务运行状态："
 $COMPOSE_CMD ps
 HOST_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 HOST_IP=${HOST_IP:-127.0.0.1}
-FRONTEND_PORT=$($COMPOSE_CMD port vbep-cms-frontend 80 2>/dev/null | cut -d ':' -f2)
+FRONTEND_PORT=$($COMPOSE_CMD port frontend 80 2>/dev/null | cut -d ':' -f2)
 echo "----------------------------------------------------"
 echo "[OK] 部署/更新全部完成。"
 if [ -n "$FRONTEND_PORT" ]; then
