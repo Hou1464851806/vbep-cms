@@ -51,6 +51,7 @@ services:
       - "8080:8080"
     volumes:
       - server-log:/app/logs
+#      - ./config.toml:/app/config.toml # 用宿主机上的配置覆盖容器内的，方便修改配置
     depends_on:
       postgres:
         condition: service_healthy
