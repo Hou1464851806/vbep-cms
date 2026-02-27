@@ -229,7 +229,7 @@ const handleSendOTP = async (target) => {
   // const isPhone = /^1[3-9]\d{9}$/.test(target)
 
   // if (!isEmail && !isPhone) {
-  if (isEmail) {
+  if (!isEmail) {
     ElMessage.warning('请输入正确的邮箱')
     return
   }
