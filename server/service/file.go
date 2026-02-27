@@ -55,6 +55,17 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 		}
 	}
 
+	switch ownerType {
+	case datasetOwnerType:
+		limitMB = global.CFG.File.UploadLimitDataset
+	case applicationOwnerType:
+		limitMB = global.CFG.File.UploadLimitApplication
+	case publicOwnerType:
+		limitMB = global.CFG.File.UploadLimitDownload
+	default:
+		limitMB = global.CFG.File.UploadLimitApplication
+	}
+
 	if fileHeader.Size > int64(limitMB)*1024*1024 {
 		return nil, "", fmt.Errorf("file too large: maximum allowed size is %d MB", limitMB)
 	}

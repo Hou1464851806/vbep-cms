@@ -23,8 +23,9 @@ password = ""
 db = 0
 
 [file]
-upload_limit_application = 20
-upload_limit_dataset = 500
+upload_limit_application = 1
+upload_limit_dataset = 2048
+upload_limit_download = 2048
 
 [cron]
 interval = 24
