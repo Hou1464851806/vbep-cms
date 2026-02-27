@@ -23,7 +23,7 @@ import {
   formatShortId,
   formatFileSize,
 } from '@/utils/format.js'
-import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
+import {APPLICATION_FILE_LIMIT_MB, DATASET_FILE_LIMIT_MB} from '@/utils/constrains.js'
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
@@ -65,7 +65,7 @@ const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
 
 const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
 
-const APPLICATION_FILE_LIMIT_MB = 20
+// const APPLICATION_FILE_LIMIT_MB = 20
 const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
 
 const ALLOWED_EXTENSIONS = [
@@ -453,7 +453,7 @@ const handleViewStatistics = async (row) => {
 // --- 文件管理事件处理 ---
 const handleBeforeUpload = (rawFile) => {
   if (rawFile.size > DATASET_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${DATASET_FILE_LIMIT_MB}MB 限制，无法上传`)
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(DATASET_FILE_LIMIT_BYTES)} 限制，无法上传`)
     return false
   }
   return true
@@ -464,7 +464,7 @@ const handleManage = async (row) => {
   manageDialog.id = row.id
   manageDialog.form = { title: row.name, description: '' }
   manageDialog.loading = true
-  
+
   // 重置文件状态
   manageDialog.fileList = []
   manageDialog.uploadTasks = []
@@ -698,7 +698,7 @@ const handleMandatoryFileChange = (file) => {
     return
   }
   if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件大小不能超过 ${APPLICATION_FILE_LIMIT_MB}MB`)
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
     applicationDialog.mandatory.file = null
     return
   }
@@ -714,7 +714,7 @@ const handleOptionalFileChange = (file, fileList) => {
     const fileName = rawFile.name.toLowerCase()
 
     if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-      ElMessage.error(`文件 ${rawFile.name} 超过大小限制`)
+      ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
       fileList.splice(idx, 1)
       return
     }
@@ -931,7 +931,7 @@ const handleCancelApplication = async () => {
         <div class="manage-section-header">
           <span class="manage-section-title">文件管理</span>
           <div class="header-actions">
-            <span class="upload-tip">限 {{ DATASET_FILE_LIMIT_MB }}MB/个</span>
+            <span class="upload-tip">限 {{ formatFileSize(DATASET_FILE_LIMIT_BYTES) }}/个</span>
                 <el-upload
                   action="#"
                   :show-file-list="false"
@@ -1044,7 +1044,7 @@ const handleCancelApplication = async () => {
       <div v-else-if="applicationDialog.currentStep === 2" class="upload-step" v-loading="applicationDialog.isSubmitting">
         <div class="upload-section">
           <div class="upload-label required-label">1. 上传申请文件 (必填)</div>
-          <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个。</div>
+          <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
           <el-upload
             class="upload-demo"
             action="#"
@@ -1063,7 +1063,7 @@ const handleCancelApplication = async () => {
 
         <div class="upload-section">
           <div class="upload-label">2. 补充材料 (可选)</div>
-          <div class="upload-desc">如有其他证明材料，可在此上传，不限数量。</div>
+          <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
           <el-upload
             class="upload-demo"
             action="#"
@@ -1184,7 +1184,7 @@ const handleCancelApplication = async () => {
                   </el-statistic>
                 </div>
               </div>
-              
+
               <div class="chart-wrapper">
                 <div class="chart-title el-statistic__head">申请提交分布</div>
                 <div ref="chartRef" style="width: 100%; height: 220px;"></div>
