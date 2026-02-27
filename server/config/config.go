@@ -3,6 +3,7 @@ package config
 type FileConfig struct {
 	UploadLimitApplication int `mapstructure:"upload_limit_application"`
 	UploadLimitDataset     int `mapstructure:"upload_limit_dataset"`
+	UploadLimitDownload    int `mapstructure:"upload_limit_download"`
 }
 
 type CronConfig struct {
