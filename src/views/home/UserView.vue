@@ -99,7 +99,7 @@ const handleSave = async (originalRow) => {
   const changes = {}
   if (draft.nickname !== originalRow.nickname) changes.nickname = draft.nickname
   if (draft.email !== originalRow.email) changes.email = draft.email
-  if (draft.phone !== originalRow.phone) changes.phone = draft.phone
+  // if (draft.phone !== originalRow.phone) changes.phone = draft.phone
 
   // 仅超级管理员可以修改权限组
   if (isSuperAdmin.value && Number(draft.role) !== Number(originalRow.role)) {
@@ -175,12 +175,12 @@ const handleSave = async (originalRow) => {
         </template>
       </el-table-column>
 
-      <el-table-column label="手机号" width="140">
-        <template #default="{ row }">
-          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].phone" size="small" />
-          <span v-else>{{ row.phone || '-' }}</span>
-        </template>
-      </el-table-column>
+<!--      <el-table-column label="手机号" width="140">-->
+<!--        <template #default="{ row }">-->
+<!--          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].phone" size="small" />-->
+<!--          <span v-else>{{ row.phone || '-' }}</span>-->
+<!--        </template>-->
+<!--      </el-table-column>-->
 
       <el-table-column label="注册时间" width="180">
         <template #default="{ row }">
