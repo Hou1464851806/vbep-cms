@@ -33,7 +33,7 @@ const userInfo = reactive({
   userID: '',
   nickname: '',
   email: '',
-  phone: '',
+  // phone: '',
   // role: 'user',
   roleId: 0, // 0 - 'user', 1 - 'admin', 2 - 'super_admin'
 })
@@ -51,7 +51,8 @@ onMounted(async () => {
     }
     const res = await fetchUserInfoAPI(storedUserId)
     if (res && res.data?.data) {
-      const { userID, nickname, email, phone, role } = res.data.data
+      //const { userID, nickname, email, phone, role } = res.data.data
+      const { userID, nickname, email, role } = res.data.data
       const roleNum = Number(role)
       // let roleStr = 'user'
       // if (roleNum === 1) roleStr = 'admin'
@@ -61,7 +62,7 @@ onMounted(async () => {
         userID,
         nickname,
         email,
-        phone,
+        // phone,
         // role: roleStr,
         roleId: roleNum,
       })
@@ -141,7 +142,7 @@ const openEditDialog = (field, label, needsOtp = true) => {
 
 const submitEditDialog = async () => {
   const { field, value, otp, label, needsOtp } = editDialog
-  
+
   if (!value) {
     ElMessage.warning(`请输入新${label}`)
     return
@@ -156,10 +157,10 @@ const submitEditDialog = async () => {
     ElMessage.warning('请输入有效的邮箱地址')
     return
   }
-  if (field === 'phone' && !/^1[3-9]\d{9}$/.test(value)) {
-    ElMessage.warning('请输入有效的手机号')
-    return
-  }
+  // if (field === 'phone' && !/^1[3-9]\d{9}$/.test(value)) {
+  //   ElMessage.warning('请输入有效的手机号')
+  //   return
+  // }
 
   editDialog.loading = true
   try {
@@ -220,15 +221,16 @@ const fetchCaptcha = async () => {
 
 const handleSendOTP = async (target) => {
   if (!target) {
-    ElMessage.warning('请先输入目标邮箱或手机号')
+    ElMessage.warning('请先输入目标邮箱')
     return
   }
   // 简单格式校验
   const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(target)
-  const isPhone = /^1[3-9]\d{9}$/.test(target)
-  
-  if (!isEmail && !isPhone) {
-    ElMessage.warning('请输入正确的邮箱或手机号')
+  // const isPhone = /^1[3-9]\d{9}$/.test(target)
+
+  // if (!isEmail && !isPhone) {
+  if (!isEmail) {
+    ElMessage.warning('请输入正确的邮箱')
     return
   }
 
@@ -543,22 +545,22 @@ const currentPageTitle = computed(() => {
           </div>
         </div>
 
-        <div class="info-row">
-          <div class="row-label">手机号</div>
-          <div class="row-content">
-            <span>{{ userInfo.phone || '未设置' }}</span>
-          </div>
-          <div class="row-action">
-            <el-button
-              type="primary"
-              link
-              :icon="Edit"
-              @click="openEditDialog('phone', '手机号')"
-            >
-              修改
-            </el-button>
-          </div>
-        </div>
+<!--        <div class="info-row">-->
+<!--          <div class="row-label">手机号</div>-->
+<!--          <div class="row-content">-->
+<!--            <span>{{ userInfo.phone || '未设置' }}</span>-->
+<!--          </div>-->
+<!--          <div class="row-action">-->
+<!--            <el-button-->
+<!--              type="primary"-->
+<!--              link-->
+<!--              :icon="Edit"-->
+<!--              @click="openEditDialog('phone', '手机号')"-->
+<!--            >-->
+<!--              修改-->
+<!--            </el-button>-->
+<!--          </div>-->
+<!--        </div>-->
 
         <el-divider border-style="dashed" />
 

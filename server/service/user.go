@@ -27,7 +27,7 @@ func (s *UserService) CreateUser(user *model.User) error {
 
 func (s *UserService) FindAndCheckUser(info string, password string) (*model.User, error) {
 	ctx := context.Background()
-	user, err := gorm.G[model.User](global.DB).Where("email = ?", info).Or("phone = ?", info).First(ctx)
+	user, err := gorm.G[model.User](global.DB).Where("email = ?", info).First(ctx)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("failed to find user (info = %s)", info)
@@ -115,7 +115,7 @@ func (s *UserService) UpdateUser(operator *model.User, targetUserID string, upda
 		}
 	}
 
-	// 3. 邮箱/手机号 约束检查
+	// 3. 邮箱 约束检查
 	// Email is now mandatory (string, not null), so we don't need to check if both are nil.
 	// The API layer ensures that if email is updated, it is not empty.
 
@@ -123,7 +123,7 @@ func (s *UserService) UpdateUser(operator *model.User, targetUserID string, upda
 	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", targetUserID).Updates(updates)
 	if result.Error != nil {
 		if strings.Contains(result.Error.Error(), "Duplicate entry") {
-			return fmt.Errorf("email or phone already occupied")
+			return fmt.Errorf("email already occupied")
 		}
 		return result.Error
 	}

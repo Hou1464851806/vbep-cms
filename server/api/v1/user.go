@@ -22,16 +22,16 @@ func NewUserApi() *UserApi {
 }
 
 type CreateUserParam struct {
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
+	Email string `json:"email"`
+	//Phone    string `json:"phone"`
 	Password string `json:"password" binding:"required"`
 	NickName string `json:"nickname"`
 	OTP      string `json:"otp" binding:"required"`
 }
 
 type UpdateUserParam struct {
-	Email    *string         `json:"email"`
-	Phone    *string         `json:"phone"`
+	Email *string `json:"email"`
+	//Phone    *string         `json:"phone"`
 	NickName *string         `json:"nickname"`
 	Password *string         `json:"password"`
 	Role     *model.UserRole `json:"role"`
@@ -219,21 +219,21 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		updates["is_email_verified"] = true
 	}
 
-	if param.Phone != nil {
-		cleanPhone := strings.TrimSpace(*param.Phone)
-		if cleanPhone == "" {
-			updates["phone"] = nil
-			updates["is_phone_verified"] = false
-		} else {
-			// 验证 OTP
-			if param.OTP == nil || !u.service.VerifyOTP(cleanPhone, *param.OTP) {
-				ctx.JSON(http.StatusBadRequest, gin.H{"message": "绑定/修改手机号需要正确的验证码"})
-				return
-			}
-			updates["phone"] = cleanPhone
-			updates["is_phone_verified"] = true
-		}
-	}
+	//if param.Phone != nil {
+	//	cleanPhone := strings.TrimSpace(*param.Phone)
+	//	if cleanPhone == "" {
+	//		updates["phone"] = nil
+	//		updates["is_phone_verified"] = false
+	//	} else {
+	//		// 验证 OTP
+	//		if param.OTP == nil || !u.service.VerifyOTP(cleanPhone, *param.OTP) {
+	//			ctx.JSON(http.StatusBadRequest, gin.H{"message": "绑定/修改手机号需要正确的验证码"})
+	//			return
+	//		}
+	//		updates["phone"] = cleanPhone
+	//		updates["is_phone_verified"] = true
+	//	}
+	//}
 
 	if param.Password != nil {
 		updates["pwd_hash"] = *param.Password
@@ -289,8 +289,8 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 			"userID":   user.ID,
 			"nickname": user.NickName,
 			"email":    user.Email,
-			"phone":    user.Phone,
-			"role":     user.Role,
+			//"phone":    user.Phone,
+			"role": user.Role,
 		},
 	})
 }
@@ -311,10 +311,10 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	var userList []gin.H
 	for _, user := range users {
 		userList = append(userList, gin.H{
-			"userID":    user.ID,
-			"nickname":  user.NickName,
-			"email":     user.Email,
-			"phone":     user.Phone,
+			"userID":   user.ID,
+			"nickname": user.NickName,
+			"email":    user.Email,
+			//"phone":     user.Phone,
 			"role":      user.Role,
 			"createdAt": user.CreatedAt,
 		})
