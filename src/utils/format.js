@@ -25,7 +25,7 @@ export const formatDateTime = (value) => {
 }
 
 /**
- * 将文件大小格式化为更易读的形式
+ * 将文件大小格式化为更易读的形式(Byte)
  * @param {string} datetime
  * @returns {string}
  */

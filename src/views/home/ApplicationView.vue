@@ -278,7 +278,7 @@ const handleAuditClick = async (auditItem) => {
 
   detailDialog.audit.detailLoading = true
   resetAttachmentState()
-  
+
   try {
     const res = await fetchAuditDetailAPI(detailDialog.data.id, auditItem.id)
     if (res.status === 200) {
@@ -311,7 +311,7 @@ const getAttachmentRowClass = ({ row } = {}) => {
 
 const validateAttachmentFile = (rawFile) => {
   if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${APPLICATION_FILE_LIMIT_MB}MB 限制，无法上传`)
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
     return false
   }
   const fileName = rawFile.name?.toLowerCase?.() || ''
@@ -452,10 +452,10 @@ const handleViewDetail = async (row) => {
 
     if (detailRes.status === 200) {
       detailDialog.data = normalizeApplication(detailRes.data.application)
-      
+
       const normalizedAudits = (detailRes.data.application.audits || []).map((item) => normalizeAudit(item))
       detailDialog.timeline = normalizedAudits
-      
+
       // 默认选中最新的一条（最后一条）
       if (detailDialog.timeline.length > 0) {
         handleAuditClick(detailDialog.timeline[detailDialog.timeline.length - 1])
@@ -721,10 +721,10 @@ onMounted(fetchApplications)
                     placement="top"
                     hide-timestamp
                   >
-                    <el-card 
-                      class="audit-record-card" 
+                    <el-card
+                      class="audit-record-card"
                       :class="{ 'is-selected': item.id === detailDialog.audit.selectedId }"
-                      shadow="hover" 
+                      shadow="hover"
                       :body-style="{ padding: '0' }"
                       @click="handleAuditClick(item)"
                     >
@@ -835,7 +835,7 @@ onMounted(fetchApplications)
                     />
                     <div class="resubmit-content">
                       <div class="resubmit-block">
-                        <div class="resubmit-block-title">申请附件</div>
+                        <div class="resubmit-block-title">申请附件（单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}）</div>
                         <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
                           <template #default>
                             <el-empty
