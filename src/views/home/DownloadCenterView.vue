@@ -16,6 +16,9 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
+import {DOWNLOAD_FILE_LIMIT_MB} from "@/utils/constrains.js";
+
+const DOWNLOAD_FILE_LIMIT_BYTES = DOWNLOAD_FILE_LIMIT_MB * 1024 * 1024
 
 // --- API 函数 ---
 const fetchPublicFilesAPI = () => apiClient.get('/api/v1/files/public')
@@ -77,11 +80,9 @@ const loadFiles = async () => {
 
 const handleUpload = async (options) => {
   const { file } = options
-  
-  // 简单的大小检查，例如 500MB
-  const isLt500M = file.size / 1024 / 1024 < 500
-  if (!isLt500M) {
-    ElMessage.error('文件大小不能超过 500MB')
+
+  if (file.size > DOWNLOAD_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${file.name}" 超过 ${formatFileSize(DOWNLOAD_FILE_LIMIT_BYTES)} 限制，无法上传`)
     return
   }
 
@@ -155,7 +156,8 @@ onMounted(() => {
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
-        <span>下载中心</span>
+        <span v-if="isAdmin()">下载中心（上传文件大小不能超过 {{ formatFileSize(DOWNLOAD_FILE_LIMIT_BYTES) }}）</span>
+        <span v-else>下载中心</span>
         <div class="header-actions">
           <el-button :icon="Refresh" circle @click="loadFiles" :loading="isLoading" title="刷新列表" />
           <el-upload

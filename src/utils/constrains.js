@@ -1,2 +1,4 @@
-export const DATASET_FILE_LIMIT_MB = 500
-export const APPLICATION_FILE_LIMIT_MB = 20
+// MB
+export const DATASET_FILE_LIMIT_MB = 2048
+export const APPLICATION_FILE_LIMIT_MB = 1
+export const DOWNLOAD_FILE_LIMIT_MB = 2048
