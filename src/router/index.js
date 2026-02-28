@@ -8,6 +8,7 @@ import UserView from '@/views/home/UserView.vue'
 import SettingsView from '@/views/home/SettingsView.vue'
 import DownloadCenterView from '@/views/home/DownloadCenterView.vue'
 import StatisticView from '@/views/home/StatisticView.vue'
+import RecoverView from "@/views/RecoverView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +23,11 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterView,
+    },
+    {
+      path: '/recover',
+      name: 'recover',
+      component: RecoverView,
     },
     {
       path: '/home', // 所有登录后的页面都将基于这个根路径
