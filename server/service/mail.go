@@ -38,11 +38,11 @@ func (s *MailService) SendResetPassword(target string) error {
 	return err
 }
 
-func (s *MailService) SendNotification(target string, content string) error {
+func (s *MailService) SendNotification(target string, subject string, content string) error {
 	body := fmt.Sprintf("收到一条新的系统提醒：<br/> %s", content)
 	msg := mail.Message{
 		To:      target,
-		Subject: "【系统通知】请注意查收",
+		Subject: subject,
 		Body:    body,
 	}
 	task, err := tasks.NewEmailDeliveryTask(msg)

@@ -271,7 +271,29 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 		return nil, err
 	}
 
-	return s.GetApplicationByID(id)
+	appDetail, err := s.GetApplicationByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	userEmail := appDetail.Applicant.Email
+	if userEmail != "" {
+		var subject string
+		switch status {
+		case model.APPROVED:
+			subject = "您的申请已经通过"
+		case model.REJECTED:
+			subject = "您的申请无法通过"
+		case model.RETURNED:
+			subject = "您的申请已被退回"
+		default:
+			subject = "您的申请状态更新"
+		}
+
+		s.sendNotificationEmailToUser(userEmail, subject, "")
+	}
+
+	return appDetail, nil
 }
 
 func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID string) (*model.AuditDetail, error) {
@@ -365,9 +387,16 @@ func (s *ApplicationService) sendNotificationEmailToPublic(content string) {
 	}
 	publicEmail := setting.PublicEmail
 	if publicEmail != "" {
-		err = s.mailService.SendNotification(publicEmail, content)
+		err = s.mailService.SendNotification(publicEmail, "系统通知", content)
 		if err != nil {
 			logger.Errorf("failed to send notification to public mail: %v", err)
 		}
+	}
+}
+
+func (s *ApplicationService) sendNotificationEmailToUser(userEmail string, subject string, content string) {
+	err := s.mailService.SendNotification(userEmail, subject, content)
+	if err != nil {
+		logger.Errorf("failed to send notification to user mail: %v", err)
 	}
 }

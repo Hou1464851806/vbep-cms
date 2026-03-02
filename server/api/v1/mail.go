@@ -33,7 +33,7 @@ func (a *MailApi) SendNotification(ctx *gin.Context) {
 		return
 	}
 
-	err := a.service.SendNotification(req.To, req.Message)
+	err := a.service.SendNotification(req.To, req.Message, "")
 	if err != nil {
 		logger.Errorf("Failed to send notification email by service: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
