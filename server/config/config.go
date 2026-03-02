@@ -1,5 +1,10 @@
 package config
 
+const (
+	AppModeApi    = "api"
+	AppModeWorker = "worker"
+)
+
 type FileConfig struct {
 	UploadLimitApplication int `mapstructure:"upload_limit_application"`
 	UploadLimitDataset     int `mapstructure:"upload_limit_dataset"`
@@ -13,6 +18,7 @@ type CronConfig struct {
 
 type Config struct {
 	AppName  string         `mapstructure:"app_name"`
+	AppMode  string         `mapstructure:"app_mode"` // 由环境变量控制 [api worker]
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`

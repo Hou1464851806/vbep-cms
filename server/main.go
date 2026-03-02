@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"server/config"
 	"server/core"
 	"server/global"
 	"server/initialize"
@@ -14,7 +15,13 @@ import (
 
 func main() {
 	initializeServer()
-	initializeCron()
+
+	if global.CFG.AppMode == config.AppModeWorker {
+		initialize.StartAsynqWorkerServer()
+	} else {
+		global.ASYNQ = initialize.Asynq()
+		initializeCron()
+	}
 }
 
 func initializeServer() {
