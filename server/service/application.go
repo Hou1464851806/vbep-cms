@@ -139,18 +139,8 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 	if err != nil {
 		return err
 	}
-	// 发送提醒邮件
-	setting, err := s.settingService.GetSetting()
-	if err != nil {
-		logger.Errorf("failed to get setting: %v", err)
-	}
-	publicEmail := setting.PublicEmail
-	if publicEmail != "" {
-		err = s.mailService.SendNotification(publicEmail, "有新申请")
-		if err != nil {
-			logger.Errorf("failed to send notification to public mail: %v", err)
-		}
-	}
+
+	s.sendNotificationEmailToPublic("有新申请")
 
 	return nil
 }
@@ -363,5 +353,21 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 
 	cleanup(true)
 
+	s.sendNotificationEmailToPublic("有重新提交的申请")
+
 	return s.GetApplicationByID(id)
+}
+
+func (s *ApplicationService) sendNotificationEmailToPublic(content string) {
+	setting, err := s.settingService.GetSetting()
+	if err != nil {
+		logger.Errorf("failed to get setting: %v", err)
+	}
+	publicEmail := setting.PublicEmail
+	if publicEmail != "" {
+		err = s.mailService.SendNotification(publicEmail, content)
+		if err != nil {
+			logger.Errorf("failed to send notification to public mail: %v", err)
+		}
+	}
 }
