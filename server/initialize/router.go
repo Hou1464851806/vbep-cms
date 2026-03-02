@@ -21,6 +21,10 @@ func NewRouter() *gin.Engine {
 		})
 	})
 
+	// email
+	asynqClient := global.ASYNQ
+	mailService := service.NewMailService(asynqClient)
+
 	// user
 	userRouter := new(router.UserRouter)
 	userRouter.InitUserRouter(v1)
@@ -45,12 +49,9 @@ func NewRouter() *gin.Engine {
 	statisticRouter := new(router.StatisticRouter)
 	statisticRouter.InitStatisticRouter(v1)
 
-	// email
-	asynqClient := global.ASYNQ
-	mailService := service.NewMailService(asynqClient)
-	mailApi := api.NewMailApi(mailService)
-	mailRouter := router.NewMailRouter(mailApi)
-	mailRouter.InitMailRouter(v1)
+	//mailApi := api.NewMailApi(mailService)
+	//mailRouter := router.NewMailRouter(mailApi)
+	//mailRouter.InitMailRouter(v1)
 
 	return r
 }
