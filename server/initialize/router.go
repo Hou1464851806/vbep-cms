@@ -1,10 +1,12 @@
 package initialize
 
 import (
-	"net/http"
-	"server/router"
-
 	"github.com/gin-gonic/gin"
+	"net/http"
+	api "server/api/v1"
+	"server/global"
+	"server/router"
+	"server/service"
 )
 
 func NewRouter() *gin.Engine {
@@ -17,6 +19,10 @@ func NewRouter() *gin.Engine {
 			"message": "pong",
 		})
 	})
+
+	// email
+	asynqClient := global.ASYNQ
+	mailService := service.NewMailService(asynqClient)
 
 	// user
 	userRouter := new(router.UserRouter)
@@ -31,7 +37,9 @@ func NewRouter() *gin.Engine {
 	fileRouter.InitFileRouter(v1)
 
 	// application
-	applicationRouter := new(router.ApplicationRouter)
+	applicationService := service.NewApplicationServiceWithOther(mailService, service.NewSettingService())
+	applicationApi := api.NewApplicationApi(applicationService)
+	applicationRouter := router.NewApplicationRouter(applicationApi)
 	applicationRouter.InitApplicationRouter(v1)
 
 	// setting
@@ -41,6 +49,10 @@ func NewRouter() *gin.Engine {
 	// statistic
 	statisticRouter := new(router.StatisticRouter)
 	statisticRouter.InitStatisticRouter(v1)
+
+	//mailApi := api.NewMailApi(mailService)
+	//mailRouter := router.NewMailRouter(mailApi)
+	//mailRouter.InitMailRouter(v1)
 
 	return r
 }

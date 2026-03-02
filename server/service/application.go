@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"server/logger"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,10 +21,20 @@ var (
 	ErrApplicationNotEditable      = errors.New("application not editable")
 )
 
-type ApplicationService struct{}
+type ApplicationService struct {
+	mailService    *MailService
+	settingService *SettingService
+}
 
 func NewApplicationService() *ApplicationService {
 	return &ApplicationService{}
+}
+
+func NewApplicationServiceWithOther(mailService *MailService, settingService *SettingService) *ApplicationService {
+	return &ApplicationService{
+		mailService:    mailService,
+		settingService: settingService,
+	}
 }
 
 func (s *ApplicationService) CreateApplication(app *model.Application) error {
@@ -93,7 +104,8 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 
 func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) error {
 	ctx := context.Background()
-	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// 申请提交事务
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var app model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", id).
@@ -123,6 +135,14 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 
 		return nil
 	})
+	// 事务执行失败则不继续发送邮件
+	if err != nil {
+		return err
+	}
+
+	s.sendNotificationEmailToPublic("有新申请")
+
+	return nil
 }
 
 func (s *ApplicationService) ListApplications(applicantID *string) ([]model.ApplicationListItem, error) {
@@ -251,7 +271,29 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 		return nil, err
 	}
 
-	return s.GetApplicationByID(id)
+	appDetail, err := s.GetApplicationByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	userEmail := appDetail.Applicant.Email
+	if userEmail != "" {
+		var subject string
+		switch status {
+		case model.APPROVED:
+			subject = "您的申请已经通过"
+		case model.REJECTED:
+			subject = "您的申请无法通过"
+		case model.RETURNED:
+			subject = "您的申请已被退回"
+		default:
+			subject = "您的申请状态更新"
+		}
+
+		s.sendNotificationEmailToUser(userEmail, subject, "")
+	}
+
+	return appDetail, nil
 }
 
 func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID string) (*model.AuditDetail, error) {
@@ -333,5 +375,28 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 
 	cleanup(true)
 
+	s.sendNotificationEmailToPublic("有重新提交的申请")
+
 	return s.GetApplicationByID(id)
+}
+
+func (s *ApplicationService) sendNotificationEmailToPublic(content string) {
+	setting, err := s.settingService.GetSetting()
+	if err != nil {
+		logger.Errorf("failed to get setting: %v", err)
+	}
+	publicEmail := setting.PublicEmail
+	if publicEmail != "" {
+		err = s.mailService.SendNotification(publicEmail, "系统通知", content)
+		if err != nil {
+			logger.Errorf("failed to send notification to public mail: %v", err)
+		}
+	}
+}
+
+func (s *ApplicationService) sendNotificationEmailToUser(userEmail string, subject string, content string) {
+	err := s.mailService.SendNotification(userEmail, subject, content)
+	if err != nil {
+		logger.Errorf("failed to send notification to user mail: %v", err)
+	}
 }
