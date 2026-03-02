@@ -18,4 +18,5 @@ type Config struct {
 	Redis    RedisConfig    `mapstructure:"redis"`
 	File     FileConfig     `mapstructure:"file"`
 	Cron     CronConfig     `mapstructure:"cron"`
+	Email    EmailConfig    `mapstructure:"email"`
 }

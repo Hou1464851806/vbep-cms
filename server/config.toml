@@ -30,3 +30,18 @@ upload_limit_download = 2048
 [cron]
 interval = 24
 offset = 3
+
+[email]
+# driver: [smtp api mock]
+driver = "mock"
+from = "vbep-cms@xx.com"
+
+[email.smtp]
+host = ""
+port = 114
+user = ""
+password = ""
+
+[email.api]
+url = ""
+key = ""
