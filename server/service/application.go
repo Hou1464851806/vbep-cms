@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"server/logger"
 	"time"
 
 	"gorm.io/gorm"
@@ -20,10 +21,20 @@ var (
 	ErrApplicationNotEditable      = errors.New("application not editable")
 )
 
-type ApplicationService struct{}
+type ApplicationService struct {
+	mailService    *MailService
+	settingService *SettingService
+}
 
 func NewApplicationService() *ApplicationService {
 	return &ApplicationService{}
+}
+
+func NewApplicationServiceWithOther(mailService *MailService, settingService *SettingService) *ApplicationService {
+	return &ApplicationService{
+		mailService:    mailService,
+		settingService: settingService,
+	}
 }
 
 func (s *ApplicationService) CreateApplication(app *model.Application) error {
@@ -93,7 +104,8 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 
 func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) error {
 	ctx := context.Background()
-	return global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	// 申请提交事务
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var app model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ?", id).
@@ -123,6 +135,24 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 
 		return nil
 	})
+	// 事务执行失败则不继续发送邮件
+	if err != nil {
+		return err
+	}
+	// 发送提醒邮件
+	setting, err := s.settingService.GetSetting()
+	if err != nil {
+		logger.Errorf("failed to get setting: %v", err)
+	}
+	publicEmail := setting.PublicEmail
+	if publicEmail != "" {
+		err = s.mailService.SendNotification(publicEmail, "有新申请")
+		if err != nil {
+			logger.Errorf("failed to send notification to public mail: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func (s *ApplicationService) ListApplications(applicantID *string) ([]model.ApplicationListItem, error) {

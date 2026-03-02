@@ -1,13 +1,12 @@
 package initialize
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	api "server/api/v1"
 	"server/global"
 	"server/router"
 	"server/service"
-
-	"github.com/gin-gonic/gin"
 )
 
 func NewRouter() *gin.Engine {
@@ -38,7 +37,9 @@ func NewRouter() *gin.Engine {
 	fileRouter.InitFileRouter(v1)
 
 	// application
-	applicationRouter := new(router.ApplicationRouter)
+	applicationService := service.NewApplicationServiceWithOther(mailService, service.NewSettingService())
+	applicationApi := api.NewApplicationApi(applicationService)
+	applicationRouter := router.NewApplicationRouter(applicationApi)
 	applicationRouter.InitApplicationRouter(v1)
 
 	// setting

@@ -24,11 +24,13 @@ var (
 )
 
 type ApplicationApi struct {
-	service *service.ApplicationService
+	applicationService *service.ApplicationService
 }
 
-func NewApplicationApi() *ApplicationApi {
-	return &ApplicationApi{service: service.NewApplicationService()}
+func NewApplicationApi(applicationService *service.ApplicationService) *ApplicationApi {
+	return &ApplicationApi{
+		applicationService: applicationService,
+	}
 }
 
 type createApplicationParam struct {
@@ -66,7 +68,7 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 		Status:      model.PENDING,
 	}
 
-	if err := a.service.CreateApplication(app); err != nil {
+	if err := a.applicationService.CreateApplication(app); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
@@ -94,7 +96,7 @@ func (a *ApplicationApi) Delete(ctx *gin.Context) {
 		return
 	}
 
-	if err := a.service.DeleteDraftApplication(id, userIDStr); err != nil {
+	if err := a.applicationService.DeleteDraftApplication(id, userIDStr); err != nil {
 		if errors.Is(err, service.ErrApplicationPermissionDenied) {
 			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
@@ -123,7 +125,7 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 		return
 	}
 
-	if err := a.service.SubmitDraftApplication(id, userIDStr); err != nil {
+	if err := a.applicationService.SubmitDraftApplication(id, userIDStr); err != nil {
 		if errors.Is(err, service.ErrApplicationPermissionDenied) {
 			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
@@ -161,7 +163,7 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
 
 	// 3. 调用 Service
-	applications, err := a.service.ListApplications(filterID)
+	applications, err := a.applicationService.ListApplications(filterID)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请列表失败"})
@@ -191,7 +193,7 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 	}
 
 	// 2. 查询 Application
-	application, err := a.service.GetApplicationByID(id)
+	application, err := a.applicationService.GetApplicationByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
@@ -232,7 +234,7 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 		return
 	}
 
-	detail, err := a.service.GetApplicationAuditDetail(id, auditID)
+	detail, err := a.applicationService.GetApplicationAuditDetail(id, auditID)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"message": "审批记录不存在"})
 		return
@@ -290,7 +292,7 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.service.ProcessApplicationAudit(id, userIDStr, param.Result, actionStatus)
+	application, err := a.applicationService.ProcessApplicationAudit(id, userIDStr, param.Result, actionStatus)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
@@ -357,7 +359,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.service.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads)
+	application, err := a.applicationService.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

@@ -8,10 +8,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type ApplicationRouter struct{}
+type ApplicationRouter struct {
+	api *v1.ApplicationApi
+}
+
+func NewApplicationRouter(api *v1.ApplicationApi) *ApplicationRouter {
+	return &ApplicationRouter{
+		api: api,
+	}
+}
 
 func (r *ApplicationRouter) InitApplicationRouter(router *gin.RouterGroup) {
-	var applicationApi = v1.NewApplicationApi()
+	applicationApi := r.api
 
 	applicationRouter := router.Group("/applications")
 	applicationRouter.Use(middleware.JWTAuth())
