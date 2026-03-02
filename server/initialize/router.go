@@ -2,7 +2,10 @@ package initialize
 
 import (
 	"net/http"
+	api "server/api/v1"
+	"server/global"
 	"server/router"
+	"server/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,6 +44,13 @@ func NewRouter() *gin.Engine {
 	// statistic
 	statisticRouter := new(router.StatisticRouter)
 	statisticRouter.InitStatisticRouter(v1)
+
+	// email
+	asynqClient := global.ASYNQ
+	mailService := service.NewMailService(asynqClient)
+	mailApi := api.NewMailApi(mailService)
+	mailRouter := router.NewMailRouter(mailApi)
+	mailRouter.InitMailRouter(v1)
 
 	return r
 }
