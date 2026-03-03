@@ -30,6 +30,10 @@ func StartAsynqWorkerServer() {
 			DB:       global.CFG.Redis.DB},
 		asynq.Config{
 			Concurrency: 10,
+			Queues: map[string]int{
+				"critical": 6,
+				"default":  3,
+			},
 		},
 	)
 	mux := asynq.NewServeMux()
