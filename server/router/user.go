@@ -9,10 +9,17 @@ import (
 )
 
 type UserRouter struct {
+	userApi *v1.UserApi
+}
+
+func NewUserRouter(userApi *v1.UserApi) *UserRouter {
+	return &UserRouter{
+		userApi: userApi,
+	}
 }
 
 func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
-	var userApi = v1.NewUserApi()
+	userApi := u.userApi
 	var authApi = v1.NewAuthApi()
 
 	userRouter := router.Group("/users")
@@ -26,6 +33,10 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 
 		userRouter.GET("/captcha", userApi.GetCaptcha)
 		userRouter.POST("/otp", userApi.SendOTP)
+
+		// reset
+		userRouter.POST("/reset/send", userApi.SendResetPassword)
+		userRouter.POST("/reset/confirm", userApi.ConfirmResetPassword)
 
 		// auth
 		userRouter.POST("/login", authApi.Login)

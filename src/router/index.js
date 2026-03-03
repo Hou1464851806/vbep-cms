@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import {createRouter, createWebHistory, RouterView} from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
 import RegisterView from '@/views/RegisterView.vue'
 import HomeView from '@/views/home/HomeView.vue'
@@ -8,6 +8,8 @@ import UserView from '@/views/home/UserView.vue'
 import SettingsView from '@/views/home/SettingsView.vue'
 import DownloadCenterView from '@/views/home/DownloadCenterView.vue'
 import StatisticView from '@/views/home/StatisticView.vue'
+import SendView from "@/views/reset/SendView.vue";
+import ConfirmView from "@/views/reset/ConfirmView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +24,24 @@ const router = createRouter({
       path: '/register',
       name: 'register',
       component: RegisterView,
+    },
+    {
+      path: '/reset',
+      name: 'reset',
+      component: RouterView,
+      redirect: '/reset/send',
+      children: [
+        {
+          path: 'send',
+          name: 'send',
+          component: SendView,
+        },
+        {
+          path: 'confirm',
+          name: 'confirm',
+          component: ConfirmView,
+        }
+      ]
     },
     {
       path: '/home', // 所有登录后的页面都将基于这个根路径

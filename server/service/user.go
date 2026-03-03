@@ -2,17 +2,29 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"server/global"
+	"server/logger"
 	"server/model"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 )
 
 type UserService struct {
-	otpService OTPService
+	otpService   OTPService
+	emailService *MailService
+}
+
+func NewUserServiceWithEmailService(emailService *MailService) *UserService {
+	return &UserService{
+		emailService: emailService,
+	}
 }
 
 func (s *UserService) CreateUser(user *model.User) error {
@@ -50,6 +62,19 @@ func (s *UserService) GetUserByID(id string) (*model.User, error) {
 			return nil, gorm.ErrRecordNotFound
 		}
 		return nil, fmt.Errorf("failed to query user by id %s: %w", id, err)
+	}
+
+	return &user, nil
+}
+
+func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
+	ctx := context.Background()
+	user, err := gorm.G[model.User](global.DB).Where("email = ?", email).First(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, gorm.ErrRecordNotFound
+		}
+		return nil, fmt.Errorf("failed to query user by email %s: %w", email, err)
 	}
 
 	return &user, nil
@@ -150,4 +175,78 @@ func (s *UserService) VerifyCaptcha(id, answer string) bool {
 
 func (s *UserService) SendOTP(target string) error {
 	return s.otpService.SendOTP(target)
+}
+
+func generateToken(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) error {
+	ctx := context.Background()
+	// 验证邮箱，不存在也不报错，防止邮箱枚举攻击
+	_, err := s.GetUserByEmail(userEmail)
+	if err != nil {
+		logger.Warnf("failed to verify email: %v", err)
+		return nil
+	}
+	// 生成token用于重置密码url
+	token, err := generateToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate token: %v", err)
+	}
+
+	redisKey := fmt.Sprintf("pwd_reset:%s", token)
+	err = global.REDIS.Set(ctx, redisKey, userEmail, 15*time.Minute).Err()
+	if err != nil {
+		return fmt.Errorf("failed to save token to redis: %v", err)
+	}
+
+	resetUrl := fmt.Sprintf("%s?token=%s", frontendUrl, token)
+	// 向用户邮箱发送密码重置邮件
+	subject := "重置您的密码"
+	content := fmt.Sprintf(`
+		<h1>密码重置请求</h1>
+		<p>您收到这封邮件是因为您请求重置密码。</p>
+		<p>请点击下面的链接设置新密码（链接 15 分钟内有效）：</p>
+		<a href="%s">%s</a>
+		<p>如果您没有请求重置密码，请忽略此邮件。</p>`, resetUrl, resetUrl)
+	logger.Infof("Sending email: %s", resetUrl)
+	err = s.emailService.SendResetPassword(userEmail, subject, content)
+	if err != nil {
+		return fmt.Errorf("failed to send reset password email to user: %v", err)
+	}
+
+	return nil
+}
+
+func (s *UserService) ConfirmResetPassword(token string, newPassword string) error {
+	ctx := context.Background()
+	redisKey := fmt.Sprintf("pwd_reset:%s", token)
+	email, err := global.REDIS.Get(ctx, redisKey).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return errors.New("not available")
+		}
+		return fmt.Errorf("failed to get email from redis: %v", err)
+	}
+
+	user, err := s.GetUserByEmail(email)
+	if err != nil {
+		return err
+	}
+
+	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", user.ID).Update("pwd_hash", newPassword)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update new password to user %s: %v", user.ID, result.Error)
+	}
+
+	if err := global.REDIS.Del(ctx, redisKey).Err(); err != nil {
+		logger.Errorf("failed to delete token redis key %s: %v", redisKey, err)
+	}
+
+	return nil
 }

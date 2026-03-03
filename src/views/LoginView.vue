@@ -139,7 +139,7 @@ const submitLoginFrom = async () => {
             </el-form-item>
           </el-form>
           <div class="login-group footer-links">
-            <RouterLink to="#" class="forgot-password">找回账号密码</RouterLink>
+            <RouterLink to="/reset" class="forgot-password">忘记密码？</RouterLink>
           </div>
           <div class="login-group other-methods">
             <span class="line"></span>
