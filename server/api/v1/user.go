@@ -3,6 +3,7 @@ package v1
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"server/global"
 	"server/logger"
 	"server/model"
@@ -17,8 +18,8 @@ type UserApi struct {
 	service *service.UserService
 }
 
-func NewUserApi() *UserApi {
-	return &UserApi{service: new(service.UserService)}
+func NewUserApi(userService *service.UserService) *UserApi {
+	return &UserApi{service: userService}
 }
 
 type CreateUserParam struct {
@@ -358,4 +359,87 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{"message": "发送成功"})
+}
+
+type ResetPassReq struct {
+	Email       string `json:"email" binding:"required"`
+	FrontendUrl string `json:"frontend_url" binding:"required"`
+}
+
+func (u *UserApi) SendResetPassword(ctx *gin.Context) {
+	var req ResetPassReq
+	if err := ctx.ShouldBind(&req); err != nil {
+		logger.Errorf("Failed to validate request: %v", err)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	if !u.isValidLink(req.FrontendUrl) {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "非法的地址",
+		})
+	}
+
+	err := u.service.SendResetPassword(req.Email, req.FrontendUrl)
+	if err != nil {
+		logger.Errorf("Failed to send reset password email: %v", err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "密码重置失败，请稍后再试",
+		})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "如果该邮箱已注册，重置链接将发送至您的邮箱",
+	})
+}
+
+type ConfirmResetPassReq struct {
+	NewPassword string `json:"new_password" binding:"required,min=6,max=20"`
+	Token       string `json:"token" binding:"required"`
+}
+
+func (u *UserApi) ConfirmResetPassword(ctx *gin.Context) {
+	var req ConfirmResetPassReq
+	if err := ctx.ShouldBind(&req); err != nil {
+		logger.Errorf("Failed to validate request: %v", err)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": err.Error(),
+		})
+		return
+	}
+
+	err := u.service.ConfirmResetPassword(req.Token, req.NewPassword)
+	if err != nil {
+		if err.Error() == "not available" {
+			ctx.JSON(http.StatusBadRequest, gin.H{
+				"message": "重置链接失效或已过期，请重新申请重置密码",
+			})
+		} else {
+			logger.Errorf("Failed to confirm new password: %v", err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": "重置密码失败，请稍后再试",
+			})
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{})
+}
+
+func (u *UserApi) isValidLink(link string) bool {
+	parsedUrl, err := url.Parse(link)
+	if err != nil {
+		logger.Errorf("failed to parse url: %v", err)
+		return false
+	}
+
+	allowedHosts := map[string]bool{
+		"localhost:5173": true,
+		"127.0.0.1:8080": true,
+	}
+
+	return allowedHosts[parsedUrl.Host]
 }

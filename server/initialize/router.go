@@ -25,7 +25,9 @@ func NewRouter() *gin.Engine {
 	mailService := service.NewMailService(asynqClient)
 
 	// user
-	userRouter := new(router.UserRouter)
+	userService := service.NewUserServiceWithEmailService(mailService)
+	userApi := api.NewUserApi(userService)
+	userRouter := router.NewUserRouter(userApi)
 	userRouter.InitUserRouter(v1)
 
 	// dataset
