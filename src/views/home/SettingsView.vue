@@ -26,8 +26,8 @@
           </div>
           <div class="row-action">
             <template v-if="canEdit">
-              <el-button v-if="!editState.publicEmail" type="primary" link :icon="Edit" @click="startEdit('publicEmail')">
-                修改
+              <el-button v-if="!editState.publicEmail" type="primary" link :icon="Setting" @click="startEdit('publicEmail')">
+                管理
               </el-button>
               <template v-else>
                 <el-button type="success" link :icon="Check" @click="saveField('publicEmail', '公邮地址')">确定</el-button>
@@ -44,9 +44,8 @@
             <span>{{ formatDescription(settings.userAgreement) }}</span>
           </div>
           <div class="row-action">
-            <el-button type="primary" link :icon="View" @click="openViewDialog('userAgreement')">查看</el-button>
             <template v-if="canEdit">
-              <el-button type="primary" link :icon="Edit" @click="openLongTextEditDialog('userAgreement')">修改</el-button>
+              <el-button type="primary" link :icon="Setting" @click="openLongTextEditDialog('userAgreement')">管理</el-button>
             </template>
           </div>
         </div>
@@ -87,8 +86,8 @@
           <div class="row-action">
             <el-button v-if="!editState.templateFile" type="primary" link :icon="View" @click="openViewDialog('templateFile')">查看</el-button>
             <template v-if="canEdit">
-              <el-button v-if="!editState.templateFile" type="primary" link :icon="Edit" @click="startEdit('templateFile')">
-                修改
+              <el-button v-if="!editState.templateFile" type="primary" link :icon="Setting" @click="startEdit('templateFile')">
+                管理
               </el-button>
               <template v-else>
                 <el-button type="success" link :icon="Check" @click="saveField('templateFile', '模版文件')">确定</el-button>
@@ -105,10 +104,9 @@
             <span>{{ formatDescription(settings.templateDescription) }}</span>
           </div>
           <div class="row-action">
-            <el-button type="primary" link :icon="View" @click="openViewDialog('templateDescription')">查看</el-button>
             <template v-if="canEdit">
-              <el-button type="primary" link :icon="Edit" @click="openLongTextEditDialog('templateDescription')">
-                修改
+              <el-button type="primary" link :icon="Setting" @click="openLongTextEditDialog('templateDescription')">
+                管理
               </el-button>
             </template>
           </div>
@@ -122,17 +120,29 @@
   <el-dialog
     v-model="longTextEditDialogVisible"
     :title="longTextEditTitle"
-    width="500px"
+    width="80%"
+    top="5vh"
     :show-close="false"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
   >
-    <el-input
-      v-model="tempSettings[currentLongTextField]"
-      type="textarea"
-      :rows="6"
-      placeholder="请输入模版描述"
-    />
+    <div class="markdown-editor-container">
+      <div class="editor-pane">
+        <div class="preview-label">源代码</div>
+        <el-input
+          v-model="tempSettings[currentLongTextField]"
+          type="textarea"
+          placeholder="请输入Markdown内容"
+          class="h-100-input"
+        />
+      </div>
+      <div class="preview-pane">
+        <div class="preview-label">渲染效果预览</div>
+        <div class="preview-content">
+          <markdown-renderer :model-value="tempSettings[currentLongTextField]" />
+        </div>
+      </div>
+    </div>
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="longTextEditDialogVisible = false">取消</el-button>
@@ -163,7 +173,7 @@ import { ref, onMounted, reactive, inject, computed } from 'vue';
 import axios from '@/request/axios';
 import { ElMessage } from 'element-plus';
 import '@/assets/styles/universal.css';
-import { Edit, Check, Close, QuestionFilled, View } from '@element-plus/icons-vue';
+import { Edit, Check, Close, QuestionFilled, View, Setting } from '@element-plus/icons-vue';
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 
 const userInfo = inject('userInfo');
@@ -364,15 +374,6 @@ const openViewDialog = (field) => {
         return file ? file.name : `未知文件 (${id})`;
       });
     }
-  } else {
-    viewDialog.type = 'text';
-    if (field === 'templateDescription') {
-      viewDialog.title = '模版描述';
-      viewDialog.content = settings.value.templateDescription || '未设置';
-    } else if (field === 'userAgreement') {
-      viewDialog.title = '用户协议';
-      viewDialog.content = settings.value.userAgreement || '未设置';
-    }
   }
   viewDialog.visible = true;
 };
@@ -403,5 +404,38 @@ const openViewDialog = (field) => {
   .responsive-mb {
     margin-bottom: 20px;
   }
+}
+
+.markdown-editor-container {
+  display: flex;
+  gap: 20px;
+  height: 60vh;
+}
+.editor-pane, .preview-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.h-100-input {
+  height: 100%;
+}
+.h-100-input :deep(.el-textarea__inner) {
+  height: 100%;
+  resize: none;
+  font-family: monospace;
+}
+.preview-content {
+  flex: 1;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 10px;
+  overflow-y: auto;
+  background-color: #fafafa;
+}
+.preview-label {
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #606266;
 }
 </style>

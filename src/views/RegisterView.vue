@@ -6,6 +6,7 @@ import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import '@/assets/styles/login.css'
+import MarkdownRenderer from "@/components/MarkdownRenderer.vue"
 
 const router = useRouter()
 
@@ -349,8 +350,8 @@ const confirmAgreement = () => {
     </el-dialog>
 
     <el-dialog v-model="agreementDialogVisible" title="用户协议" width="600px" append-to-body>
-      <div style="white-space: pre-wrap; max-height: 50vh; overflow-y: auto; line-height: 1.6; padding: 10px;">
-        {{ agreementContent }}
+      <div style="max-height: 50vh; overflow-y: auto; padding: 10px;">
+        <markdown-renderer :model-value="agreementContent" />
       </div>
       <template #footer>
         <el-button type="primary" @click="confirmAgreement">我已阅读并同意</el-button>

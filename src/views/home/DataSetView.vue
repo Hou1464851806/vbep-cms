@@ -13,6 +13,7 @@ import {
   DataAnalysis,
   QuestionFilled,
   Setting,
+  Sort,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -880,18 +881,30 @@ const handleCancelApplication = async () => {
     <!-- ======== 所有对话框 ======== -->
 
     <!-- 对话框1：新增/编辑数据集 (管理员) -->
-    <el-dialog v-model="datasetFormDialog.visible" :title="datasetFormDialog.title" width="50%">
+    <el-dialog v-model="datasetFormDialog.visible" :title="datasetFormDialog.title" width="80%" top="5vh">
       <el-form :model="datasetFormDialog.form" label-width="100px">
         <el-form-item label="数据集名称">
-          <el-input v-model="datasetFormDialog.form.name" placeholder="请输入数据集名称" />
+          <el-input v-model="datasetFormDialog.form.name" placeholder="请输入数据集名称" style="width: 90%" />
         </el-form-item>
         <el-form-item label="简介">
-          <el-input
-            v-model="datasetFormDialog.form.description"
-            type="textarea"
-            :rows="5"
-            placeholder="请输入详细的数据集简介信息..."
-          />
+          <div class="markdown-editor-container" style="height: 300px; width: 90%;">
+            <div class="editor-pane">
+              <el-input
+                v-model="datasetFormDialog.form.description"
+                type="textarea"
+                class="h-100-input"
+                placeholder="请输入详细的数据集简介信息..."
+              />
+            </div>
+            <div class="editor-divider">
+              <el-icon class="divider-icon"><Sort /></el-icon>
+            </div>
+            <div class="preview-pane">
+              <div class="preview-content">
+                <markdown-renderer :model-value="datasetFormDialog.form.description" />
+              </div>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -904,7 +917,7 @@ const handleCancelApplication = async () => {
     <el-dialog
       v-model="manageDialog.visible"
       title="管理数据集"
-      width="70%"
+      width="80%"
       top="5vh"
     >
       <!-- 上半部分：基本信息管理 -->
@@ -919,7 +932,24 @@ const handleCancelApplication = async () => {
               <el-input v-model="manageDialog.form.title" placeholder="数据集名称" style="width: 90%" />
             </el-form-item>
             <el-form-item label="描述">
-              <el-input v-model="manageDialog.form.description" type="textarea" :rows="2" placeholder="数据集描述" style="width: 90%" />
+              <div class="markdown-editor-container" style="height: 200px; width: 90%;">
+                <div class="editor-pane">
+                  <el-input
+                    v-model="manageDialog.form.description"
+                    type="textarea"
+                    class="h-100-input"
+                    placeholder="数据集描述"
+                  />
+                </div>
+                <div class="editor-divider">
+                  <el-icon class="divider-icon"><Sort /></el-icon>
+                </div>
+                <div class="preview-pane">
+                  <div class="preview-content">
+                    <markdown-renderer :model-value="manageDialog.form.description" />
+                  </div>
+                </div>
+              </div>
             </el-form-item>
           </el-form>
         </div>
@@ -1004,7 +1034,8 @@ const handleCancelApplication = async () => {
         </div>
       </div>
       <template #footer>
-        <el-button @click="manageDialog.visible = false">关闭</el-button>
+        <el-button @click="manageDialog.visible = false">取消</el-button>
+        <el-button type="primary" @click="handleUpdateDatasetInfo">保存</el-button>
       </template>
     </el-dialog>
 
@@ -1029,7 +1060,7 @@ const handleCancelApplication = async () => {
         <div>
           <div class="upload-label">申请说明</div>
           <div class="template-description-box">
-            <div class="template-text">{{ applicationDialog.template.description }}</div>
+            <markdown-renderer :model-value="applicationDialog.template.description" />
           </div>
         </div>
         <div class="template-download-area" v-if="applicationDialog.template.files && applicationDialog.template.files.length">
@@ -1323,11 +1354,6 @@ const handleCancelApplication = async () => {
   min-height: 100px;
   margin-bottom: 16px;
 }
-.template-text {
-  white-space: pre-wrap;
-  line-height: 1.6;
-  color: #606266;
-}
 .upload-section {
   margin-bottom: 20px;
 }
@@ -1521,5 +1547,42 @@ const handleCancelApplication = async () => {
 }
 .file-name-text {
   font-weight: normal;
+}
+
+.markdown-editor-container {
+  display: flex;
+  gap: 10px;
+}
+.editor-pane, .preview-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.h-100-input {
+  height: 100%;
+}
+.h-100-input :deep(.el-textarea__inner) {
+  height: 100%;
+  resize: none;
+  font-family: monospace;
+}
+.preview-content {
+  flex: 1;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 10px;
+  overflow-y: auto;
+  background-color: #fafafa;
+}
+.editor-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+}
+.divider-icon {
+  transform: rotate(90deg);
+  font-size: 20px;
 }
 </style>
