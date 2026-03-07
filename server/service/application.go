@@ -19,6 +19,7 @@ var (
 	ErrApplicationAlreadyProcessed = errors.New("application already processed")
 	ErrApplicationPermissionDenied = errors.New("permission denied for application")
 	ErrApplicationNotEditable      = errors.New("application not editable")
+	ErrPendingApplicationExists    = errors.New("pending application exists")
 )
 
 type ApplicationService struct {
@@ -39,6 +40,17 @@ func NewApplicationServiceWithOther(mailService *MailService, settingService *Se
 
 func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	ctx := context.Background()
+
+	// 检查用户是否已有处于 PENDING 状态的申请
+	var count int64
+	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
+		Where("applicant_id = ? AND status = ?", app.ApplicantID, model.PENDING).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check pending applications: %w", err)
+	}
+	if count > 0 {
+		return ErrPendingApplicationExists
+	}
 
 	if err := s.ensureDatasetExists(ctx, app.DatasetID); err != nil {
 		return err

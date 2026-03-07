@@ -73,6 +73,10 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
+		if errors.Is(err, service.ErrPendingApplicationExists) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "您已有正在审核中的申请，请等待审核完成后再提交新申请"})
+			return
+		}
 		logger.Errorf("failed to create application: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "创建申请失败"})
 		return

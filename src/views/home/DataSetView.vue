@@ -104,6 +104,7 @@ const ALLOWED_EXTENSIONS = [
   '.tar',
   '.gz',
   '.tgz',
+  '.heif',
 ]
 
 const DENIED_EXTENSIONS = [
@@ -129,6 +130,18 @@ const DENIED_EXTENSIONS = [
   '.reg',
   '.hta',
   '.msc',
+]
+
+const IDENTITY_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.wps',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.bmp',
+  '.heif',
 ]
 
 // --- 状态定义 ---
@@ -174,6 +187,9 @@ const applicationDialog = reactive({
     files: [],
   },
   mandatory: {
+    file: null,
+  },
+  identity: {
     file: null,
   },
   optional: {
@@ -626,6 +642,7 @@ const handleApply = async (row) => {
   applicationDialog.dataset = row
   applicationDialog.currentStep = 1
   applicationDialog.mandatory.file = null
+  applicationDialog.identity.file = null
   applicationDialog.optional.files = []
   applicationDialog.optional.uploadTasks = []
   applicationDialog.optional.createdApplicationId = ''
@@ -682,7 +699,8 @@ const handleNextStep = async () => {
       }
     } catch (error) {
       console.error('Failed to create draft application:', error)
-      ElMessage.error('创建申请失败')
+      const msg = error.response?.data?.message || '创建申请失败'
+      ElMessage.error(msg)
     } finally {
       applicationDialog.isSubmitting = false
     }
@@ -705,6 +723,23 @@ const handleMandatoryFileChange = (file) => {
     return
   }
   applicationDialog.mandatory.file = rawFile
+}
+
+const handleIdentityFileChange = (file) => {
+  const rawFile = file.raw
+  const fileName = rawFile.name.toLowerCase()
+
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
+    applicationDialog.identity.file = null
+    return
+  }
+  if (!IDENTITY_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+    ElMessage.error(`文件格式不支持："${rawFile.name}"，请上传 PDF/Word/图片 格式`)
+    applicationDialog.identity.file = null
+    return
+  }
+  applicationDialog.identity.file = rawFile
 }
 
 const handleOptionalFileChange = (file, fileList) => {
@@ -744,6 +779,10 @@ const handleSubmitApplication = async () => {
     ElMessage.warning('请上传必填的申请文件')
     return
   }
+  if (!applicationDialog.identity.file) {
+    ElMessage.warning('请上传身份证明文件')
+    return
+  }
 
   applicationDialog.isSubmitting = true
   try {
@@ -753,6 +792,15 @@ const handleSubmitApplication = async () => {
       await uploadApplicationFileAPI(applicationId, applicationDialog.mandatory.file)
     } catch (e) {
       ElMessage.error('必填文件上传失败')
+      applicationDialog.isSubmitting = false
+      return
+    }
+
+    // 上传身份证明文件
+    try {
+      await uploadApplicationFileAPI(applicationId, applicationDialog.identity.file)
+    } catch (e) {
+      ElMessage.error('身份证明文件上传失败')
       applicationDialog.isSubmitting = false
       return
     }
@@ -1094,7 +1142,26 @@ const handleCancelApplication = async () => {
         <el-divider />
 
         <div class="upload-section">
-          <div class="upload-label">2. 补充材料 (可选)</div>
+          <div class="upload-label required-label">2. 上传身份证明文件 (必填)</div>
+          <div class="upload-desc">请上传身份证、学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个。</div>
+          <el-upload
+            class="upload-demo"
+            action="#"
+            :auto-upload="false"
+            :limit="1"
+            :accept="IDENTITY_EXTENSIONS.join(',')"
+            :on-change="handleIdentityFileChange"
+            :on-remove="() => { applicationDialog.identity.file = null }"
+            :file-list="applicationDialog.identity.file ? [applicationDialog.identity.file] : []"
+          >
+            <el-button :icon="Upload">选择文件</el-button>
+          </el-upload>
+        </div>
+
+        <el-divider />
+
+        <div class="upload-section">
+          <div class="upload-label">3. 补充材料 (可选)</div>
           <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
           <el-upload
             class="upload-demo"
