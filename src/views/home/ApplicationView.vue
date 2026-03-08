@@ -1,6 +1,7 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
+import { genFileId } from 'element-plus'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue"
 import {
   View,
@@ -176,6 +177,10 @@ const draftDialog = reactive({
   identity: { list: [] },
   optional: { list: [] },
 })
+
+// Upload Refs for handleExceed
+const mandatoryUploadRef = ref()
+const identityUploadRef = ref()
 
 const licenseStatus = computed(() => {
   const app = detailDialog.data
@@ -577,8 +582,8 @@ const openEditDialog = async (row, mode = 'create') => {
   draftDialog.optional.list = []
   draftDialog.visible = true
 
-  // 如果是重填模式，需要加载已有的文件
-  if (mode === 'resubmit') {
+  // 加载已有文件 (无论是重填还是继续编辑草稿)
+  if (mode === 'resubmit' || mode === 'create') {
     draftDialog.isSubmitting = true // 复用 loading 状态显示加载中
     try {
       const res = await fetchApplicationFilesAPI(row.id)
@@ -589,8 +594,10 @@ const openEditDialog = async (row, mode = 'create') => {
         draftDialog.identity.list = files.filter(f => f.type === 'identity')
         draftDialog.optional.list = files.filter(f => f.type === 'general' || !f.type)
       }
-    } catch (e) {
-      ElMessage.error('加载已有文件失败')
+    } catch (error) {
+      console.error('Failed to load existing files:', error)
+      // 仅在重填模式下报错，草稿模式下如果没文件可能是正常的（或者新建的）
+      if (mode === 'resubmit') ElMessage.error('加载已有文件失败')
     } finally {
       draftDialog.isSubmitting = false
     }
@@ -622,27 +629,120 @@ const handleEditReturned = (row) => {
   openEditDialog(row, 'resubmit')
 }
 
-// 辅助函数：收集所有新上传的文件
-const collectNewFiles = () => {
-  const files = []
+// --- File Upload Handlers ---
+
+const handleBeforeUpload = (rawFile, type) => {
+  const fileName = rawFile.name.toLowerCase()
   
-  const processList = (list, type, defaultName) => {
-    list.forEach(item => {
-      if (item.raw) { // 只有包含 raw 属性的才是新上传的文件
-        files.push({ 
-          name: defaultName || item.name, 
-          file: item.raw, 
-          type: type 
-        })
-      }
-    })
+  // Size check
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制`)
+    return false
   }
 
-  processList(draftDialog.mandatory.list, 'form', 'application_form.pdf')
-  processList(draftDialog.identity.list, 'identity', 'identity_proof') // 名字其实后端不依赖，主要靠文件内容
-  processList(draftDialog.optional.list, 'general')
+  // Type check
+  if (type === 'form') {
+    if (!fileName.endsWith('.pdf')) {
+      ElMessage.error('申请表仅支持 PDF 格式')
+      return false
+    }
+  } else if (type === 'identity') {
+    if (!IDENTITY_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      ElMessage.error(`文件格式不支持："${rawFile.name}"，请上传 PDF/Word/图片 格式`)
+      return false
+    }
+  } else if (type === 'general') {
+    if (DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
+      return false
+    }
+    if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
+      return false
+    }
+  }
+  return true
+}
 
-  return files
+const handleUploadRequest = async (options, type) => {
+  const { file, onProgress, onSuccess, onError } = options
+  const applicationId = draftDialog.data.id
+
+  try {
+    const res = await uploadApplicationFileAPI(applicationId, file, {
+      type: type,
+      onUploadProgress: (e) => {
+        if (e.total > 0) {
+          e.percent = Math.round((e.loaded / e.total) * 100)
+        }
+        onProgress(e)
+      },
+    })
+
+    if (res.status === 200 && res.data.file) {
+      onSuccess(res.data)
+
+      // 手动回填 ID，确保提交时的校验和 ID 收集能获取到新上传文件的 ID
+      const updateListWithId = (list) => {
+        const item = list.find((f) => f.uid === file.uid)
+        if (item) {
+          item.id = res.data.file.fileID
+        }
+      }
+      if (type === 'form') updateListWithId(draftDialog.mandatory.list)
+      else if (type === 'identity') updateListWithId(draftDialog.identity.list)
+      else if (type === 'general') updateListWithId(draftDialog.optional.list)
+    } else {
+      onError(new Error(res.data?.message || '上传失败'))
+    }
+  } catch (err) {
+    onError(err)
+  }
+}
+
+const handleRemoveFile = async (uploadFile) => {
+  // 判断是否需要物理删除：
+  // 1. 如果是新上传的文件 (有 response)，删除。
+  // 2. 如果是草稿模式下的已有文件，删除。
+  // 3. 如果是重填模式下的已有文件 (历史文件)，仅从列表移除，不物理删除。
+  const isNewUpload = !!uploadFile.response
+  const isDraft = draftDialog.mode === 'create'
+
+  if (isNewUpload || isDraft) {
+    const fileId = uploadFile.id || uploadFile.response?.file?.fileID
+    if (fileId) {
+      try {
+        await apiClient.delete(`/api/v1/applications/${draftDialog.data.id}/files/${fileId}`)
+      } catch (e) {
+        console.error('Failed to delete file', e)
+        // 不阻断 UI 移除
+      }
+    }
+  }
+  return true
+}
+
+const handleExceedMandatory = (files) => {
+  const upload = mandatoryUploadRef.value
+  // 手动触发移除逻辑以清理后端（如果需要）
+  if (draftDialog.mandatory.list.length > 0) {
+    handleRemoveFile(draftDialog.mandatory.list[0])
+  }
+  upload.clearFiles()
+  const file = files[0]
+  file.uid = genFileId()
+  upload.handleStart(file)
+}
+
+const handleExceedIdentity = (files) => {
+  const upload = identityUploadRef.value
+  if (draftDialog.identity.list.length > 0) {
+    handleRemoveFile(draftDialog.identity.list[0])
+  }
+  upload.clearFiles()
+  const file = files[0]
+  file.uid = genFileId()
+  upload.handleStart(file)
 }
 
 const handleDeleteDraft = async (row) => {
@@ -662,90 +762,14 @@ const handleDeleteDraft = async (row) => {
   }
 }
 
-const handleMandatoryFileChange = (file, fileList) => {
-  // 强制单选：保留最后一个（最新的）
-  if (fileList.length > 1) {
-    fileList.splice(0, fileList.length - 1)
-  }
-  
-  const current = fileList[0]
-  if (!current || !current.raw) {
-    // 如果是空或者已有文件(没有raw)，直接更新列表
-    draftDialog.mandatory.list = fileList
-    return
-  }
-
-  const rawFile = current.raw
-  if (rawFile.type !== 'application/pdf') {
-    ElMessage.error('仅支持上传 PDF 文件')
-    fileList.pop() // 移除无效文件
-    return
-  }
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    fileList.pop()
-    return
-  }
-  draftDialog.mandatory.list = fileList
-}
-
-const handleIdentityFileChange = (file, fileList) => {
-  if (fileList.length > 1) {
-    fileList.splice(0, fileList.length - 1)
-  }
-
-  const current = fileList[0]
-  if (!current || !current.raw) {
-    draftDialog.identity.list = fileList
-    return
-  }
-
-  const rawFile = current.raw
-  const fileName = rawFile.name.toLowerCase()
-
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    fileList.pop()
-    return
-  }
-  if (!IDENTITY_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-    ElMessage.error(`文件格式不支持："${rawFile.name}"，请上传 PDF/Word/图片 格式`)
-    fileList.pop()
-    return
-  }
-  draftDialog.identity.list = fileList
-}
-
-const handleOptionalFileChange = (file, fileList) => {
-  // 过滤掉不合法的新文件
-  const validList = fileList.filter(item => {
-    if (!item.raw) return true // 已有文件直接保留
-    
-    const rawFile = item.raw
-    const fileName = rawFile.name.toLowerCase()
-    if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-      ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-      return false
-    }
-    if (DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-      ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
-      return false
-    }
-    if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-      ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
-      return false
-    }
-    return true
-  })
-  
-  draftDialog.optional.list = validList
-}
-
 const handleSubmitDraft = async () => {
   // 校验逻辑：检查列表中是否有文件（无论是新上传的还是已有的）
-  const hasMandatory = draftDialog.mandatory.list.length > 0
-  const hasIdentity = draftDialog.identity.list.length > 0
-  const hasOptional = draftDialog.optional.list.length > 0
+  // 此时文件应该已经上传，item 应该有 id (旧文件) 或 response.file.fileID (新文件)
+  const getFileId = (item) => item.id || item.response?.file?.fileID
+
+  const hasMandatory = draftDialog.mandatory.list.some(getFileId)
+  const hasIdentity = draftDialog.identity.list.some(getFileId)
+  const hasOptional = draftDialog.optional.list.some(getFileId)
 
   if (draftDialog.mode === 'create') {
     if (!hasMandatory || !hasIdentity) {
@@ -777,25 +801,22 @@ const handleSubmitDraft = async () => {
   try {
     if (draftDialog.mode === 'resubmit') {
       // 重填模式：一次性提交所有变更
-      const keptFileIDs = []
-      const collectKeptIDs = (list) => {
-        list.forEach(item => { if (item.id && !item.raw) keptFileIDs.push(item.id) })
-      }
-      collectKeptIDs(draftDialog.mandatory.list)
-      collectKeptIDs(draftDialog.identity.list)
-      collectKeptIDs(draftDialog.optional.list)
-
-      const newFiles = collectNewFiles()
+      // 收集所有当前列表中的文件 ID (包括旧的和新上传的)
+      const allFiles = [
+        ...draftDialog.mandatory.list,
+        ...draftDialog.identity.list,
+        ...draftDialog.optional.list,
+      ]
+      const keptFileIDs = allFiles.map(getFileId).filter((id) => !!id)
       
-      await performResubmit(applicationId, keptFileIDs, newFiles)
+      // 调用 resubmit 接口，只传 keptFileIDs，不传 files (因为都已上传)
+      const formData = new FormData()
+      formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
+      await resubmitApplicationAPI(applicationId, formData)
+      
       ElMessage.success('申请已重新提交')
     } else {
-      // 草稿模式：逐个上传后确认
-      await uploadApplicationFileAPI(applicationId, draftDialog.mandatory.list[0].raw, { type: 'form' })
-      await uploadApplicationFileAPI(applicationId, draftDialog.identity.list[0].raw, { type: 'identity' })
-      for (const item of draftDialog.optional.list) {
-        await uploadApplicationFileAPI(applicationId, item.raw, { type: 'general' }).catch(console.warn)
-      }
+      // 草稿模式：文件已在选择时上传，直接确认提交
       await confirmApplicationAPI(applicationId)
       ElMessage.success('申请已提交')
     }
@@ -1099,11 +1120,15 @@ onMounted(fetchApplications)
         <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
         <el-upload
           class="upload-demo"
+          ref="mandatoryUploadRef"
           action="#"
-          :auto-upload="false"
+          :auto-upload="true"
           accept=".pdf"
-          :on-change="handleMandatoryFileChange"
-          :on-remove="handleMandatoryFileChange"
+          :limit="1"
+          :on-exceed="handleExceedMandatory"
+          :http-request="(options) => handleUploadRequest(options, 'form')"
+          :before-upload="(file) => handleBeforeUpload(file, 'form')"
+          :on-remove="handleRemoveFile"
           v-model:file-list="draftDialog.mandatory.list"
         >
           <el-button type="primary" :icon="Upload">{{ draftDialog.mandatory.list.length > 0 ? '替换文件' : '选择 PDF 文件' }}</el-button>
@@ -1117,11 +1142,15 @@ onMounted(fetchApplications)
         <div class="upload-desc">请上传身份证、学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个。</div>
         <el-upload
           class="upload-demo"
+          ref="identityUploadRef"
           action="#"
-          :auto-upload="false"
+          :auto-upload="true"
           :accept="IDENTITY_EXTENSIONS.join(',')"
-          :on-change="handleIdentityFileChange"
-          :on-remove="handleIdentityFileChange"
+          :limit="1"
+          :on-exceed="handleExceedIdentity"
+          :http-request="(options) => handleUploadRequest(options, 'identity')"
+          :before-upload="(file) => handleBeforeUpload(file, 'identity')"
+          :on-remove="handleRemoveFile"
           v-model:file-list="draftDialog.identity.list"
         >
           <el-button :icon="Upload">{{ draftDialog.identity.list.length > 0 ? '替换文件' : '选择文件' }}</el-button>
@@ -1136,10 +1165,11 @@ onMounted(fetchApplications)
         <el-upload
           class="upload-demo"
           action="#"
-          :auto-upload="false"
+          :auto-upload="true"
           multiple
-          :on-change="handleOptionalFileChange"
-          :on-remove="handleOptionalFileChange"
+          :http-request="(options) => handleUploadRequest(options, 'general')"
+          :before-upload="(file) => handleBeforeUpload(file, 'general')"
+          :on-remove="handleRemoveFile"
           v-model:file-list="draftDialog.optional.list"
         >
           <el-button :icon="Upload">选择文件</el-button>
@@ -1147,7 +1177,7 @@ onMounted(fetchApplications)
       </div>
     </div>
     <template #footer>
-      <el-button @click="draftDialog.visible = false" :disabled="draftDialog.isSubmitting">取消</el-button>
+      <el-button @click="draftDialog.visible = false" :disabled="draftDialog.isSubmitting">暂存</el-button>
       <el-button 
         type="primary" 
         @click="handleSubmitDraft" 

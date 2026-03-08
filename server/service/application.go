@@ -114,6 +114,12 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 		}
 	}
 
+	// 再次调用以清理可能存在的孤儿文件（未关联到 Audit 的文件）以及移除申请文件夹
+	// 这是为了确保文件系统的整洁，利用 FileService 封装好的目录清理逻辑
+	if err := fileService.DeleteFilesByApplication(id); err != nil {
+		return fmt.Errorf("failed to cleanup application files: %w", err)
+	}
+
 	if err := global.DB.WithContext(ctx).Where("application_id = ?", id).Delete(&model.Audit{}).Error; err != nil {
 		return fmt.Errorf("failed to delete audits: %w", err)
 	}
