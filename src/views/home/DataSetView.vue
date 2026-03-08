@@ -1,6 +1,7 @@
 <!-- src/views/dataset/DatasetList.vue -->
 <script setup>
 import { ref, onMounted, inject, reactive, watch, nextTick, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Plus,
   Delete,
@@ -14,6 +15,9 @@ import {
   QuestionFilled,
   Setting,
   Sort,
+  EditPen,
+  Warning,
+  Timer,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -30,6 +34,7 @@ import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`)
+const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchDatasetStatisticsAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}/statistics`)
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
@@ -55,15 +60,6 @@ const downloadPublicFileAPI = (fileId) =>
 const submitApplicationAPI = (applicationData) =>
   apiClient.post('/api/v1/applications', applicationData)
 const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
-const confirmApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/submit`)
-const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
-  const formData = new FormData()
-  formData.append('file', file)
-  return apiClient.post(`/api/v1/applications/${applicationId}/files`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    ...config,
-  })
-}
 
 const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
 
@@ -132,21 +128,11 @@ const DENIED_EXTENSIONS = [
   '.msc',
 ]
 
-const IDENTITY_EXTENSIONS = [
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.wps',
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.bmp',
-  '.heif',
-]
-
 // --- 状态定义 ---
+const router = useRouter()
 const isAdmin = inject('isAdmin')
 const datasetList = ref([])
+const userApplications = ref({}) // Map<datasetId, application>
 const isDataLoading = ref(true)
 
 // 获取全局 echarts 实例
@@ -185,18 +171,6 @@ const applicationDialog = reactive({
   template: {
     description: '',
     files: [],
-  },
-  mandatory: {
-    file: null,
-  },
-  identity: {
-    file: null,
-  },
-  optional: {
-    files: [],
-    uploadTasks: [],
-    isUploading: false,
-    createdApplicationId: '',
   },
 })
 
@@ -279,9 +253,24 @@ const removeUploadTask = (uid, delay = 0) => {
 const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
-    const res = await fetchDatasetListAPI()
-    if (res && res.status === 200) {
-      datasetList.value = normalizeDatasets(res.data.datasets)
+    const [dsRes, appRes] = await Promise.all([
+      fetchDatasetListAPI(),
+      fetchApplicationListAPI().catch(() => ({ data: { applications: [] } })),
+    ])
+
+    if (appRes && appRes.data && appRes.data.applications) {
+      const map = {}
+      appRes.data.applications.forEach((app) => {
+        // Store the latest application state for each dataset
+        if (!map[app.dataset.id]) {
+          map[app.dataset.id] = app
+        }
+      })
+      userApplications.value = map
+    }
+
+    if (dsRes && dsRes.status === 200) {
+      datasetList.value = normalizeDatasets(dsRes.data.datasets)
       return
     }
     ElMessage.error(res?.data?.message || '数据集加载失败')
@@ -641,11 +630,6 @@ const handleDeleteFile = (file) => {
 const handleApply = async (row) => {
   applicationDialog.dataset = row
   applicationDialog.currentStep = 1
-  applicationDialog.mandatory.file = null
-  applicationDialog.identity.file = null
-  applicationDialog.optional.files = []
-  applicationDialog.optional.uploadTasks = []
-  applicationDialog.optional.createdApplicationId = ''
   applicationDialog.template.description = '加载中...'
   applicationDialog.template.files = []
 
@@ -683,144 +667,37 @@ const handleDownloadTemplateFile = async (file) => {
   }
 }
 
-const handleNextStep = async () => {
-  if (applicationDialog.currentStep === 1) {
-    // 从第一步进入第二步时，创建草稿申请
-    applicationDialog.isSubmitting = true
-    try {
-      const res = await submitApplicationAPI({
-        datasetID: applicationDialog.dataset.id,
-      })
-      if (res.status === 200 && res.data.applicationID) {
-        applicationDialog.optional.createdApplicationId = res.data.applicationID
-        applicationDialog.currentStep = 2
-      } else {
-        ElMessage.error(res.data?.message || '创建申请失败')
-      }
-    } catch (error) {
-      console.error('Failed to create draft application:', error)
-      const msg = error.response?.data?.message || '创建申请失败'
-      ElMessage.error(msg)
-    } finally {
-      applicationDialog.isSubmitting = false
-    }
-  } else {
-    applicationDialog.currentStep++
-  }
-}
-
-const handleMandatoryFileChange = (file) => {
-  const rawFile = file.raw
-  if (rawFile.type !== 'application/pdf') {
-    ElMessage.error('仅支持上传 PDF 文件')
-    // 清除文件列表
-    applicationDialog.mandatory.file = null
-    return
-  }
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    applicationDialog.mandatory.file = null
-    return
-  }
-  applicationDialog.mandatory.file = rawFile
-}
-
-const handleIdentityFileChange = (file) => {
-  const rawFile = file.raw
-  const fileName = rawFile.name.toLowerCase()
-
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    applicationDialog.identity.file = null
-    return
-  }
-  if (!IDENTITY_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-    ElMessage.error(`文件格式不支持："${rawFile.name}"，请上传 PDF/Word/图片 格式`)
-    applicationDialog.identity.file = null
-    return
-  }
-  applicationDialog.identity.file = rawFile
-}
-
-const handleOptionalFileChange = (file, fileList) => {
-  const idx = fileList.indexOf(file)
-
-  // 仅在文件存在于列表中时（新增时）进行校验
-  if (idx !== -1) {
-    const rawFile = file.raw
-    const fileName = rawFile.name.toLowerCase()
-
-    if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-      ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-      fileList.splice(idx, 1)
-      return
-    }
-
-    const isDenied = DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
-    if (isDenied) {
-      ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
-      fileList.splice(idx, 1)
-      return
-    }
-
-    const isAllowed = ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
-    if (!isAllowed) {
-      ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
-      fileList.splice(idx, 1)
-      return
-    }
-  }
-  // 更新列表
-  applicationDialog.optional.files = fileList.map((f) => f.raw)
-}
-
-const handleSubmitApplication = async () => {
-  if (!applicationDialog.mandatory.file) {
-    ElMessage.warning('请上传必填的申请文件')
-    return
-  }
-  if (!applicationDialog.identity.file) {
-    ElMessage.warning('请上传身份证明文件')
-    return
-  }
-
+const handleCreateDraft = async () => {
   applicationDialog.isSubmitting = true
   try {
-    const applicationId = applicationDialog.optional.createdApplicationId
-    // 上传必填文件
-    try {
-      await uploadApplicationFileAPI(applicationId, applicationDialog.mandatory.file)
-    } catch (e) {
-      ElMessage.error('必填文件上传失败')
-      applicationDialog.isSubmitting = false
-      return
+    const res = await submitApplicationAPI({
+      datasetID: applicationDialog.dataset.id,
+    })
+    if (res.status === 200 && res.data.applicationID) {
+      applicationDialog.visible = false
+      await fetchDatasets() // Refresh list to update button status
+
+      ElMessageBox.confirm(
+        '您已成功创建申请表草稿。请前往“我的申请”页面完善资料并提交。',
+        '草稿创建成功',
+        {
+          confirmButtonText: '立即前往',
+          cancelButtonText: '稍后处理',
+          type: 'success',
+        },
+      )
+        .then(() => {
+          router.push('/home/applications')
+        })
+        .catch(() => {
+          // Stay on current page
+        })
+    } else {
+      ElMessage.error(res.data?.message || '创建申请失败')
     }
-
-    // 上传身份证明文件
-    try {
-      await uploadApplicationFileAPI(applicationId, applicationDialog.identity.file)
-    } catch (e) {
-      ElMessage.error('身份证明文件上传失败')
-      applicationDialog.isSubmitting = false
-      return
-    }
-
-    // 上传可选文件
-    for (const file of applicationDialog.optional.files) {
-      try {
-        await uploadApplicationFileAPI(applicationId, file)
-      } catch (e) {
-        console.warn('Optional file upload failed', file.name)
-      }
-    }
-
-    // 确认提交（将草稿转为正式申请）
-    await confirmApplicationAPI(applicationId)
-
-    applicationDialog.currentStep = 3
   } catch (error) {
-    console.error('Application submission failed:', error)
-    const msg = error.response?.data?.message || '提交申请时发生错误'
+    console.error('Failed to create draft application:', error)
+    const msg = error.response?.data?.message || '创建申请失败'
     ElMessage.error(msg)
   } finally {
     applicationDialog.isSubmitting = false
@@ -828,14 +705,6 @@ const handleSubmitApplication = async () => {
 }
 
 const handleCancelApplication = async () => {
-  // 如果已经创建了草稿（在第二步），取消时需要删除草稿
-  if (applicationDialog.optional.createdApplicationId) {
-    try {
-      await deleteApplicationAPI(applicationDialog.optional.createdApplicationId)
-    } catch (error) {
-      console.warn('Failed to delete draft application:', error)
-    }
-  }
   applicationDialog.visible = false
 }
 </script>
@@ -875,50 +744,83 @@ const handleCancelApplication = async () => {
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
           <el-table-column prop="creator" label="创建者" width="120" />
           <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column label="操作" width="260" fixed="right" align="center">
+          <el-table-column v-if="isAdmin()" label="操作" width="260" fixed="right" align="center">
             <template #default="scope">
-              <template v-if="isAdmin()">
-                <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
-                <el-button link type="primary" :icon="DataAnalysis" @click="handleViewStatistics(scope.row)">统计</el-button>
-                <el-button
-                  link
-                  type="danger"
-                  :icon="Delete"
-                  @click="handleDelete(scope.row)"
-                  >删除</el-button
-                >
-              </template>
+              <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
+              <el-button link type="primary" :icon="DataAnalysis" @click="handleViewStatistics(scope.row)">统计</el-button>
+              <el-button
+                link
+                type="danger"
+                :icon="Delete"
+                @click="handleDelete(scope.row)"
+                >删除</el-button
+              >
+            </template>
+          </el-table-column>
 
-              <template v-else>
-                <el-button
-                  v-if="scope.row.hasAccess"
-                  type="primary"
-                  link
-                  :icon="Download"
-                  @click="handleViewDetail(scope.row)"
-                >
-                  下载文件
-                </el-button>
+          <el-table-column v-if="!isAdmin()" label="查看详情" width="80" fixed="right" align="center">
+            <template #default="scope">
+              <el-button
+                v-if="scope.row.hasAccess"
+                type="primary"
+                link
+                :icon="Download"
+                @click="handleViewDetail(scope.row)"
+              >
+                下载
+              </el-button>
+              <el-button
+                v-else
+                type="primary"
+                link
+                :icon="View"
+                @click="handleViewDetail(scope.row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
 
+          <el-table-column v-if="!isAdmin()" label="申请使用" width="120" fixed="right" align="center">
+            <template #default="scope">
+              <template v-if="!scope.row.hasAccess">
+                <template v-if="userApplications[scope.row.id] && (userApplications[scope.row.id].status === 'pending' || userApplications[scope.row.id].status === 'draft' || userApplications[scope.row.id].status === 'returned')">
+                    <el-button
+                      v-if="userApplications[scope.row.id].status === 'draft'"
+                      type="info"
+                      link
+                      :icon="EditPen"
+                      disabled
+                    >
+                      存在草稿
+                    </el-button>
+                    <el-button
+                      v-else-if="userApplications[scope.row.id].status === 'returned'"
+                      type="info"
+                      link
+                      :icon="Warning"
+                      disabled
+                    >
+                      需要操作
+                    </el-button>
+                    <el-button
+                      v-else
+                      type="info"
+                      link
+                      :icon="Timer"
+                      disabled
+                    >
+                      审核中
+                    </el-button>
+                </template>
                 <template v-else>
-                  <el-button
-                    type="primary"
-                    link
-                    :icon="View"
-                    @click="handleViewDetail(scope.row)"
-                  >
-                    查看详情
-                  </el-button>
-
-                  <el-button
-                    type="primary"
-                    link
-                    :icon="Promotion"
-                    @click="handleApply(scope.row)"
-                  >
-                    申请使用
+                  <el-button type="primary" link :icon="Promotion" @click="handleApply(scope.row)">
+                    申请
                   </el-button>
                 </template>
+              </template>
+              <template v-else>
+                <el-tag type="success" size="small">已授权</el-tag>
               </template>
             </template>
           </el-table-column>
@@ -980,7 +882,7 @@ const handleCancelApplication = async () => {
               <el-input v-model="manageDialog.form.title" placeholder="数据集名称" style="width: 90%" />
             </el-form-item>
             <el-form-item label="描述">
-              <div class="markdown-editor-container" style="height: 200px; width: 90%;">
+              <div class="markdown-editor-container" style="height: 300px; width: 90%;">
                 <div class="editor-pane">
                   <el-input
                     v-model="manageDialog.form.description"
@@ -1040,7 +942,7 @@ const handleCancelApplication = async () => {
         </div>
         </div>
         <el-skeleton :rows="5" animated :loading="manageDialog.isFilesLoading">
-        <el-table :data="manageDialog.fileList" height="200px">
+        <el-table :data="manageDialog.fileList" max-height="250px">
           <el-table-column property="name" label="文件名">
             <template #default="scope">
               <div class="file-name-cell">
@@ -1094,16 +996,6 @@ const handleCancelApplication = async () => {
       width="720px"
       :close-on-click-modal="false"
     >
-      <div class="application-step-header">
-        <div class="application-step-progress">
-          <el-steps :active="applicationDialog.currentStep" align-center>
-            <el-step title="申请说明" />
-            <el-step title="资料上传" />
-            <el-step title="提交成功" />
-          </el-steps>
-        </div>
-      </div>
-
       <div v-if="applicationDialog.currentStep === 1" class="agreement-step">
         <div>
           <div class="upload-label">申请说明</div>
@@ -1121,81 +1013,10 @@ const handleCancelApplication = async () => {
         </div>
       </div>
 
-      <div v-else-if="applicationDialog.currentStep === 2" class="upload-step" v-loading="applicationDialog.isSubmitting">
-        <div class="upload-section">
-          <div class="upload-label required-label">1. 上传申请文件 (必填)</div>
-          <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
-          <el-upload
-            class="upload-demo"
-            action="#"
-            :auto-upload="false"
-            :limit="1"
-            accept=".pdf"
-            :on-change="handleMandatoryFileChange"
-            :on-remove="() => { applicationDialog.mandatory.file = null }"
-            :file-list="applicationDialog.mandatory.file ? [applicationDialog.mandatory.file] : []"
-          >
-            <el-button type="primary" :icon="Upload">选择 PDF 文件</el-button>
-          </el-upload>
-        </div>
-
-        <el-divider />
-
-        <div class="upload-section">
-          <div class="upload-label required-label">2. 上传身份证明文件 (必填)</div>
-          <div class="upload-desc">请上传身份证、学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个。</div>
-          <el-upload
-            class="upload-demo"
-            action="#"
-            :auto-upload="false"
-            :limit="1"
-            :accept="IDENTITY_EXTENSIONS.join(',')"
-            :on-change="handleIdentityFileChange"
-            :on-remove="() => { applicationDialog.identity.file = null }"
-            :file-list="applicationDialog.identity.file ? [applicationDialog.identity.file] : []"
-          >
-            <el-button :icon="Upload">选择文件</el-button>
-          </el-upload>
-        </div>
-
-        <el-divider />
-
-        <div class="upload-section">
-          <div class="upload-label">3. 补充材料 (可选)</div>
-          <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
-          <el-upload
-            class="upload-demo"
-            action="#"
-            :auto-upload="false"
-            multiple
-            :on-change="handleOptionalFileChange"
-            :on-remove="handleOptionalFileChange"
-          >
-            <el-button :icon="Upload">选择文件</el-button>
-          </el-upload>
-        </div>
-      </div>
-
-      <div v-else-if="applicationDialog.currentStep === 3" class="result-step">
-        <el-result icon="success" title="申请已提交" sub-title="请等待1至5个工作日查看结果">
-        </el-result>
-      </div>
-
       <template #footer>
         <template v-if="applicationDialog.currentStep === 1">
           <el-button @click="handleCancelApplication">取消</el-button>
-          <el-button type="primary" @click="handleNextStep" :loading="applicationDialog.isSubmitting">下一步</el-button>
-        </template>
-        <template v-else-if="applicationDialog.currentStep === 2">
-          <el-button @click="handleCancelApplication" :disabled="applicationDialog.isSubmitting">取消</el-button>
-          <el-button
-            type="primary"
-            @click="handleSubmitApplication"
-            :loading="applicationDialog.isSubmitting"
-          >提交申请</el-button>
-        </template>
-        <template v-else-if="applicationDialog.currentStep === 3">
-          <el-button type="primary" @click="applicationDialog.visible = false">确定</el-button>
+          <el-button type="primary" @click="handleCreateDraft" :loading="applicationDialog.isSubmitting">开始申请</el-button>
         </template>
       </template>
     </el-dialog>
@@ -1220,7 +1041,7 @@ const handleCancelApplication = async () => {
           <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px">文件列表</div>
 
           <div v-if="detailDialog.data.hasAccess">
-            <el-table :data="detailDialog.files" border height="300px">
+            <el-table :data="detailDialog.files" border max-height="300px">
               <el-table-column prop="name" label="文件名" />
               <el-table-column prop="size" label="大小" width="120">
                 <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
@@ -1244,14 +1065,35 @@ const handleCancelApplication = async () => {
               <template #default>
                 <div class="no-access-actions">
                   <p class="no-access-tip">请提交申请，通过审批后即可访问所有文件。</p>
-                  <el-button
-                    type="primary"
-                    :icon="Promotion"
-                    size="large"
-                    @click="handleApplyFromDetail"
-                  >
-                    发起申请
-                  </el-button>
+                  <template v-if="userApplications[detailDialog.data.id] && (userApplications[detailDialog.data.id].status === 'pending' || userApplications[detailDialog.data.id].status === 'draft' || userApplications[detailDialog.data.id].status === 'returned')">
+                    <el-button
+                      v-if="userApplications[detailDialog.data.id].status === 'draft'"
+                      type="info"
+                      size="large"
+                      :icon="EditPen"
+                      disabled
+                    >
+                      存在草稿
+                    </el-button>
+                    <el-button
+                      v-else-if="userApplications[detailDialog.data.id].status === 'returned'"
+                      type="info"
+                      size="large"
+                      :icon="Warning"
+                      disabled
+                    >
+                      需要操作
+                    </el-button>
+                    <el-button
+                      v-else
+                      type="info"
+                      size="large"
+                      :icon="Timer"
+                      disabled
+                    >
+                      审核中
+                    </el-button>
+                  </template>
                 </div>
               </template>
             </el-empty>
@@ -1533,7 +1375,7 @@ const handleCancelApplication = async () => {
   border: 1px dashed #dcdfe6;
   border-radius: 4px;
   background-color: #fafafa;
-  height: 300px; /* 保持和有权限时的表格高度一致，避免弹窗抖动 */
+  height: 220px; /* 保持和有权限时的表格高度一致，避免弹窗抖动 */
   display: flex;
   justify-content: center;
   align-items: center;

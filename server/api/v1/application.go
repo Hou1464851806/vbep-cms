@@ -65,7 +65,7 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 	app := &model.Application{
 		DatasetID:   param.DatasetID,
 		ApplicantID: userIDStr,
-		Status:      model.PENDING,
+		Status:      model.DRAFT,
 	}
 
 	if err := a.applicationService.CreateApplication(app); err != nil {
@@ -74,7 +74,7 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 			return
 		}
 		if errors.Is(err, service.ErrPendingApplicationExists) {
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": "您已有正在审核中的申请，请等待审核完成后再提交新申请"})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "您在该数据集下已有正在进行的申请，请先处理现有申请"})
 			return
 		}
 		logger.Errorf("failed to create application: %v", err)
@@ -254,6 +254,7 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 				Name:          f.Name,
 				Size:          f.Size,
 				ApplicationID: f.OwnerID,
+				Type:          f.Type,
 				CreatedAt:     f.CreatedAt,
 			})
 		}
@@ -325,6 +326,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	var (
 		keptFileIDs  []string
 		newFileHeads []*multipart.FileHeader
+		newFileTypes []string
 	)
 
 	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
@@ -343,6 +345,9 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		if form != nil {
 			if files, ok := form.File["files"]; ok {
 				newFileHeads = files
+			}
+			if types, ok := form.Value["types"]; ok {
+				newFileTypes = types
 			}
 		}
 	} else {
@@ -363,7 +368,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.applicationService.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads)
+	application, err := a.applicationService.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads, newFileTypes)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

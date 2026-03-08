@@ -19,6 +19,7 @@ type File struct {
 	OwnerID   string `gorm:"not null;index"`
 	OwnerType string `gorm:"not null"`
 	CreatorID string `gorm:"not null;index"`
+	Type      string `gorm:"default:''"` // e.g. "form", "identity", "general"
 }
 
 func (f *File) GetPath() string {

@@ -40,7 +40,7 @@ func NewFileService() *FileService {
 
 // --- Create ---
 
-func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, ownerType, creatorID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
+func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, ownerType, creatorID, fileType string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
 	if fileHeader == nil {
 		return nil, "", fmt.Errorf("file header cannot be empty")
 	}
@@ -109,6 +109,7 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 		OwnerID:   ownerID,
 		OwnerType: ownerType,
 		CreatorID: creatorID,
+		Type:      fileType,
 	}
 
 	db := global.DB
@@ -130,20 +131,20 @@ func (s *FileService) CreateDatasetFile(datasetID string, creatorID string, file
 		return nil, err
 	}
 
-	newFile, _, err := s.UploadFile(ctx, nil, datasetID, datasetOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, datasetID, datasetOwnerType, creatorID, "", fileHeader)
 	if err != nil {
 		return nil, err
 	}
 	return newFile, nil
 }
 
-func (s *FileService) CreateApplicationFile(applicationID string, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreateApplicationFile(applicationID string, creatorID string, fileType string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	ctx := context.Background()
 	if err := s.ensureApplicationExists(ctx, applicationID); err != nil {
 		return nil, err
 	}
 
-	newFile, _, err := s.UploadFile(ctx, nil, applicationID, applicationOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, applicationID, applicationOwnerType, creatorID, fileType, fileHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +156,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 		Order("created_at DESC").
 		First(&latestAudit).Error; err == nil {
 
-		if latestAudit.Action == model.PENDING {
+		if latestAudit.Action == model.DRAFT {
 			if err := global.DB.WithContext(ctx).Model(&latestAudit).Association("Files").Append(newFile); err != nil {
 				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
 			}
@@ -167,7 +168,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 
 func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	ctx := context.Background()
-	newFile, _, err := s.UploadFile(ctx, nil, publicOwnerID, publicOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, publicOwnerID, publicOwnerType, creatorID, "", fileHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +359,7 @@ func (s *FileService) DeleteFilesByApplication(applicationID string) error {
 // 1. 检查保留的文件是否存在
 // 2. 上传新文件
 // 3. 返回最终的文件列表（用于关联到 Audit）
-func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader) ([]model.File, func(bool), error) {
+func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader, newFileTypes []string) ([]model.File, func(bool), error) {
 	cleanup := func(bool) {}
 	kept := make(map[string]struct{})
 	for _, id := range keptFileIDs {
@@ -385,11 +386,15 @@ func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, app
 	// 注意：不再物理删除未保留的文件，因为它们属于历史版本
 
 	var newFilePaths []string
-	for _, header := range newFiles {
+	for i, header := range newFiles {
 		if header == nil {
 			continue
 		}
-		fileRecord, storedPath, err := s.UploadFile(ctx, tx, applicationID, applicationOwnerType, creatorID, header)
+		fileType := ""
+		if i < len(newFileTypes) {
+			fileType = newFileTypes[i]
+		}
+		fileRecord, storedPath, err := s.UploadFile(ctx, tx, applicationID, applicationOwnerType, creatorID, fileType, header)
 		if err != nil {
 			return nil, cleanup, err
 		}

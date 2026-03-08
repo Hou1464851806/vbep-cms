@@ -33,6 +33,7 @@ type applicationFileResponse struct {
 	Name          string    `json:"name"`
 	Size          uint      `json:"size"`
 	ApplicationID string    `json:"applicationID"`
+	Type          string    `json:"type"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -260,7 +261,9 @@ func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileHeader)
+	fileType := ctx.PostForm("type")
+
+	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileType, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
@@ -566,7 +569,7 @@ func canUploadApplicationFiles(user *model.User, application *model.ApplicationD
 	if application.Applicant.ID != user.ID {
 		return false
 	}
-	return application.Status == "pending" || application.Status == "returned"
+	return application.Status == "draft" || application.Status == "returned"
 }
 
 func canDeleteApplicationFiles(user *model.User, application *model.ApplicationDetail) bool {
@@ -579,7 +582,7 @@ func canDeleteApplicationFiles(user *model.User, application *model.ApplicationD
 	if application.Applicant.ID != user.ID {
 		return false
 	}
-	return application.Status == "pending" || application.Status == "returned"
+	return application.Status == "draft" || application.Status == "returned"
 }
 
 func buildApplicationFileResponse(file model.File) applicationFileResponse {
@@ -588,6 +591,7 @@ func buildApplicationFileResponse(file model.File) applicationFileResponse {
 		Name:          file.Name,
 		Size:          file.Size,
 		ApplicationID: file.OwnerID,
+		Type:          file.Type,
 		CreatedAt:     file.CreatedAt,
 	}
 }

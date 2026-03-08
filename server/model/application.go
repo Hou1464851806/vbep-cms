@@ -8,7 +8,8 @@ import (
 type ApplicationStatus uint
 
 const (
-	PENDING ApplicationStatus = iota
+	DRAFT ApplicationStatus = iota
+	PENDING
 	APPROVED
 	REJECTED
 	RETURNED
@@ -16,12 +17,14 @@ const (
 
 var (
 	statusToString = map[ApplicationStatus]string{
+		DRAFT:    "draft",
 		PENDING:  "pending",
 		APPROVED: "approved",
 		REJECTED: "rejected",
 		RETURNED: "returned",
 	}
 	stringToStatus = map[string]ApplicationStatus{
+		"draft":    DRAFT,
 		"pending":  PENDING,
 		"approved": APPROVED,
 		"rejected": REJECTED,

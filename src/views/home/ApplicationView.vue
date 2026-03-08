@@ -1,6 +1,7 @@
 <!-- src/views/application/ApplicationList.vue -->
 <script setup>
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
+import MarkdownRenderer from "@/components/MarkdownRenderer.vue"
 import {
   Check,
   Close,
@@ -11,6 +12,8 @@ import {
   Delete,
   Refresh,
   Timer,
+  Edit,
+  Plus,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -19,6 +22,7 @@ import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize, formatShortId } from '@/utils/format.js'
 import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
 
+const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
 const auditApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/audit`, data)
@@ -28,6 +32,20 @@ const fetchAuditDetailAPI = (appId, auditId) => apiClient.get(`/api/v1/applicati
 const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${id}/files`)
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
+const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
+const confirmApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/submit`)
+const createApplicationAPI = (data) => apiClient.post('/api/v1/applications/', data)
+const fetchPublicTemplateFilesAPI = () => apiClient.get('/api/v1/files/public/templates')
+const downloadPublicFileAPI = (fileId) => apiClient.get(`/api/v1/files/public/${fileId}/download`, { responseType: 'blob' })
+const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (config.type) formData.append('type', config.type)
+  return apiClient.post(`/api/v1/applications/${applicationId}/files`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    ...config,
+  })
+}
 
 const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
 const ALLOWED_EXTENSIONS = [
@@ -87,6 +105,18 @@ const DENIED_EXTENSIONS = [
   '.msc',
 ]
 
+const IDENTITY_EXTENSIONS = [
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.wps',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.bmp',
+  '.heif',
+]
+
 const readStoredUserId = () => {
   if (typeof window === 'undefined') return ''
   try {
@@ -101,6 +131,7 @@ const currentUserId = ref(readStoredUserId())
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
 const isLoading = ref(true)
+const datasetList = ref([])
 const resubmitUploadRef = ref(null)
 const detailDialog = reactive({
   visible: false,
@@ -124,34 +155,60 @@ const detailDialog = reactive({
   timeline: [],
 })
 
+// 状态：草稿编辑对话框
+const draftDialog = reactive({
+  visible: false,
+  isSubmitting: false,
+  data: null,
+  mode: 'create', // 'create' | 'resubmit'
+  mandatory: { list: [] },
+  identity: { list: [] },
+  optional: { list: [] },
+})
+
+// 状态：新增申请流程
+const newAppDialog = reactive({
+  visible: false,
+  loading: false,
+  selectedDatasetId: '',
+  description: '',
+  files: [],
+})
+
 const activeNames = ref(['2'])
 
 const statusMetaMap = {
-  pending: { label: '等待审批', type: 'warning' },
+  draft: { label: '待提交', type: 'info' },
+  pending: { label: '待审批', type: '' },
   approved: { label: '已批准', type: 'success' },
   rejected: { label: '已拒绝', type: 'danger' },
   returned: { label: '已退回', type: 'warning' },
 }
 
-const normalizeApplication = (item = {}) => ({
-  id: item.id,
-  status: item.status,
-  statusMeta: statusMetaMap[item.status] || { label: '未知', type: 'info' },
-  version: item.version,
-  dataset: {
-    id: item.dataset?.id,
-    title: item.dataset?.title,
-  },
-  applicant: {
-    id: item.applicant?.id,
-    nickname: item.applicant?.nickname,
-    email: item.applicant?.email,
-  },
-  createdAt: formatDateTime(item.createdAt),
-  auditedAt: formatDateTime(item.updatedAt),
-})
+const normalizeApplication = (item = {}) => {
+  let meta = statusMetaMap[item.status] || { label: '未知', type: 'info' }
+
+  return {
+    id: item.id,
+    status: item.status,
+    statusMeta: meta,
+    version: item.version,
+    dataset: {
+      id: item.dataset?.id,
+      title: item.dataset?.title,
+    },
+    applicant: {
+      id: item.applicant?.id,
+      nickname: item.applicant?.nickname,
+      email: item.applicant?.email,
+    },
+    createdAt: formatDateTime(item.createdAt),
+    auditedAt: formatDateTime(item.updatedAt),
+  }
+}
 
 const auditActionMap = {
+  draft: { label: '草稿编辑中', color: '#909399', operatorLabel: '申请人', resultLabel: '备注' },
   pending: { label: '申请已提交', color: '#C0C4CC', operatorLabel: '提交人', resultLabel: '备注' },
   approved: {
     label: '管理员审批',
@@ -204,6 +261,15 @@ const normalizeApplicationFiles = (files = []) =>
     id: item.fileID,
     name: item.name || '未命名文件',
     size: Number(item.size ?? 0),
+    type: item.type || '',
+    createdAt: formatDateTime(item.createdAt),
+  }))
+
+const normalizeTemplateFiles = (files = []) =>
+  files.map((item) => ({
+    id: item.fileID,
+    name: item.name || '未命名文件',
+    size: Number(item.size ?? 0),
     createdAt: formatDateTime(item.createdAt),
   }))
 
@@ -212,6 +278,7 @@ const toEditableAttachment = (item = {}) => ({
   uid: item.id || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   name: item.name || '未命名文件',
   size: Number(item.size ?? 0),
+  type: item.type || '',
   createdAt: item.createdAt || '-',
   isNew: !item.id,
   isRemoved: Boolean(item.isRemoved),
@@ -236,6 +303,7 @@ const resetAttachmentState = () => {
   detailDialog.attachments.list = []
   detailDialog.attachments.originalList = []
   detailDialog.attachments.currentApplicationId = ''
+  // 清理 resubmitUploadRef 相关的逻辑可以移除了，因为我们不再在详情页上传
   if (resubmitUploadRef.value) {
     resubmitUploadRef.value.clearFiles?.()
   }
@@ -245,6 +313,7 @@ const resetResubmitState = () => {
   detailDialog.resubmit.loading = false
 }
 
+// 这是一个通用的加载文件方法，我们可以复用它来获取 draftDialog 需要的数据
 const loadApplicationFiles = async (applicationId) => {
   if (!applicationId) return
   detailDialog.attachments.isLoading = true
@@ -254,6 +323,7 @@ const loadApplicationFiles = async (applicationId) => {
       const normalized = normalizeApplicationFiles(res.data.files)
       detailDialog.attachments.originalList = normalized.map((item) => ({ ...item }))
       detailDialog.attachments.list = normalized.map((item) => toEditableAttachment(item))
+      return normalized // 返回文件列表供调用者使用
       detailDialog.attachments.currentApplicationId = applicationId
     } else if (res?.data?.message) {
       ElMessage.error(res.data.message)
@@ -271,10 +341,6 @@ const loadApplicationFiles = async (applicationId) => {
 const handleAuditClick = async (auditItem) => {
   if (!auditItem || !auditItem.id) return
   detailDialog.audit.selectedId = auditItem.id
-
-  if (canResubmitApplication.value) {
-    return
-  }
 
   detailDialog.audit.detailLoading = true
   resetAttachmentState()
@@ -542,46 +608,322 @@ const handleDialogAudit = async (action) => {
   }
 }
 
-const handleResubmitApplication = async () => {
-  const current = detailDialog.data
-  if (!current?.id) return
+// --- 草稿与重填管理逻辑 ---
 
-  const { keptFileIds: keptFileIDs, newFiles } = getAttachmentDiff()
+// 打开草稿/重填窗口的通用方法
+const openEditDialog = async (row, mode = 'create') => {
+  draftDialog.data = row
+  draftDialog.mode = mode
+  draftDialog.mandatory.list = []
+  draftDialog.identity.list = []
+  draftDialog.optional.list = []
+  draftDialog.visible = true
+
+  // 如果是重填模式，需要加载已有的文件
+  if (mode === 'resubmit') {
+    draftDialog.isSubmitting = true // 复用 loading 状态显示加载中
+    try {
+      const res = await fetchApplicationFilesAPI(row.id)
+      if (res?.status === 200) {
+        const files = normalizeApplicationFiles(res.data.files)
+        // 分发文件到对应类别
+        draftDialog.mandatory.list = files.filter(f => f.type === 'form')
+        draftDialog.identity.list = files.filter(f => f.type === 'identity')
+        draftDialog.optional.list = files.filter(f => f.type === 'general' || !f.type)
+      }
+    } catch (e) {
+      ElMessage.error('加载已有文件失败')
+    } finally {
+      draftDialog.isSubmitting = false
+    }
+  }
+}
+
+const performResubmit = async (applicationId, keptFileIDs, newFiles) => {
   const formData = new FormData()
   formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
   newFiles.forEach((item) => {
     if (item.file) {
       formData.append('files', item.file, item.name)
+      formData.append('types', item.type || 'general')
     }
   })
 
-  detailDialog.resubmit.loading = true
-  try {
-    const res = await resubmitApplicationAPI(current.id, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
-    if (res.status === 200 && res.data.application) {
-      const appData = res.data.application
-      updateApplicationEntry(appData)
+  return await resubmitApplicationAPI(applicationId, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+}
 
-      // 重新提交后刷新时间轴
-      const normalizedAudits = (appData.audits || []).map(item => normalizeAudit(item))
-      detailDialog.timeline = normalizedAudits
+const handleContinueDraft = (row) => {
+  openEditDialog(row, 'create')
+}
 
-      // 选中新的（最新的）提交记录（最后一条）
-      if (detailDialog.timeline.length > 0) {
-        handleAuditClick(detailDialog.timeline[detailDialog.timeline.length - 1])
+const handleEditReturned = (row) => {
+  // 关闭详情页（如果在详情页触发）
+  detailDialog.visible = false
+  openEditDialog(row, 'resubmit')
+}
+
+// 辅助函数：收集所有新上传的文件
+const collectNewFiles = () => {
+  const files = []
+  
+  const processList = (list, type, defaultName) => {
+    list.forEach(item => {
+      if (item.raw) { // 只有包含 raw 属性的才是新上传的文件
+        files.push({ 
+          name: defaultName || item.name, 
+          file: item.raw, 
+          type: type 
+        })
       }
+    })
+  }
 
+  processList(draftDialog.mandatory.list, 'form', 'application_form.pdf')
+  processList(draftDialog.identity.list, 'identity', 'identity_proof') // 名字其实后端不依赖，主要靠文件内容
+  processList(draftDialog.optional.list, 'general')
+
+  return files
+}
+
+const handleDeleteDraft = async (row) => {
+  try {
+    await ElMessageBox.confirm('确定要删除该申请草稿吗？此操作不可恢复。', '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await deleteApplicationAPI(row.id)
+    ElMessage.success('草稿已删除')
+    await fetchApplications()
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  }
+}
+
+const handleMandatoryFileChange = (file, fileList) => {
+  // 强制单选：保留最后一个（最新的）
+  if (fileList.length > 1) {
+    fileList.splice(0, fileList.length - 1)
+  }
+  
+  const current = fileList[0]
+  if (!current || !current.raw) {
+    // 如果是空或者已有文件(没有raw)，直接更新列表
+    draftDialog.mandatory.list = fileList
+    return
+  }
+
+  const rawFile = current.raw
+  if (rawFile.type !== 'application/pdf') {
+    ElMessage.error('仅支持上传 PDF 文件')
+    fileList.pop() // 移除无效文件
+    return
+  }
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
+    fileList.pop()
+    return
+  }
+  draftDialog.mandatory.list = fileList
+}
+
+const handleIdentityFileChange = (file, fileList) => {
+  if (fileList.length > 1) {
+    fileList.splice(0, fileList.length - 1)
+  }
+
+  const current = fileList[0]
+  if (!current || !current.raw) {
+    draftDialog.identity.list = fileList
+    return
+  }
+
+  const rawFile = current.raw
+  const fileName = rawFile.name.toLowerCase()
+
+  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
+    fileList.pop()
+    return
+  }
+  if (!IDENTITY_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+    ElMessage.error(`文件格式不支持："${rawFile.name}"，请上传 PDF/Word/图片 格式`)
+    fileList.pop()
+    return
+  }
+  draftDialog.identity.list = fileList
+}
+
+const handleOptionalFileChange = (file, fileList) => {
+  // 过滤掉不合法的新文件
+  const validList = fileList.filter(item => {
+    if (!item.raw) return true // 已有文件直接保留
+    
+    const rawFile = item.raw
+    const fileName = rawFile.name.toLowerCase()
+    if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
+      ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
+      return false
+    }
+    if (DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
+      return false
+    }
+    if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
+      ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
+      return false
+    }
+    return true
+  })
+  
+  draftDialog.optional.list = validList
+}
+
+const handleSubmitDraft = async () => {
+  // 校验逻辑：检查列表中是否有文件（无论是新上传的还是已有的）
+  const hasMandatory = draftDialog.mandatory.list.length > 0
+  const hasIdentity = draftDialog.identity.list.length > 0
+  const hasOptional = draftDialog.optional.list.length > 0
+
+  if (draftDialog.mode === 'create') {
+    if (!hasMandatory || !hasIdentity) {
+      ElMessage.warning('请上传必填的申请文件和身份证明文件')
+      return
+    }
+  } else if (!hasMandatory && !hasIdentity && !hasOptional) {
+    ElMessage.warning('请至少保留或上传一个文件')
+    return
+  }
+
+  try {
+    const confirmMessage = draftDialog.mode === 'resubmit'
+      ? '您即将提交申请。申请提交后，您将不能修改其中的任何信息。'
+      : '您即将提交申请。申请提交后，您将不能修改其中的任何信息，也不再能撤回此次申请。'
+
+    await ElMessageBox.confirm(confirmMessage, '提交确认', {
+      confirmButtonText: '确认提交',
+      cancelButtonText: '再检查一下',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+
+  draftDialog.isSubmitting = true
+  const applicationId = draftDialog.data.id
+
+  try {
+    if (draftDialog.mode === 'resubmit') {
+      // 重填模式：一次性提交所有变更
+      const keptFileIDs = []
+      const collectKeptIDs = (list) => {
+        list.forEach(item => { if (item.id && !item.raw) keptFileIDs.push(item.id) })
+      }
+      collectKeptIDs(draftDialog.mandatory.list)
+      collectKeptIDs(draftDialog.identity.list)
+      collectKeptIDs(draftDialog.optional.list)
+
+      const newFiles = collectNewFiles()
+      
+      await performResubmit(applicationId, keptFileIDs, newFiles)
       ElMessage.success('申请已重新提交')
     } else {
-      ElMessage.error(res.data?.message || '重新提交失败')
+      // 草稿模式：逐个上传后确认
+      await uploadApplicationFileAPI(applicationId, draftDialog.mandatory.list[0].raw, { type: 'form' })
+      await uploadApplicationFileAPI(applicationId, draftDialog.identity.list[0].raw, { type: 'identity' })
+      for (const item of draftDialog.optional.list) {
+        await uploadApplicationFileAPI(applicationId, item.raw, { type: 'general' }).catch(console.warn)
+      }
+      await confirmApplicationAPI(applicationId)
+      ElMessage.success('申请已提交')
+    }
+    
+    draftDialog.visible = false
+    await fetchApplications()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '提交申请失败')
+  } finally {
+    draftDialog.isSubmitting = false
+  }
+}
+
+// --- 新增申请流程逻辑 ---
+const handleNewApplication = async () => {
+  newAppDialog.selectedDatasetId = ''
+  newAppDialog.visible = true
+  newAppDialog.loading = true
+  try {
+    const [dsRes, tplRes] = await Promise.all([
+      fetchDatasetListAPI(),
+      fetchPublicTemplateFilesAPI(),
+    ])
+    if (dsRes.status === 200) {
+      datasetList.value = dsRes.data.datasets || []
+    }
+    if (tplRes.status === 200) {
+      newAppDialog.description = tplRes.data.description || '暂无说明'
+      newAppDialog.files = normalizeTemplateFiles(tplRes.data.files || [])
+    }
+  } catch (e) {
+    ElMessage.error('加载数据失败')
+  } finally {
+    newAppDialog.loading = false
+  }
+}
+
+const handleCreateAndStart = async () => {
+  if (!newAppDialog.selectedDatasetId) {
+    ElMessage.warning('请选择数据集')
+    return
+  }
+  newAppDialog.loading = true
+  try {
+    // 1. 创建草稿
+    const res = await createApplicationAPI({ datasetID: newAppDialog.selectedDatasetId })
+    if (res.status === 200) {
+      const appId = res.data.applicationID
+      
+      // 2. 获取完整申请详情以填充 draftDialog
+      const detailRes = await fetchApplicationDetailAPI(appId)
+      if (detailRes.status === 200) {
+        const appData = normalizeApplication(detailRes.data.application)
+        newAppDialog.visible = false
+        await fetchApplications() // 刷新列表
+        handleContinueDraft(appData)
+      } else {
+        ElMessage.error('无法加载申请详情')
+      }
+    } else {
+      ElMessage.error(res.data?.message || '创建申请失败')
     }
   } catch (error) {
-    console.error('Failed to resubmit application', error)
-    ElMessage.error('重新提交失败')
+    const msg = error.response?.data?.message || '创建申请失败'
+    ElMessage.error(msg)
   } finally {
-    detailDialog.resubmit.loading = false
+    newAppDialog.loading = false
+  }
+}
+
+const handleDownloadTemplateFile = async (file) => {
+  if (!file || !file.id) return
+  try {
+    const res = await downloadPublicFileAPI(file.id)
+    const blob = new Blob([res.data])
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', file.name)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Failed to download template', error)
+    ElMessage.error('下载模板文件失败')
   }
 }
 
@@ -629,6 +971,7 @@ onMounted(fetchApplications)
         <span>申请列表</span>
         <div class="header-actions">
           <el-button :icon="Refresh" circle @click="fetchApplications" :loading="isLoading" title="刷新列表" />
+          <el-button type="primary" :icon="Plus" @click="handleNewApplication">新增申请</el-button>
         </div>
       </div>
     </template>
@@ -649,27 +992,162 @@ onMounted(fetchApplications)
             <div>{{ scope.row.applicant.nickname }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="申请的数据集">
+        <el-table-column label="目标数据集" min-width="150" show-overflow-tooltip>
           <template #default="scope">
             {{ scope.row.dataset.title || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="初次申请时间" width="180" />
+        <el-table-column prop="auditedAt" label="最后更新时间" width="180" />
         <el-table-column label="状态" width="120">
           <template #default="scope">
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right" align="center">
+        <el-table-column label="操作" width="220" fixed="right" align="center">
           <template #default="scope">
-            <el-button type="primary" link :icon="View" @click="handleViewDetail(scope.row)">
-              查看详情
-            </el-button>
+            <template v-if="scope.row.status === 'draft'">
+              <el-button type="danger" link :icon="Delete" @click="handleDeleteDraft(scope.row)">
+                删除草稿
+              </el-button>
+              <el-button v-if="!isAdmin()" type="primary" link :icon="Edit" @click="handleContinueDraft(scope.row)">
+                修改表单
+              </el-button>
+            </template>
+            <template v-else>
+              <el-button type="primary" link :icon="View" @click="handleViewDetail(scope.row)">
+                查看详情
+              </el-button>
+              <el-button
+                v-if="scope.row.status === 'returned' && !isAdmin()"
+                type="primary"
+                link
+                :icon="Edit"
+                @click="handleEditReturned(scope.row)"
+              >
+                修改表单
+              </el-button>
+              <el-button
+                v-else-if="scope.row.status === 'pending' && !isAdmin()"
+                type="info"
+                link
+                :icon="Edit"
+                disabled
+              >
+                修改表单
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
     </el-skeleton>
   </el-card>
+
+  <!-- 1. 新增申请对话框 (合并说明与选择) -->
+  <el-dialog v-model="newAppDialog.visible" title="新增申请" width="720px" :close-on-click-modal="false">
+    <div v-loading="newAppDialog.loading">
+      <div class="upload-label">申请说明</div>
+      <div class="template-description-box">
+        <markdown-renderer :model-value="newAppDialog.description" />
+      </div>
+      <div class="template-download-area" v-if="newAppDialog.files && newAppDialog.files.length">
+        <div class="upload-label">模版下载</div>
+        <div v-for="file in newAppDialog.files" :key="file.id">
+          <el-button type="primary" link :icon="Download" @click="handleDownloadTemplateFile(file)">
+            下载“{{ file.name }}”
+          </el-button>
+        </div>
+      </div>
+      <el-divider />
+      <el-form label-position="top">
+        <el-form-item label="选择目标数据集" required>
+          <el-select v-model="newAppDialog.selectedDatasetId" placeholder="请选择要申请的数据集" style="width: 100%" filterable>
+            <el-option
+              v-for="item in datasetList"
+              :key="item.id"
+              :label="item.title"
+              :value="item.id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+    </div>
+    <template #footer>
+      <el-button @click="newAppDialog.visible = false">取消</el-button>
+      <el-button type="primary" @click="handleCreateAndStart" :loading="newAppDialog.loading" :disabled="!newAppDialog.selectedDatasetId">下一步</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- 草稿编辑对话框 -->
+  <el-dialog
+    v-model="draftDialog.visible"
+    :title="draftDialog.mode === 'create' ? `完善申请资料 - ${draftDialog.data?.dataset?.title}` : `修改并重新提交 - ${draftDialog.data?.dataset?.title}`"
+    width="720px"
+    :close-on-click-modal="false"
+  >
+    <div v-loading="draftDialog.isSubmitting">
+      <div class="upload-section">
+        <div class="upload-label required-label">1. 上传申请文件 (必填)</div>
+        <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
+        <el-upload
+          class="upload-demo"
+          action="#"
+          :auto-upload="false"
+          accept=".pdf"
+          :on-change="handleMandatoryFileChange"
+          :on-remove="handleMandatoryFileChange"
+          v-model:file-list="draftDialog.mandatory.list"
+        >
+          <el-button type="primary" :icon="Upload">{{ draftDialog.mandatory.list.length > 0 ? '替换文件' : '选择 PDF 文件' }}</el-button>
+        </el-upload>
+      </div>
+
+      <el-divider />
+
+      <div class="upload-section">
+        <div class="upload-label required-label">2. 上传身份证明文件 (必填)</div>
+        <div class="upload-desc">请上传身份证、学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个。</div>
+        <el-upload
+          class="upload-demo"
+          action="#"
+          :auto-upload="false"
+          :accept="IDENTITY_EXTENSIONS.join(',')"
+          :on-change="handleIdentityFileChange"
+          :on-remove="handleIdentityFileChange"
+          v-model:file-list="draftDialog.identity.list"
+        >
+          <el-button :icon="Upload">{{ draftDialog.identity.list.length > 0 ? '替换文件' : '选择文件' }}</el-button>
+        </el-upload>
+      </div>
+
+      <el-divider />
+
+      <div class="upload-section">
+        <div class="upload-label">3. 补充材料 (可选)</div>
+        <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
+        <el-upload
+          class="upload-demo"
+          action="#"
+          :auto-upload="false"
+          multiple
+          :on-change="handleOptionalFileChange"
+          :on-remove="handleOptionalFileChange"
+          v-model:file-list="draftDialog.optional.list"
+        >
+          <el-button :icon="Upload">选择文件</el-button>
+        </el-upload>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="draftDialog.visible = false" :disabled="draftDialog.isSubmitting">取消</el-button>
+      <el-button 
+        type="primary" 
+        @click="handleSubmitDraft" 
+        :loading="draftDialog.isSubmitting"
+      >
+        {{ draftDialog.mode === 'resubmit' ? '确认修改并提交' : '提交申请' }}
+      </el-button>
+    </template>
+  </el-dialog>
 
   <el-dialog v-model="detailDialog.visible" title="申请详情" width="1000px">
     <el-skeleton :rows="5" animated :loading="detailDialog.loading">
@@ -685,7 +1163,7 @@ onMounted(fetchApplications)
               <el-descriptions-item label="提交次数">
                 {{ detailDialog.data.version }}
               </el-descriptions-item>
-              <el-descriptions-item label="申请数据集">
+              <el-descriptions-item label="目标数据集">
                 {{ detailDialog.data.dataset.title }}
                 <el-tooltip :content="detailDialog.data.dataset.id" placement="top">
                   <span class="sub-text">
@@ -699,7 +1177,7 @@ onMounted(fetchApplications)
                   ({{ detailDialog.data.applicant.email }})
                 </span>
               </el-descriptions-item>
-              <el-descriptions-item label="初次申请时间">
+              <el-descriptions-item label="创建时间">
                 {{ detailDialog.data.createdAt }}
               </el-descriptions-item>
               <el-descriptions-item label="最后修改时间">
@@ -707,6 +1185,7 @@ onMounted(fetchApplications)
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
+          
           <el-collapse-item title="时间线" name="2">
             <el-row :gutter="20">
               <!-- 左侧：时间轴 -->
@@ -786,8 +1265,8 @@ onMounted(fetchApplications)
                 </div>
                 <div v-else class="detail-content">
                   <!-- 附件列表 -->
-                  <div v-if="canViewAttachments && !canResubmitApplication" class="attachment-section">
-                    <div class="attachment-header">
+                  <div v-if="canViewAttachments" class="info-block">
+                    <div class="info-block-header">
                       <span>申请附件</span>
                     </div>
                     <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
@@ -805,19 +1284,24 @@ onMounted(fetchApplications)
                             min-width="150"
                             show-overflow-tooltip
                           />
-                          <el-table-column label="大小" width="100">
+                          <el-table-column label="类型" width="90">
+                            <template #default="{ row }">
+                              <span v-if="row.type === 'form'">申请表</span>
+                              <span v-else-if="row.type === 'identity'">身份证明</span>
+                              <span v-else-if="row.type === 'general'">补充材料</span>
+                              <span v-else>-</span>
+                            </template>
+                          </el-table-column>
+                          <el-table-column label="大小" width="90">
                             <template #default="scope">{{ formatFileSize(scope.row.size) }}</template>
                           </el-table-column>
-                          <el-table-column label="操作" width="80" align="center">
+                          <el-table-column label="下载" width="60" align="center">
                             <template #default="scope">
                               <el-button
-                                text
-                                size="small"
+                                link
                                 :icon="Download"
                                 @click="handleDownloadAttachment(scope.row)"
-                              >
-                                下载
-                              </el-button>
+                              />
                             </template>
                           </el-table-column>
                         </el-table>
@@ -825,94 +1309,11 @@ onMounted(fetchApplications)
                     </el-skeleton>
                   </div>
 
-                  <!-- 重新提交区域 -->
-                  <div v-if="canResubmitApplication" class="resubmit-area">
-                    <el-alert
-                      type="warning"
-                      :closable="false"
-                      show-icon
-                      title="申请已被退回，请修改后重新提交"
-                    />
-                    <div class="resubmit-content">
-                      <div class="resubmit-block">
-                        <div class="resubmit-block-title">申请附件（单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}）</div>
-                        <el-skeleton :rows="3" animated :loading="detailDialog.attachments.isLoading">
-                          <template #default>
-                            <el-empty
-                              v-if="!detailDialog.attachments.list.length"
-                              description="暂无附件"
-                              :image-size="60"
-                              class="empty-attachment"
-                            />
-                            <el-table
-                              v-else
-                              :data="detailDialog.attachments.list"
-                              size="small"
-                              class="attachment-table"
-                              :row-class-name="getAttachmentRowClass"
-                            >
-                              <el-table-column
-                                prop="name"
-                                label="文件名"
-                                min-width="150"
-                                show-overflow-tooltip
-                              />
-                              <el-table-column label="状态" width="80">
-                                <template #default="scope">
-                                  <el-tag size="small" :type="getAttachmentStatusMeta(scope.row).type">
-                                    {{ getAttachmentStatusMeta(scope.row).label }}
-                                  </el-tag>
-                                </template>
-                              </el-table-column>
-                              <el-table-column label="操作" width="120" align="center">
-                                <template #default="scope">
-                                  <el-space :size="4">
-                                    <el-button
-                                      text
-                                      size="small"
-                                      :icon="Download"
-                                      @click="handleDownloadAttachment(scope.row)"
-                                    />
-                                    <el-button
-                                      text
-                                      :type="scope.row.isRemoved ? 'primary' : 'danger'"
-                                      size="small"
-                                      :icon="Delete"
-                                      @click="handleRemoveAttachmentLocal(scope.row)"
-                                    />
-                                  </el-space>
-                                </template>
-                              </el-table-column>
-                            </el-table>
-                          </template>
-                        </el-skeleton>
-                        <div class="attachment-upload-area">
-                          <el-upload
-                            ref="resubmitUploadRef"
-                            action=""
-                            :show-file-list="false"
-                            :auto-upload="false"
-                            :disabled="
-                              detailDialog.attachments.isLoading || detailDialog.resubmit.loading
-                            "
-                            :on-change="handleAttachmentFileQueued"
-                          >
-                            <el-button
-                              type="primary"
-                              text
-                              :icon="Upload"
-                              :loading="detailDialog.resubmit.loading"
-                              >上传补充材料</el-button
-                            >
-                          </el-upload>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <!-- 审批意见展示 -->
-                  <div v-if="detailDialog.timeline.find(i => i.id === detailDialog.audit.selectedId)?.result" class="audit-result-display">
-                    <div class="result-label">审批意见：</div>
+                  <div v-if="detailDialog.timeline.find(i => i.id === detailDialog.audit.selectedId)?.result" class="info-block">
+                    <div class="info-block-header">
+                      <span>审批意见</span>
+                    </div>
                     <div class="result-content">
                       {{ detailDialog.timeline.find(i => i.id === detailDialog.audit.selectedId)?.result }}
                     </div>
@@ -969,9 +1370,8 @@ onMounted(fetchApplications)
         <el-button
           v-if="canResubmitApplication"
           type="primary"
-          :loading="detailDialog.resubmit.loading"
-          @click="handleResubmitApplication"
-          >重新提交审核</el-button
+          @click="handleEditReturned(detailDialog.data)"
+          >修改并重新提交</el-button
         >
       </div>
     </template>
@@ -983,17 +1383,19 @@ onMounted(fetchApplications)
   white-space: pre-wrap;
   line-height: 1.6;
 }
-.attachment-section {
+.info-block {
   padding: 16px;
   border: 1px solid #ebeef5;
   border-radius: 8px;
   background-color: #f9fafc;
 }
-.attachment-header {
+.info-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  font-weight: bold;
+  color: #303133;
 }
 .attachment-upload-area {
   margin-top: 12px;
@@ -1194,18 +1596,6 @@ onMounted(fetchApplications)
   color: #909399;
 }
 
-.audit-result-display {
-  padding: 12px;
-  background-color: #f4f4f5;
-  border-radius: 4px;
-}
-
-.result-label {
-  font-weight: bold;
-  margin-bottom: 4px;
-  color: #303133;
-}
-
 .action-divider {
   font-weight: bold;
   margin-bottom: 8px;
@@ -1216,5 +1606,58 @@ onMounted(fetchApplications)
 
 .empty-attachment {
   padding: 10px 0;
+}
+
+.upload-section {
+  margin-bottom: 20px;
+}
+.upload-label {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+.required-label::after {
+  content: " *";
+  color: #f56c6c;
+}
+.upload-desc {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 12px;
+}
+
+.template-description-box {
+  padding: 16px;
+  background-color: #f9fafc;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+  min-height: 100px;
+  margin-bottom: 16px;
+}
+
+.existing-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.existing-file-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+.file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #606266;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-size {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

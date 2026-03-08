@@ -41,10 +41,10 @@ func NewApplicationServiceWithOther(mailService *MailService, settingService *Se
 func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	ctx := context.Background()
 
-	// 检查用户是否已有处于 PENDING 状态的申请
+	// 检查用户是否已有处于 DRAFT, PENDING 或 RETURNED 状态的申请
 	var count int64
 	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
-		Where("applicant_id = ? AND status = ?", app.ApplicantID, model.PENDING).
+		Where("applicant_id = ? AND dataset_id = ? AND status IN ?", app.ApplicantID, app.DatasetID, []model.ApplicationStatus{model.DRAFT, model.PENDING, model.RETURNED}).
 		Count(&count).Error; err != nil {
 		return fmt.Errorf("failed to check pending applications: %w", err)
 	}
@@ -63,7 +63,7 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 		}
 
 		audit := &model.Audit{
-			Action:        model.PENDING,
+			Action:        model.DRAFT,
 			ApplicationID: app.ID,
 		}
 
@@ -97,7 +97,7 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 		return ErrApplicationPermissionDenied
 	}
 
-	if app.Version != 0 {
+	if app.Status != model.DRAFT {
 		return ErrApplicationNotEditable // 只能删除草稿
 	}
 
@@ -128,20 +128,20 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 		if app.ApplicantID != applicantID {
 			return ErrApplicationPermissionDenied
 		}
-		if app.Version != 0 {
+		if app.Status != model.DRAFT {
 			return ErrApplicationAlreadyProcessed
 		}
 
-		// 更新版本号为1，正式提交
+		// 更新状态为 PENDING，版本号为1，正式提交
 		// 同时更新关联的 Audit 时间，使其反映用户点击“提交”的时间
-		if err := tx.Model(&app).Update("version", 1).Error; err != nil {
+		if err := tx.Model(&app).Updates(map[string]interface{}{"status": model.PENDING, "version": 1}).Error; err != nil {
 			return err
 		}
 
 		now := time.Now()
 		if err := tx.Model(&model.Audit{}).
-			Where("application_id = ? AND action = ?", id, model.PENDING).
-			Updates(map[string]interface{}{"created_at": now}).Error; err != nil {
+			Where("application_id = ? AND action = ?", id, model.DRAFT).
+			Updates(map[string]interface{}{"created_at": now, "action": model.PENDING}).Error; err != nil {
 			return err
 		}
 
@@ -331,7 +331,7 @@ func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID st
 	return &detail, nil
 }
 
-func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader) (*model.ApplicationDetail, error) {
+func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader, newFileTypes []string) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	cleanup := func(success bool) {}
 
@@ -354,7 +354,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 			return ErrApplicationNotEditable
 		}
 
-		newAuditFiles, syncCleanup, err := NewFileService().SyncApplicationFiles(ctx, tx, id, applicantID, keptFileIDs, newFiles)
+		newAuditFiles, syncCleanup, err := NewFileService().SyncApplicationFiles(ctx, tx, id, applicantID, keptFileIDs, newFiles, newFileTypes)
 		if err != nil {
 			return err
 		}
