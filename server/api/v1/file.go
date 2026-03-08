@@ -542,6 +542,7 @@ func (a *FileApi) checkDatasetDownloadPermission(datasetID string, userID string
 	var count int64
 	err := global.DB.Model(&model.Application{}).
 		Where("dataset_id = ? AND applicant_id = ? AND status = ?", datasetID, userID, model.APPROVED).
+		Where("expire_at IS NULL OR expire_at > ?", time.Now()).
 		Count(&count).Error
 
 	if err != nil {

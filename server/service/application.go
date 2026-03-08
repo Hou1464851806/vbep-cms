@@ -84,7 +84,7 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 	var app model.Application
 
 	if err := global.DB.WithContext(ctx).
-		Select("id, applicant_id, version").
+		Select("id, applicant_id, status").
 		Where("id = ?", id).
 		First(&app).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -101,9 +101,21 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 		return ErrApplicationNotEditable // 只能删除草稿
 	}
 
-	// 清理文件
-	if err := NewFileService().DeleteFilesByApplication(id); err != nil {
-		return err
+	// 查找关联的 Audits
+	var audits []model.Audit
+	if err := global.DB.WithContext(ctx).Where("application_id = ?", id).Find(&audits).Error; err != nil {
+		return fmt.Errorf("failed to find audits: %w", err)
+	}
+
+	fileService := NewFileService()
+	for _, audit := range audits {
+		if err := fileService.DeleteFilesByAudit(audit.ID); err != nil {
+			return fmt.Errorf("failed to delete files for audit %s: %w", audit.ID, err)
+		}
+	}
+
+	if err := global.DB.WithContext(ctx).Where("application_id = ?", id).Delete(&model.Audit{}).Error; err != nil {
+		return fmt.Errorf("failed to delete audits: %w", err)
 	}
 
 	// 删除 Application (级联删除 Audit)
@@ -241,7 +253,7 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 // ProcessApplicationAudit handles the approval, rejection, or return of an application.
 // It updates the application's status and the latest audit record.
 // This function replaces ApproveApplication, RejectApplication, and ReturnApplication.
-func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result string, status model.ApplicationStatus) (*model.ApplicationDetail, error) {
+func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result string, status model.ApplicationStatus, duration int) (*model.ApplicationDetail, error) {
 	// Validate the incoming status to ensure it's an audit action
 	ctx := context.Background()
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -259,9 +271,17 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 			return ErrApplicationAlreadyProcessed
 		}
 
+		appUpdates := map[string]interface{}{"status": status}
+		var expireAt *time.Time
+		if status == model.APPROVED && duration > 0 {
+			t := time.Now().AddDate(0, duration, 0)
+			expireAt = &t
+			appUpdates["expire_at"] = expireAt
+		}
+
 		if err := tx.Model(&model.Application{}).
 			Where("id = ?", id).
-			Update("status", status).Error; err != nil {
+			Updates(appUpdates).Error; err != nil {
 			return fmt.Errorf("failed to update application %s: %w", id, err)
 		}
 
@@ -275,6 +295,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 			"action":      status,
 			"result":      result,
 			"operator_id": operatorID,
+			"expire_at":   expireAt,
 		}
 
 		if err := tx.Model(&lastAudit).Updates(updates).Error; err != nil {

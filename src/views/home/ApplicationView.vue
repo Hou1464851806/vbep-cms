@@ -14,6 +14,8 @@ import {
   Back,
   Close,
   Check,
+  Warning,
+  CircleCheck,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -175,7 +177,33 @@ const draftDialog = reactive({
   optional: { list: [] },
 })
 
-// 状态：新增申请流程
+const licenseStatus = computed(() => {
+  const app = detailDialog.data
+  if (!app) return { text: '未知', type: 'info', reason: '' }
+
+  if (app.status !== 'approved') {
+    return { text: '未获许可', type: 'info', reason: '' }
+  }
+
+  if (app.expireAt && new Date(app.expireAt) < new Date()) {
+    return { text: '已撤销', type: 'danger', reason: '许可已过期' }
+  }
+
+  return { text: '正常', type: 'success', reason: '' }
+})
+
+const approvedDate = computed(() => {
+  if (!detailDialog.timeline || detailDialog.timeline.length === 0) {
+    return null
+  }
+  const approvedAudit = detailDialog.timeline.find(
+    (audit) => audit.action === 'approved'
+  )
+  return approvedAudit ? approvedAudit.time : null
+})
+
+
+// 状态：新增申请流程 
 const newAppDialog = reactive({
   visible: false,
   loading: false,
@@ -184,7 +212,7 @@ const newAppDialog = reactive({
   files: [],
 })
 
-const activeNames = ref(['2'])
+const activeNames = ref(['1', '2'])
 
 const statusMetaMap = {
   draft: { label: '待提交', type: 'info' },
@@ -196,6 +224,11 @@ const statusMetaMap = {
 
 const normalizeApplication = (item = {}) => {
   let meta = statusMetaMap[item.status] || { label: '未知', type: 'info' }
+
+  // 如果状态是 Approved，但当前时间已超过 expireAt，则在前端显示为“已撤销”
+  if (item.status === 'approved' && item.expireAt && new Date(item.expireAt) < new Date()) {
+    meta = { label: '已撤销', type: 'danger' }
+  }
 
   return {
     id: item.id,
@@ -213,6 +246,7 @@ const normalizeApplication = (item = {}) => {
     },
     createdAt: formatDateTime(item.createdAt),
     auditedAt: formatDateTime(item.updatedAt),
+    expireAt: item.expireAt,
   }
 }
 
@@ -420,8 +454,8 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.timeline = []
-  detailDialog.audit.result = '' // 重置
-  activeNames.value = ['2']
+  detailDialog.audit.result = '' // 重置 
+  activeNames.value = isAdmin() ? ['3'] : ['1', '2']
   resetAttachmentState()
   try {
     const detailRes = await fetchApplicationDetailAPI(row.id)
@@ -514,6 +548,7 @@ const handleAuditSubmit = async () => {
     const res = await auditApplicationAPI(auditDialog.applicationId, {
       action: actionInfo.apiAction,
       result: auditDialog.result,
+      duration: auditDialog.licenseDuration,
     })
     if (res.status === 200 && res.data.application) {
       updateApplicationEntry(res.data.application)
@@ -925,7 +960,7 @@ onMounted(fetchApplications)
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="审批时间轴" width="100" fixed="right" align="center">
+        <el-table-column label="详细信息" width="100" fixed="right" align="center">
           <template #default="scope">
             <el-button
               v-if="scope.row.status !== 'draft'"
@@ -936,15 +971,18 @@ onMounted(fetchApplications)
             >
               查看
             </el-button>
-            <el-button
-              v-else
-              type="info"
-              link
-              :icon="View"
-              disabled
-            >
-              不可用
-            </el-button>
+            <el-tooltip v-else content="草稿状态不适用" placement="top">
+              <div style="display: inline-block;">
+                <el-button
+                  type="info"
+                  link
+                  :icon="View"
+                  disabled
+                >
+                  查看
+                </el-button>
+              </div>
+            </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120" fixed="right" align="center">
@@ -967,15 +1005,22 @@ onMounted(fetchApplications)
               >
                 审批
               </el-button>
-              <el-button
+              <el-tooltip
                 v-else-if="isAdmin()"
-                type="info"
-                link
-                :icon="Edit"
-                disabled
+                :content="(scope.row.status === 'draft' || scope.row.status === 'returned') ? '未提交的申请不可审批' : '已审批完成'"
+                placement="top"
               >
-                审批
-              </el-button>
+                <div style="display: inline-block;">
+                  <el-button
+                    type="info"
+                    link
+                    :icon="Edit"
+                    disabled
+                  >
+                    审批
+                  </el-button>
+                </div>
+              </el-tooltip>
               <template v-else>
                 <el-button
                   v-if="scope.row.status === 'returned'"
@@ -986,7 +1031,7 @@ onMounted(fetchApplications)
                 >
                   修改
                 </el-button>
-                <el-tooltip v-else-if="scope.row.status === 'pending'" content="审核中无法修改" placement="top">
+                <el-tooltip v-else :content="'当前状态无法修改'" placement="top">
                   <div style="display: inline-block;">
                     <el-button
                       type="info"
@@ -1119,7 +1164,7 @@ onMounted(fetchApplications)
         <el-collapse v-model="activeNames">
           <el-collapse-item title="基本信息" name="1">
             <el-descriptions border :column="2" v-if="detailDialog.data" class="custom-descriptions">
-              <el-descriptions-item label="当前状态">
+              <el-descriptions-item label="审批状态">
                 <el-tag :type="detailDialog.data.statusMeta.type">{{
                   detailDialog.data.statusMeta.label
                 }}</el-tag>
@@ -1150,7 +1195,50 @@ onMounted(fetchApplications)
             </el-descriptions>
           </el-collapse-item>
           
-          <el-collapse-item title="时间线" name="2">
+          <el-collapse-item title="许可状态" name="2">
+            <div v-if="detailDialog.data" class="license-status-wrapper">
+              <div v-if="detailDialog.data.status === 'approved'" 
+                  class="license-status-box"
+                  :class="{
+                      'is-valid': licenseStatus.type === 'success',
+                      'is-revoked': licenseStatus.type === 'danger'
+                  }">
+                  <div class="license-left">
+                    <el-icon class="license-icon">
+                      <CircleCheck v-if="licenseStatus.type === 'success'" />
+                      <Warning v-else />
+                    </el-icon>
+                    <div class="license-title">许可状态：{{ licenseStatus.text }}</div>
+                  </div>
+                  <div class="license-right">
+                    <div class="license-content">
+                      <p><strong>许可获取日期：</strong>{{ approvedDate || 'N/A' }}</p>
+                      <p><strong>预计过期日期：</strong>{{ detailDialog.data.expireAt ? formatDateTime(detailDialog.data.expireAt) : '永久' }}</p>
+                      <p v-if="licenseStatus.reason"><strong>描述：</strong>{{ licenseStatus.reason }}</p>
+                    </div>
+                  </div>
+              </div>
+              <div v-else class="license-status-box is-unavailable">
+                  <div class="license-left">
+                    <el-icon class="license-icon"><Warning /></el-icon>
+                    <div class="license-title">许可状态：等待中</div>
+                  </div>
+                  <div class="license-right">
+                    <div class="license-content">
+                      <p>
+                          {{ detailDialog.data.status === 'pending' ? '您的申请正在审批中' : 
+                            detailDialog.data.status === 'rejected' ? '您的申请已被拒绝' :
+                            detailDialog.data.status === 'returned' ? '您的申请已被退回，请修改后重新提交' :
+                            detailDialog.data.status === 'draft' ? '申请尚在草稿阶段，请完善后提交' : '未获得数据访问许可'
+                          }}
+                      </p>
+                    </div>
+                  </div>
+              </div>
+            </div>
+          </el-collapse-item>
+
+          <el-collapse-item title="审批时间线" name="3">
             <el-row :gutter="20">
               <!-- 左侧：时间轴 -->
               <el-col :span="12" class="audit-timeline-col">
@@ -1196,8 +1284,19 @@ onMounted(fetchApplications)
                       <div class="audit-cell admin-cell">
                         <template v-if="item.action === 'pending'">
                           <div class="placeholder-content">
-                            <el-icon><Timer /></el-icon>
-                            <span>等待管理员审批</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                              <el-icon><Timer /></el-icon>
+                              <span>等待管理员审批</span>
+                            </div>
+                            <el-button
+                              v-if="isAdmin()"
+                              type="primary"
+                              link
+                              :icon="Edit"
+                              @click.stop="openAuditDialog(detailDialog.data)"
+                            >
+                              立即审批
+                            </el-button>
                           </div>
                         </template>
                         <template v-else>
@@ -1305,7 +1404,7 @@ onMounted(fetchApplications)
   <!-- 审批对话框 -->
   <el-dialog v-model="auditDialog.visible" title="审批申请" width="500px" :close-on-click-modal="false">
     <el-form label-position="top">
-      <el-form-item label="审批操作">
+      <el-form-item label="审批操作" required>
         <el-select v-model="auditDialog.action" placeholder="请选择审批操作" style="width: 100%">
           <el-option label="退回修改" value="return">
             <div style="display: flex; align-items: center;">
@@ -1527,7 +1626,8 @@ onMounted(fetchApplications)
 .placeholder-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  width: 100%;
   color: #909399;
   font-size: 13px;
   padding: 4px 0;
@@ -1632,10 +1732,91 @@ onMounted(fetchApplications)
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .file-size {
   font-size: 12px;
   color: #909399;
 }
-
+.license-status-wrapper {
+  padding: 10px 0;
+}
+.license-status-box {
+  width: 90%;
+  margin: 0 auto;
+  padding: 16px 24px;
+  border-radius: 8px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+}
+.license-left {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  padding-right: 20px;
+  text-align: center;
+}
+.license-right {
+  flex: 3;
+  padding-left: 20px;
+}
+.license-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+.license-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 0;
+}
+.license-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #606266;
+}
+.license-content p {
+  margin: 0 0 8px 0;
+}
+.license-content p strong {
+  font-weight: bold;
+}
+.license-content p:last-child {
+  margin-bottom: 0;
+}
+.license-status-box.is-valid {
+  background-color: #f0f9eb;
+  border-color: #b3e19d;
+}
+.license-status-box.is-valid .license-title {
+  color: #67c23a;
+}
+.license-status-box.is-valid .license-icon {
+  color: #b3e19d;
+}
+.license-status-box.is-revoked {
+  background-color: #fef0f0;
+  border-color: #fab6b6;
+}
+.license-status-box.is-revoked .license-title {
+  color: #f56c6c;
+}
+.license-status-box.is-revoked .license-icon {
+  color: #fab6b6;
+}
+.license-status-box.is-unavailable {
+  background-color: #f4f4f5;
+  border-color: #c8c9cc;
+}
+.license-status-box.is-unavailable .license-title {
+  color: #909399;
+}
+.license-status-box.is-unavailable .license-icon {
+  color: #c8c9cc;
+}
 </style>

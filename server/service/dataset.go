@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"server/global"
 	"server/model"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -53,7 +54,8 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]m
 			(SELECT COUNT(*) FROM applications 
 			 WHERE applications.dataset_id = datasets.id 
 			 AND applications.applicant_id = '%s' 
-			 AND applications.status = %d) > 0 as has_access`, userID, model.APPROVED)
+			 AND applications.status = %d
+			 AND (applications.expire_at IS NULL OR applications.expire_at > '%s')) > 0 as has_access`, userID, model.APPROVED, time.Now().Format("2006-01-02 15:04:05"))
 	}
 
 	err := db.Select(selectQuery).Scan(&results).Error
@@ -92,6 +94,7 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 	err = global.DB.WithContext(ctx).
 		Model(&model.Application{}).
 		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.APPROVED).
+		Where("expire_at IS NULL OR expire_at > ?", time.Now()).
 		Count(&count).Error
 
 	if err != nil {

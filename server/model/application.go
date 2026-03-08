@@ -55,6 +55,7 @@ type Application struct {
 	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
 	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
 	Version     int               `gorm:"not null;default:0"`                                                                 // 申请的版本号，每次重新提交+1
+	ExpireAt    *time.Time        `json:"expireAt"`                                                                           // 审批通过后的过期时间
 
 	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"`
 }
@@ -67,6 +68,7 @@ type ApplicationListItem struct {
 	Dataset   DatasetBrief `json:"dataset"`
 	UpdatedAt time.Time    `json:"updatedAt"`
 	CreatedAt time.Time    `json:"createdAt"`
+	ExpireAt  *time.Time   `json:"expireAt"`
 }
 
 type ApplicationDetail struct {
@@ -83,6 +85,7 @@ func (app Application) ToListItem() ApplicationListItem {
 		Dataset:   app.Dataset.ToBrief(),
 		CreatedAt: app.CreatedAt,
 		UpdatedAt: app.UpdatedAt,
+		ExpireAt:  app.ExpireAt,
 	}
 	return item
 }
@@ -115,6 +118,7 @@ type Audit struct {
 	ApplicationID string      `gorm:"not null;type:char(36)"`                                                             // 审批属于的申请ID
 	Application   Application `gorm:"foreignKey:ApplicationID;reference:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"` // 审批历史属于申请，删除申请应该级联删除审批历史
 	Files         []File      `gorm:"many2many:audit_files;"`                                                             // 该次审批/提交关联的文件快照
+	ExpireAt      *time.Time  `json:"expireAt"`                                                                           // 该次审批决定的过期时间
 }
 
 type AuditListItem struct {
@@ -124,6 +128,7 @@ type AuditListItem struct {
 	Operator  *UserBrief `json:"operator"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
+	ExpireAt  *time.Time `json:"expireAt"`
 }
 
 type AuditDetail struct {
@@ -137,6 +142,7 @@ func (a Audit) ToListItem() AuditListItem {
 		Action:    a.Action.String(),
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
+		ExpireAt:  a.ExpireAt,
 	}
 
 	if a.Operator != nil {

@@ -38,8 +38,9 @@ type createApplicationParam struct {
 }
 
 type auditApplicationParam struct {
-	Action string `json:"action" binding:"required"` // e.g., "approved", "rejected", "returned"
-	Result string `json:"result"`
+	Action   string `json:"action" binding:"required"` // e.g., "approved", "rejected", "returned"
+	Result   string `json:"result"`
+	Duration int    `json:"duration"` // Duration in months, for approval
 }
 
 type resubmitApplicationParam struct {
@@ -301,7 +302,7 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.applicationService.ProcessApplicationAudit(id, userIDStr, param.Result, actionStatus)
+	application, err := a.applicationService.ProcessApplicationAudit(id, userIDStr, param.Result, actionStatus, param.Duration)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

@@ -355,6 +355,55 @@ func (s *FileService) DeleteFilesByApplication(applicationID string) error {
 	return nil
 }
 
+func (s *FileService) DeleteFilesByAudit(auditID string) error {
+	ctx := context.Background()
+	var audit model.Audit
+	if err := global.DB.WithContext(ctx).Preload("Files").First(&audit, "id = ?", auditID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil // Audit not found, nothing to do
+		}
+		return fmt.Errorf("failed to find audit %s: %w", auditID, err)
+	}
+
+	if len(audit.Files) == 0 {
+		return nil
+	}
+
+	filesToDelete := audit.Files
+	fileIDs := make([]string, len(filesToDelete))
+	for i, f := range filesToDelete {
+		fileIDs[i] = f.ID
+	}
+
+	// Use a transaction to ensure atomicity of DB operations
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Clear associations in the join table
+		if err := tx.Model(&audit).Association("Files").Clear(); err != nil {
+			return fmt.Errorf("failed to clear file associations for audit %s: %w", auditID, err)
+		}
+
+		// 2. Delete the file records themselves
+		if len(fileIDs) > 0 {
+			if err := tx.Where("id IN ?", fileIDs).Delete(&model.File{}).Error; err != nil {
+				return fmt.Errorf("failed to delete file records for audit %s: %w", auditID, err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err // DB operations failed
+	}
+
+	// 3. Delete physical files after DB transaction is successful
+	for _, f := range filesToDelete {
+		removePhysicalFile(f.GetPath())
+	}
+
+	return nil
+}
+
 // SyncApplicationFiles 同步申请的附件（用于重新提交）
 // 1. 检查保留的文件是否存在
 // 2. 上传新文件
