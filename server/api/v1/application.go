@@ -39,7 +39,7 @@ type createApplicationParam struct {
 
 type auditApplicationParam struct {
 	Action string `json:"action" binding:"required"` // e.g., "approved", "rejected", "returned"
-	Result string `json:"result" binding:"required"`
+	Result string `json:"result"`
 }
 
 type resubmitApplicationParam struct {
@@ -159,15 +159,19 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 
 	// 2. 决定查询范围
 	var filterID *string
+	excludeDrafts := false
 	// 假设 model.Common == 0, model.Admin == 1.
 	// 如果角色是 Common (0)，则传入当前用户ID进行筛选
 	if currentUser.Role == model.Common {
 		filterID = &currentUser.ID
+	} else if currentUser.Role == model.Admin {
+		// 普通管理员不可见草稿，超级管理员(Role > Admin)可见
+		excludeDrafts = true
 	}
 	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
 
 	// 3. 调用 Service
-	applications, err := a.applicationService.ListApplications(filterID)
+	applications, err := a.applicationService.ListApplications(filterID, excludeDrafts)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请列表失败"})

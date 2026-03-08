@@ -15,9 +15,6 @@ import {
   QuestionFilled,
   Setting,
   Sort,
-  EditPen,
-  Warning,
-  Timer,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -28,13 +25,12 @@ import {
   formatShortId,
   formatFileSize,
 } from '@/utils/format.js'
-import {APPLICATION_FILE_LIMIT_MB, DATASET_FILE_LIMIT_MB} from '@/utils/constrains.js'
+import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 
 // --- API 函数 ---
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`)
-const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
 const fetchDatasetStatisticsAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}/statistics`)
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
 const updateDatasetAPI = (uuid, data) => apiClient.patch(`/api/v1/datasets/${uuid}`, data)
@@ -59,80 +55,13 @@ const downloadPublicFileAPI = (fileId) =>
 
 const submitApplicationAPI = (applicationData) =>
   apiClient.post('/api/v1/applications', applicationData)
-const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
 
 const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
-
-// const APPLICATION_FILE_LIMIT_MB = 20
-const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
-
-const ALLOWED_EXTENSIONS = [
-  // Documents
-  '.pdf',
-  '.txt',
-  '.md',
-  '.rtf',
-  '.tex',
-  '.doc',
-  '.docx',
-  '.wps',
-  '.odt',
-  '.ppt',
-  '.pptx',
-  '.dps',
-  '.ods',
-  '.xls',
-  '.xlsx',
-  '.et',
-  '.odp',
-  // Images
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.svg',
-  '.bmp',
-  '.tiff',
-  // Compressed Files
-  '.zip',
-  '.rar',
-  '.7z',
-  '.tar',
-  '.gz',
-  '.tgz',
-  '.heif',
-]
-
-const DENIED_EXTENSIONS = [
-  '.exe',
-  '.msi',
-  '.bat',
-  '.cmd',
-  '.sh',
-  '.ps1',
-  '.js',
-  '.vbs',
-  '.jar',
-  '.dll',
-  '.sys',
-  '.app',
-  '.dmg',
-  '.pkg',
-  '.scr',
-  '.com',
-  '.cpl',
-  '.inf',
-  '.lnk',
-  '.reg',
-  '.hta',
-  '.msc',
-]
 
 // --- 状态定义 ---
 const router = useRouter()
 const isAdmin = inject('isAdmin')
 const datasetList = ref([])
-const userApplications = ref({}) // Map<datasetId, application>
 const isDataLoading = ref(true)
 
 // 获取全局 echarts 实例
@@ -253,27 +182,14 @@ const removeUploadTask = (uid, delay = 0) => {
 const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
-    const [dsRes, appRes] = await Promise.all([
-      fetchDatasetListAPI(),
-      fetchApplicationListAPI().catch(() => ({ data: { applications: [] } })),
-    ])
-
-    if (appRes && appRes.data && appRes.data.applications) {
-      const map = {}
-      appRes.data.applications.forEach((app) => {
-        // Store the latest application state for each dataset
-        if (!map[app.dataset.id]) {
-          map[app.dataset.id] = app
-        }
-      })
-      userApplications.value = map
-    }
+    // 仅获取数据集列表，不再预加载用户的申请历史，提升性能
+    const dsRes = await fetchDatasetListAPI()
 
     if (dsRes && dsRes.status === 200) {
       datasetList.value = normalizeDatasets(dsRes.data.datasets)
       return
     }
-    ElMessage.error(res?.data?.message || '数据集加载失败')
+    ElMessage.error(dsRes?.data?.message || '数据集加载失败')
   } catch {
     ElMessage.error('数据集加载失败')
   } finally {
@@ -396,15 +312,6 @@ const handleViewDetail = async (row) => {
   } finally {
     detailDialog.loading = false
   }
-}
-const handleApplyFromDetail = () => {
-  if (!detailDialog.data) return
-
-  // 1. 关闭详情弹窗
-  detailDialog.visible = false
-
-  // 2. 打开申请弹窗（复用已有的逻辑）
-  handleApply(normalizeOneDataset(detailDialog.data))
 }
 
 const handleViewStatistics = async (row) => {
@@ -643,7 +550,7 @@ const handleApply = async (row) => {
     } else {
       ElMessage.error('获取申请模板信息失败')
     }
-  } catch (e) {
+  } catch (error) {
     ElMessage.error('获取申请模板信息失败')
   }
 }
@@ -744,83 +651,43 @@ const handleCancelApplication = async () => {
           <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
           <el-table-column prop="creator" label="创建者" width="120" />
           <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column v-if="isAdmin()" label="操作" width="260" fixed="right" align="center">
+          <el-table-column label="操作" :width="isAdmin() ? 260 : 260" fixed="right" align="center">
             <template #default="scope">
-              <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
-              <el-button link type="primary" :icon="DataAnalysis" @click="handleViewStatistics(scope.row)">统计</el-button>
-              <el-button
-                link
-                type="danger"
-                :icon="Delete"
-                @click="handleDelete(scope.row)"
-                >删除</el-button
-              >
-            </template>
-          </el-table-column>
-
-          <el-table-column v-if="!isAdmin()" label="查看详情" width="80" fixed="right" align="center">
-            <template #default="scope">
-              <el-button
-                v-if="scope.row.hasAccess"
-                type="primary"
-                link
-                :icon="Download"
-                @click="handleViewDetail(scope.row)"
-              >
-                下载
-              </el-button>
-              <el-button
-                v-else
-                type="primary"
-                link
-                :icon="View"
-                @click="handleViewDetail(scope.row)"
-              >
-                查看
-              </el-button>
-            </template>
-          </el-table-column>
-
-          <el-table-column v-if="!isAdmin()" label="申请使用" width="120" fixed="right" align="center">
-            <template #default="scope">
-              <template v-if="!scope.row.hasAccess">
-                <template v-if="userApplications[scope.row.id] && (userApplications[scope.row.id].status === 'pending' || userApplications[scope.row.id].status === 'draft' || userApplications[scope.row.id].status === 'returned')">
-                    <el-button
-                      v-if="userApplications[scope.row.id].status === 'draft'"
-                      type="info"
-                      link
-                      :icon="EditPen"
-                      disabled
-                    >
-                      存在草稿
-                    </el-button>
-                    <el-button
-                      v-else-if="userApplications[scope.row.id].status === 'returned'"
-                      type="info"
-                      link
-                      :icon="Warning"
-                      disabled
-                    >
-                      需要操作
-                    </el-button>
-                    <el-button
-                      v-else
-                      type="info"
-                      link
-                      :icon="Timer"
-                      disabled
-                    >
-                      审核中
-                    </el-button>
-                </template>
-                <template v-else>
-                  <el-button type="primary" link :icon="Promotion" @click="handleApply(scope.row)">
-                    申请
-                  </el-button>
-                </template>
+              <template v-if="isAdmin()">
+                <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
+                <el-button link type="primary" :icon="DataAnalysis" @click="handleViewStatistics(scope.row)">统计</el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :icon="Delete"
+                  @click="handleDelete(scope.row)"
+                  >删除</el-button
+                >
               </template>
               <template v-else>
-                <el-tag type="success" size="small">已授权</el-tag>
+                <el-button
+                  v-if="scope.row.hasAccess"
+                  type="primary"
+                  link
+                  :icon="Download"
+                  @click="handleViewDetail(scope.row)"
+                >
+                  下载
+                </el-button>
+                <el-button
+                  v-else
+                  type="primary"
+                  link
+                  :icon="View"
+                  @click="handleViewDetail(scope.row)"
+                >
+                  查看详情
+                </el-button>
+                <template v-if="!scope.row.hasAccess">
+                  <el-button type="primary" link :icon="Promotion" @click="handleApply(scope.row)">
+                    申请使用
+                  </el-button>
+                </template>
               </template>
             </template>
           </el-table-column>
@@ -983,10 +850,6 @@ const handleCancelApplication = async () => {
         </el-skeleton>
         </div>
       </div>
-      <template #footer>
-        <el-button @click="manageDialog.visible = false">取消</el-button>
-        <el-button type="primary" @click="handleUpdateDatasetInfo">保存</el-button>
-      </template>
     </el-dialog>
 
     <!-- 对话框3：申请使用 (普通用户) -->
@@ -1065,35 +928,6 @@ const handleCancelApplication = async () => {
               <template #default>
                 <div class="no-access-actions">
                   <p class="no-access-tip">请提交申请，通过审批后即可访问所有文件。</p>
-                  <template v-if="userApplications[detailDialog.data.id] && (userApplications[detailDialog.data.id].status === 'pending' || userApplications[detailDialog.data.id].status === 'draft' || userApplications[detailDialog.data.id].status === 'returned')">
-                    <el-button
-                      v-if="userApplications[detailDialog.data.id].status === 'draft'"
-                      type="info"
-                      size="large"
-                      :icon="EditPen"
-                      disabled
-                    >
-                      存在草稿
-                    </el-button>
-                    <el-button
-                      v-else-if="userApplications[detailDialog.data.id].status === 'returned'"
-                      type="info"
-                      size="large"
-                      :icon="Warning"
-                      disabled
-                    >
-                      需要操作
-                    </el-button>
-                    <el-button
-                      v-else
-                      type="info"
-                      size="large"
-                      :icon="Timer"
-                      disabled
-                    >
-                      审核中
-                    </el-button>
-                  </template>
                 </div>
               </template>
             </el-empty>
@@ -1146,9 +980,6 @@ const handleCancelApplication = async () => {
         </div>
         <el-empty v-else description="暂无数据" />
       </el-skeleton>
-      <template #footer>
-        <el-button @click="statisticsDialog.visible = false">关闭</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>

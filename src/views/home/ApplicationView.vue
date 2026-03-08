@@ -3,17 +3,17 @@
 import { ref, reactive, onMounted, inject, watch, computed } from 'vue'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue"
 import {
-  Check,
-  Close,
   View,
   Download,
-  RefreshLeft,
   Upload,
   Delete,
   Refresh,
   Timer,
   Edit,
   Plus,
+  Back,
+  Close,
+  Check,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -132,7 +132,6 @@ const isAdmin = inject('isAdmin')
 const applicationList = ref([])
 const isLoading = ref(true)
 const datasetList = ref([])
-const resubmitUploadRef = ref(null)
 const detailDialog = reactive({
   visible: false,
   loading: false,
@@ -153,6 +152,16 @@ const detailDialog = reactive({
     loading: false,
   },
   timeline: [],
+})
+
+// 状态：审批对话框
+const auditDialog = reactive({
+  visible: false,
+  loading: false,
+  applicationId: '',
+  action: '',
+  result: '',
+  licenseDuration: 3,
 })
 
 // 状态：草稿编辑对话框
@@ -303,10 +312,6 @@ const resetAttachmentState = () => {
   detailDialog.attachments.list = []
   detailDialog.attachments.originalList = []
   detailDialog.attachments.currentApplicationId = ''
-  // 清理 resubmitUploadRef 相关的逻辑可以移除了，因为我们不再在详情页上传
-  if (resubmitUploadRef.value) {
-    resubmitUploadRef.value.clearFiles?.()
-  }
 }
 
 const resetResubmitState = () => {
@@ -323,8 +328,8 @@ const loadApplicationFiles = async (applicationId) => {
       const normalized = normalizeApplicationFiles(res.data.files)
       detailDialog.attachments.originalList = normalized.map((item) => ({ ...item }))
       detailDialog.attachments.list = normalized.map((item) => toEditableAttachment(item))
-      return normalized // 返回文件列表供调用者使用
       detailDialog.attachments.currentApplicationId = applicationId
+      return normalized // 返回文件列表供调用者使用
     } else if (res?.data?.message) {
       ElMessage.error(res.data.message)
     } else {
@@ -360,101 +365,6 @@ const handleAuditClick = async (auditItem) => {
   } finally {
     detailDialog.audit.detailLoading = false
   }
-}
-
-const getAttachmentStatusMeta = (item = {}) => {
-  if (item.isRemoved) return { label: '被移除', type: 'danger' }
-  if (!item.id) return { label: '待提交', type: 'info' }
-  return { label: '已上传', type: 'success' }
-}
-
-const getAttachmentRowClass = ({ row } = {}) => {
-  if (!row) return ''
-  if (row.isRemoved) return 'attachment-row-removed'
-  if (!row.id) return 'attachment-row-new'
-  return ''
-}
-
-const validateAttachmentFile = (rawFile) => {
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    return false
-  }
-  const fileName = rawFile.name?.toLowerCase?.() || ''
-  if (DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-    ElMessage.error(`文件类型暂不支持："${rawFile.name}"`)
-    return false
-  }
-  if (!ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))) {
-    ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
-    return false
-  }
-  return true
-}
-
-const addLocalAttachment = (rawFile, uid) => {
-  const entry = toEditableAttachment({
-    id: '',
-    uid: uid || `local-${Date.now()}`,
-    name: rawFile.name,
-    size: rawFile.size,
-    createdAt: formatDateTime(new Date()),
-    file: rawFile,
-    isRemoved: false,
-  })
-  detailDialog.attachments.list.push(entry)
-}
-
-const handleAttachmentFileQueued = (uploadFile) => {
-  const rawFile = uploadFile?.raw
-  if (!rawFile) return
-  if (!validateAttachmentFile(rawFile)) {
-    ElMessage.warning('文件未通过校验')
-    return
-  }
-  addLocalAttachment(rawFile, uploadFile.uid)
-  ElMessage.success(`已添加附件「${rawFile.name}」，提交后生效`)
-}
-
-const handleRemoveAttachmentLocal = async (file) => {
-  if (!file) return
-  if (file.id && file.isRemoved) {
-    file.isRemoved = false
-    ElMessage.success(`已撤销移除「${file.name}」`)
-    return
-  }
-  if (file.id) {
-    try {
-      await ElMessageBox.confirm(`确定移除已上传的附件「${file.name}」吗？`, '提示', {
-        type: 'warning',
-        confirmButtonText: '移除',
-        cancelButtonText: '取消',
-      })
-    } catch {
-      return
-    }
-    file.isRemoved = true
-    ElMessage.info('附件已标记删除，重新提交后生效')
-    return
-  }
-  const index = detailDialog.attachments.list.findIndex((item) => item.uid === file.uid)
-  if (index !== -1) {
-    detailDialog.attachments.list.splice(index, 1)
-    ElMessage.success(`已撤销新增附件「${file.name}」`)
-  }
-}
-
-const getAttachmentDiff = () => {
-  const keptFileIds = []
-  const newFiles = []
-  ;(detailDialog.attachments.list || []).forEach((item) => {
-    if (item.id && !item.isRemoved) {
-      if (!keptFileIds.includes(item.id)) keptFileIds.push(item.id)
-    } else if (!item.id && item.file && !item.isRemoved) {
-      newFiles.push(item)
-    }
-  })
-  return { keptFileIds, newFiles }
 }
 
 const handleDownloadAttachment = async (file) => {
@@ -551,52 +461,65 @@ const updateApplicationEntry = (nextData) => {
   }
 }
 
-const auditActionSuccessMessage = {
-  approve: '申请已批准',
-  reject: '申请已拒绝',
-  return: '申请已退回',
+const auditLabel = computed(() => {
+  const map = {
+    return: '退回理由',
+    reject: '拒绝理由',
+    approve: '审批附言',
+  }
+  return map[auditDialog.action] || '审批意见'
+})
+
+const openAuditDialog = (row) => {
+  if (!row?.id) return
+  auditDialog.applicationId = row.id
+  auditDialog.action = ''
+  auditDialog.result = ''
+  auditDialog.licenseDuration = 3
+  auditDialog.visible = true
 }
 
-const auditConfirmMessages = {
-  approve: '您即将执行批准操作，批准后用户将有权访问该数据集下的所有文件',
-  reject: '您即将执行拒绝操作，拒绝后用户将无法修改并重新提交申请',
-  return: '您即将执行退回操作，退回后用户可以修改并重新提交申请',
-}
-
-const handleDialogAudit = async (action) => {
-  const current = detailDialog.data
-  if (!current?.id) return
-  const result = detailDialog.audit.result.trim()
-  if (!result) {
-    ElMessage.warning('请填写审核意见')
+const handleAuditSubmit = async () => {
+  if (!auditDialog.action) {
+    ElMessage.warning('请选择审批操作')
+    return
+  }
+  // 仅当操作不是批准时，才强制要求填写理由
+  if (auditDialog.action !== 'approve' && !auditDialog.result.trim()) {
+    ElMessage.warning('请填写' + auditLabel.value)
     return
   }
 
+  const actionMap = {
+    approve: { label: '批准', apiAction: 'approved', confirm: '您即将批准该申请，批准后用户将有权访问该数据集下的所有文件' },
+    reject: { label: '拒绝', apiAction: 'rejected', confirm: '您即将拒绝该申请，拒绝后用户将无法修改并重新提交申请' },
+    return: { label: '退回', apiAction: 'returned', confirm: '您即将退回该申请，退回后用户可以修改并重新提交申请' }
+  }
+  
+  const actionInfo = actionMap[auditDialog.action]
+  if (!actionInfo) return
+
   try {
-    await ElMessageBox.confirm(auditConfirmMessages[action], '操作确认', {
+    await ElMessageBox.confirm(actionInfo.confirm, `确认${actionInfo.label}`, {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
-      type: action === 'reject' ? 'error' : 'warning',
+      type: auditDialog.action === 'reject' ? 'error' : 'warning',
     })
   } catch {
     return
   }
 
-  detailDialog.audit.loading = true
+  auditDialog.loading = true
   try {
-    const res = await auditApplicationAPI(current.id, {
-      action: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'returned',
-      result,
+    const res = await auditApplicationAPI(auditDialog.applicationId, {
+      action: actionInfo.apiAction,
+      result: auditDialog.result,
     })
     if (res.status === 200 && res.data.application) {
-      const normalized = normalizeApplication(res.data.application)
       updateApplicationEntry(res.data.application)
-      detailDialog.audit.result = normalized.result
-
-      const normalizedAudits = (res.data.application.audits || []).map((item) => normalizeAudit(item))
-      detailDialog.timeline = normalizedAudits
-
-      ElMessage.success(auditActionSuccessMessage[action] || '操作成功')
+      ElMessage.success(`申请已${actionInfo.label}`)
+      auditDialog.visible = false
+      detailDialog.visible = false
     } else {
       ElMessage.error(res.data?.message || '操作失败')
     }
@@ -604,7 +527,7 @@ const handleDialogAudit = async (action) => {
     console.error('Failed to process application', error)
     ElMessage.error('操作失败')
   } finally {
-    detailDialog.audit.loading = false
+    auditDialog.loading = false
   }
 }
 
@@ -937,7 +860,6 @@ const getActionTagType = (action) => {
 watch(
   () => detailDialog.data,
   (value) => {
-    detailDialog.audit.result = ''
     if (!value) {
       resetAttachmentState()
       resetResubmitState()
@@ -971,7 +893,7 @@ onMounted(fetchApplications)
         <span>申请列表</span>
         <div class="header-actions">
           <el-button :icon="Refresh" circle @click="fetchApplications" :loading="isLoading" title="刷新列表" />
-          <el-button type="primary" :icon="Plus" @click="handleNewApplication">新增申请</el-button>
+          <el-button v-if="!isAdmin()" type="primary" :icon="Plus" @click="handleNewApplication">新增申请</el-button>
         </div>
       </div>
     </template>
@@ -1003,38 +925,80 @@ onMounted(fetchApplications)
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right" align="center">
+        <el-table-column label="审批时间轴" width="100" fixed="right" align="center">
+          <template #default="scope">
+            <el-button
+              v-if="scope.row.status !== 'draft'"
+              type="primary"
+              link
+              :icon="View"
+              @click="handleViewDetail(scope.row)"
+            >
+              查看
+            </el-button>
+            <el-button
+              v-else
+              type="info"
+              link
+              :icon="View"
+              disabled
+            >
+              不可用
+            </el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120" fixed="right" align="center">
           <template #default="scope">
             <template v-if="scope.row.status === 'draft'">
-              <el-button type="danger" link :icon="Delete" @click="handleDeleteDraft(scope.row)">
-                删除草稿
-              </el-button>
               <el-button v-if="!isAdmin()" type="primary" link :icon="Edit" @click="handleContinueDraft(scope.row)">
-                修改表单
+                修改
               </el-button>
+              <el-tooltip content="删除草稿" placement="top">
+                <el-button type="danger" link :icon="Delete" @click="handleDeleteDraft(scope.row)" />
+              </el-tooltip>
             </template>
             <template v-else>
-              <el-button type="primary" link :icon="View" @click="handleViewDetail(scope.row)">
-                查看详情
-              </el-button>
               <el-button
-                v-if="scope.row.status === 'returned' && !isAdmin()"
+                v-if="isAdmin() && scope.row.status === 'pending'"
                 type="primary"
                 link
                 :icon="Edit"
-                @click="handleEditReturned(scope.row)"
+                @click="openAuditDialog(scope.row)"
               >
-                修改表单
+                审批
               </el-button>
               <el-button
-                v-else-if="scope.row.status === 'pending' && !isAdmin()"
+                v-else-if="isAdmin()"
                 type="info"
                 link
                 :icon="Edit"
                 disabled
               >
-                修改表单
+                审批
               </el-button>
+              <template v-else>
+                <el-button
+                  v-if="scope.row.status === 'returned'"
+                  type="primary"
+                  link
+                  :icon="Edit"
+                  @click="handleEditReturned(scope.row)"
+                >
+                  修改
+                </el-button>
+                <el-tooltip v-else-if="scope.row.status === 'pending'" content="审核中无法修改" placement="top">
+                  <div style="display: inline-block;">
+                    <el-button
+                      type="info"
+                      link
+                      :icon="Edit"
+                      disabled
+                    >
+                      修改
+                    </el-button>
+                  </div>
+                </el-tooltip>
+              </template>
             </template>
           </template>
         </el-table-column>
@@ -1319,44 +1283,6 @@ onMounted(fetchApplications)
                     </div>
                   </div>
 
-                  <!-- 管理员操作区域 -->
-                  <div
-                    v-if="isAdmin() && detailDialog.data?.status === 'pending' && detailDialog.timeline.length > 0 && detailDialog.timeline[detailDialog.timeline.length - 1]?.id === detailDialog.audit.selectedId"
-                    class="audit-action-area"
-                  >
-                    <div class="action-divider">审批操作</div>
-                    <el-input
-                      v-model="detailDialog.audit.result"
-                      type="textarea"
-                      :rows="3"
-                      maxlength="200"
-                      show-word-limit
-                      placeholder="请填写审核意见"
-                    />
-                    <div class="audit-action-buttons">
-                      <el-button
-                        type="warning"
-                        :loading="detailDialog.audit.loading"
-                        :icon="RefreshLeft"
-                        @click="handleDialogAudit('return')"
-                        >退回修改</el-button
-                      >
-                      <el-button
-                        type="danger"
-                        :loading="detailDialog.audit.loading"
-                        :icon="Close"
-                        @click="handleDialogAudit('reject')"
-                        >拒绝申请</el-button
-                      >
-                      <el-button
-                        type="success"
-                        :loading="detailDialog.audit.loading"
-                        :icon="Check"
-                        @click="handleDialogAudit('approve')"
-                        >通过申请</el-button
-                      >
-                    </div>
-                  </div>
                 </div>
               </el-col>
             </el-row>
@@ -1366,7 +1292,6 @@ onMounted(fetchApplications)
     </el-skeleton>
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="detailDialog.visible = false" style="margin-right: auto">返回</el-button>
         <el-button
           v-if="canResubmitApplication"
           type="primary"
@@ -1374,6 +1299,64 @@ onMounted(fetchApplications)
           >修改并重新提交</el-button
         >
       </div>
+    </template>
+  </el-dialog>
+
+  <!-- 审批对话框 -->
+  <el-dialog v-model="auditDialog.visible" title="审批申请" width="500px" :close-on-click-modal="false">
+    <el-form label-position="top">
+      <el-form-item label="审批操作">
+        <el-select v-model="auditDialog.action" placeholder="请选择审批操作" style="width: 100%">
+          <el-option label="退回修改" value="return">
+            <div style="display: flex; align-items: center;">
+              <el-icon style="color: var(--el-color-warning); margin-right: 8px"><Back /></el-icon>
+              <span>退回修改</span>
+            </div>
+          </el-option>
+          <el-option label="拒绝申请" value="reject">
+            <div style="display: flex; align-items: center;">
+              <el-icon style="color: var(--el-color-danger); margin-right: 8px"><Close /></el-icon>
+              <span>拒绝申请</span>
+            </div>
+          </el-option>
+          <el-option label="批准申请" value="approve">
+            <div style="display: flex; align-items: center;">
+              <el-icon style="color: var(--el-color-success); margin-right: 8px"><Check /></el-icon>
+              <span>批准申请</span>
+            </div>
+          </el-option>
+        </el-select>
+      </el-form-item>
+      <el-form-item v-if="auditDialog.action === 'approve'" label="许可期限" required>
+        <el-select v-model="auditDialog.licenseDuration" placeholder="请选择许可期限" style="width: 100%">
+          <el-option label="1 个月" :value="1" />
+          <el-option label="2 个月" :value="2" />
+          <el-option label="3 个月" :value="3" />
+          <el-option label="6 个月" :value="6" />
+          <el-option label="12 个月" :value="12" />
+          <el-option label="24 个月" :value="24" />
+        </el-select>
+      </el-form-item>
+      <el-form-item :label="auditLabel" :required="!!auditDialog.action && auditDialog.action !== 'approve'">
+        <el-input
+          v-if="!auditDialog.action"
+          disabled
+          type="textarea"
+          :rows="4"
+          placeholder="请先选择审批操作..."
+        />
+        <el-input
+          v-else
+          v-model="auditDialog.result"
+          type="textarea"
+          :rows="4"
+          :placeholder="`请输入${auditLabel}...`"
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="auditDialog.visible = false">取消</el-button>
+      <el-button type="primary" @click="handleAuditSubmit" :loading="auditDialog.loading">确认</el-button>
     </template>
   </el-dialog>
 </template>
@@ -1422,12 +1405,6 @@ onMounted(fetchApplications)
 }
 .attachment-table {
   margin-top: 8px;
-}
-.attachment-table :deep(.attachment-row-removed) {
-  background-color: #fff1f0;
-}
-.attachment-table :deep(.attachment-row-new) {
-  background-color: #f0f9ff;
 }
 .audit-action-area {
   display: flex;
@@ -1660,4 +1637,5 @@ onMounted(fetchApplications)
   font-size: 12px;
   color: #909399;
 }
+
 </style>

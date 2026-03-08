@@ -157,7 +157,7 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 	return nil
 }
 
-func (s *ApplicationService) ListApplications(applicantID *string) ([]model.ApplicationListItem, error) {
+func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts bool) ([]model.ApplicationListItem, error) {
 	ctx := context.Background()
 	var apps []model.Application
 
@@ -174,6 +174,10 @@ func (s *ApplicationService) ListApplications(applicantID *string) ([]model.Appl
 	// 只允许用户查询自己的申请
 	if applicantID != nil {
 		db = db.Where("applicant_id = ?", *applicantID)
+	}
+
+	if excludeDrafts {
+		db = db.Where("status != ?", model.DRAFT)
 	}
 
 	if err := db.Find(&apps).Error; err != nil {
