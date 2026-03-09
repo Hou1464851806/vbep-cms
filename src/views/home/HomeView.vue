@@ -19,6 +19,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 // 引入 axios 实例和清除 token 的方法
 import apiClient, { clearAuthToken } from '@/request/axios.js'
 import '@/assets/styles/universal.css'
+import sha256 from "crypto-js/sha256.js";
 
 // --- API 定义 ---
 const fetchUserInfoAPI = (userId) => apiClient.get(`/api/v1/users/${userId}`)
@@ -343,7 +344,8 @@ const submitPassword = async () => {
   await passwordFormRef.value.validate(async (valid) => {
     if (valid) {
       try {
-        const payload = { password: passwordForm.password }
+        const passwordHash = sha256(passwordForm.password).toString()
+        const payload = { password: passwordHash }
         const res = await updateUserAPI(userInfo.userID, payload)
 
         if (res.status === 200) {

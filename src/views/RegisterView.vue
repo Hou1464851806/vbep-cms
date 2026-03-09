@@ -6,6 +6,7 @@ import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import '@/assets/styles/login.css'
+import sha256 from 'crypto-js/sha256.js'
 
 const router = useRouter()
 
@@ -83,10 +84,11 @@ const submitRegisterForm = async () => {
     await registerFormRef.value.validate()
     console.log('表单校验通过，发送请求')
     isLoading.value = true
+    const passwordHash = sha256(registerForm.password).toString()
     const requestData = {
       email: registerForm.email,
       nickname: registerForm.nickname,
-      password: registerForm.password,
+      password: passwordHash,
       otp: registerForm.otp,
     }
     await axios.post('/api/v1/users/', requestData)
@@ -152,7 +154,7 @@ onBeforeUnmount(() => {
 
 const handleSendOTP = async () => {
   if (!registerFormRef.value) return
-  
+
   // 单独校验邮箱字段
   registerFormRef.value.validateField('email', async (isValid) => {
     if (isValid) {
