@@ -10,6 +10,8 @@ import (
 )
 
 func NewRouter() *gin.Engine {
+	gin.SetMode(gin.ReleaseMode)
+
 	r := gin.Default()
 
 	v1 := r.Group("/api/v1")
