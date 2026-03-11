@@ -7,6 +7,11 @@ import (
 	"os"
 )
 
+const (
+	ModeDebug = "debug"
+	ModeInfo  = "info"
+)
+
 func NewLogger() (*zap.Logger, *zap.SugaredLogger) {
 
 	cores := make([]zapcore.Core, 0)
@@ -29,6 +34,25 @@ func newFileZapCore() zapcore.Core {
 }
 
 func newConsoleZapCore() zapcore.Core {
-	c := zapcore.NewCore(zapcore.NewConsoleEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(os.Stdout), zapcore.DebugLevel)
+	mode := ModeInfo
+	if m := os.Getenv("LOGGER_MODE"); m != "" {
+		mode = m
+	}
+	var c zapcore.Core
+	switch mode {
+	case ModeDebug:
+		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.DebugLevel)
+	case ModeInfo:
+		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+	default:
+		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+	}
 	return c
+}
+
+func getConsoleEncoder() zapcore.Encoder {
+	config := zap.NewProductionEncoderConfig()
+	config.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05Z07:00")
+	config.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	return zapcore.NewConsoleEncoder(config)
 }

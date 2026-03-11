@@ -217,7 +217,7 @@ func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) er
 		<p>请点击下面的链接设置新密码（链接 15 分钟内有效）：</p>
 		<a href="%s">%s</a>
 		<p>如果您没有请求重置密码，请忽略此邮件。</p>`, resetUrl, resetUrl)
-	logger.Infof("Sending email: %s", resetUrl)
+	logger.Debugf("Sending email: %s", resetUrl)
 	err = s.emailService.SendResetPassword(userEmail, subject, content)
 	if err != nil {
 		return fmt.Errorf("failed to send reset password email to user: %v", err)

@@ -22,6 +22,6 @@ func NewViper() *viper.Viper {
 	if appMode := os.Getenv("APP_MODE"); appMode != "" {
 		global.CFG.AppMode = appMode
 	}
-	logger.Infof("Config: %#v", global.CFG)
+	logger.Debugf("Config: %#v", global.CFG)
 	return v
 }
