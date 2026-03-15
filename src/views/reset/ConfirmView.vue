@@ -6,6 +6,7 @@ import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter, useRoute } from 'vue-router'
 import '@/assets/styles/login.css'
+import sha256 from "crypto-js/sha256.js"
 
 const router = useRouter()
 const route = useRoute()
@@ -105,9 +106,10 @@ const submitReset = async () => {
     await formRef.value.validate()
     isLoading.value = true
 
+    const passwordHash = sha256(form.password).toString()
     await axios.post('/api/v1/users/reset/confirm', {
       token: form.token,
-      new_password: form.password,
+      new_password: passwordHash,
     })
 
     isSuccess.value = true

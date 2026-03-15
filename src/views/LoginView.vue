@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import apiClient, { setAuthToken } from '@/request/axios.js'
 import '@/assets/styles/login.css'
+import sha256 from "crypto-js/sha256.js"
 
 const router = useRouter()
 
@@ -42,10 +43,11 @@ const submitLoginFrom = async () => {
     // 步骤 A: 对整个表单进行校验
     await loginFormRef.value.validate()
     isLoading.value = true
+    const passwordHash = sha256(loginForm.password).toString()
     // 步骤 B: 准备并发送 API 请求
     const requestData = {
       userInfo: loginForm.userInfo,
-      password: loginForm.password,
+      password: passwordHash,
     }
     const response = await apiClient.post('/api/v1/users/login', requestData)
     // 步骤 C: 登录成功处理

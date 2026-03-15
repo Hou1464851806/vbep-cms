@@ -7,6 +7,7 @@ import (
 	"server/global"
 	"server/logger"
 	"server/model"
+	"server/pkg/utils"
 	"server/service"
 	"strings"
 
@@ -64,6 +65,14 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 		return
 	}
 
+	// 密码哈希
+	passwordHash, err := utils.PasswordToHash(param.Password)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": err.Error(),
+		})
+	}
+
 	// 3. 昵称处理逻辑
 	// 如果没有提供 NickName，则将其设置为 Email
 	finalNickName := param.NickName
@@ -73,7 +82,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 
 	// 4. 构建 Model 对象 (入库)
 	newUser := &model.User{
-		PWDHash:         param.Password,
+		PWDHash:         passwordHash,
 		NickName:        finalNickName,
 		Role:            model.Common,
 		Email:           param.Email,
@@ -81,7 +90,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 		// Phone is optional and not provided during registration
 	}
 
-	err := u.service.CreateUser(newUser)
+	err = u.service.CreateUser(newUser)
 	if err != nil {
 		logger.Errorf("Failed to create new user in db: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -220,24 +229,14 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		updates["is_email_verified"] = true
 	}
 
-	//if param.Phone != nil {
-	//	cleanPhone := strings.TrimSpace(*param.Phone)
-	//	if cleanPhone == "" {
-	//		updates["phone"] = nil
-	//		updates["is_phone_verified"] = false
-	//	} else {
-	//		// 验证 OTP
-	//		if param.OTP == nil || !u.service.VerifyOTP(cleanPhone, *param.OTP) {
-	//			ctx.JSON(http.StatusBadRequest, gin.H{"message": "绑定/修改手机号需要正确的验证码"})
-	//			return
-	//		}
-	//		updates["phone"] = cleanPhone
-	//		updates["is_phone_verified"] = true
-	//	}
-	//}
-
 	if param.Password != nil {
-		updates["pwd_hash"] = *param.Password
+		passwordHash, err := utils.PasswordToHash(*param.Password)
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{
+				"message": err.Error(),
+			})
+		}
+		updates["pwd_hash"] = passwordHash
 	}
 
 	if len(updates) == 0 {
@@ -397,7 +396,7 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 }
 
 type ConfirmResetPassReq struct {
-	NewPassword string `json:"new_password" binding:"required,min=6,max=20"`
+	NewPassword string `json:"new_password" binding:"required"`
 	Token       string `json:"token" binding:"required"`
 }
 

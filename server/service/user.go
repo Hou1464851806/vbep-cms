@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
 	"server/global"
 	"server/logger"
 	"server/model"
+	"server/pkg/utils"
 	"strings"
 	"time"
 
@@ -47,8 +49,9 @@ func (s *UserService) FindAndCheckUser(info string, password string) (*model.Use
 			return nil, fmt.Errorf("failed to find user: %w", err)
 		}
 	}
-	if password != user.PWDHash {
-		return nil, fmt.Errorf("invalid user")
+	//if password != user.PWDHash {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PWDHash), []byte(password)); err != nil {
+		return nil, fmt.Errorf("invalid user: %v", err)
 	}
 
 	return &user, nil
@@ -239,7 +242,11 @@ func (s *UserService) ConfirmResetPassword(token string, newPassword string) err
 		return err
 	}
 
-	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", user.ID).Update("pwd_hash", newPassword)
+	passwordHash, err := utils.PasswordToHash(newPassword)
+	if err != nil {
+		return err
+	}
+	result := global.DB.WithContext(ctx).Model(&model.User{}).Where("id = ?", user.ID).Update("pwd_hash", passwordHash)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update new password to user %s: %v", user.ID, result.Error)
 	}
