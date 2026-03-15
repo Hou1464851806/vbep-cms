@@ -14,6 +14,7 @@ import {
 import apiClient from '@/request/axios.js'
 import { ElMessage } from 'element-plus'
 import { formatFileSize, formatDateTime } from '@/utils/format.js'
+import 'echarts-wordcloud'
 
 const { proxy } = getCurrentInstance()
 const echarts = proxy.$echarts
@@ -46,16 +47,17 @@ const stats = ref({
     pendingApplications: 0,
     rejectedApplications: 0,
     returnedApplications: 0,
+    affiliationDistribution: {}
   },
   audit: {
-    submissions: 0,
-    auditApproved: 0,
-    auditRejected: 0,
-    auditReturned: 0,
-    auditPending: 0,
+    totalAudits: 0,
+    approvedAudits: 0,
+    rejectedAudits: 0,
+    returnedAudits: 0,
+    pendingAudits: 0,
   },
   file: {
-    files: 0,
+    totalFiles: 0,
     datasetFiles: 0,
     publicFiles: 0,
     applicationFiles: 0,
@@ -160,31 +162,53 @@ const initCharts = () => {
     })
   }
 
-  // 提交状态饼图
+  // 申请单位词云 (原提交状态饼图位置)
   if (submissionChartRef.value) {
     if (submissionChart) submissionChart.dispose()
     submissionChart = echarts.init(submissionChartRef.value)
 
-    const totalAudits = stats.value.audit.submissions
-    // 使用 Audit 维度的统计数据
-    const submissionData = totalAudits > 0 ? [
-      { value: stats.value.audit.auditApproved, name: '已通过', itemStyle: { color: '#67C23A' } },
-      { value: stats.value.audit.auditRejected, name: '已拒绝', itemStyle: { color: '#F56C6C' } },
-      { value: stats.value.audit.auditReturned, name: '被退回', itemStyle: { color: '#E6A23C' } },
-      { value: stats.value.audit.auditPending, name: '待审核', itemStyle: { color: '#909399' } }
-    ] : [{ value: 1, name: '暂无数据', itemStyle: { color: '#EBEEF5' } }]
+    const affiliationDist = stats.value.application.affiliationDistribution || {}
+    const wordData = Object.keys(affiliationDist).map(key => ({
+      name: key,
+      value: affiliationDist[key]
+    }))
 
     submissionChart.setOption({
-      tooltip: { show: totalAudits > 0, trigger: 'item' },
-      legend: { show: totalAudits > 0, top: '5%', left: 'center' },
+      tooltip: { show: true },
       series: [{
-        name: '申请状态',
-        type: 'pie',
-        radius: '50%',
-        data: submissionData,
+        type: 'wordCloud',
+        shape: 'circle',
+        sizeRange: [12, 50],
+        rotationRange: [0, 0],
+        rotationStep: 0,
+        gridSize: 8,
+        drawOutOfBound: false,
+        textStyle: {
+          fontFamily: 'sans-serif',
+          fontWeight: 'bold',
+          color: function () {
+            const colors = [
+              '#409EFF', // Primary
+              '#67C23A', // Success
+              '#E6A23C', // Warning
+              '#F56C6C', // Danger
+              '#909399', // Info
+              '#36cfc9', // Cyan
+              '#9254de', // Purple
+              '#ff9c6e', // Peach
+              '#597ef7'  // Blue
+            ]
+            return colors[Math.floor(Math.random() * colors.length)]
+          }
+        },
         emphasis: {
-          itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0, 0, 0, 0.5)' }
-        }
+          focus: 'self',
+          textStyle: {
+            shadowBlur: 10,
+            shadowColor: '#333'
+          }
+        },
+        data: wordData
       }]
     })
   }
@@ -368,7 +392,7 @@ const formatRate = (rate) => {
             <div class="merged-left">
               <div class="merged-item">
                 <div class="merged-label">文件总数</div>
-                <div class="merged-value">{{ stats.file.files }}</div>
+                <div class="merged-value">{{ stats.file.totalFiles }}</div>
               </div>
             </div>
             <!-- 右侧：饼图 -->
@@ -385,14 +409,14 @@ const formatRate = (rate) => {
         <el-card shadow="hover" class="stat-card chart-card">
           <template #header>
             <div class="card-header">
-              <span><el-icon><Check /></el-icon>申请提交情况</span>
+              <span><el-icon><Check /></el-icon>申请单位分布</span>
             </div>
           </template>
           <div class="merged-card-content">
             <div class="merged-left">
               <div class="merged-item">
-                <div class="merged-label">提交总数</div>
-                <div class="merged-value">{{ stats.audit.submissions }}</div>
+                <div class="merged-label">单位总数</div>
+                <div class="merged-value">{{ Object.keys(stats.application.affiliationDistribution || {}).length }}</div>
               </div>
             </div>
             <div class="merged-right">

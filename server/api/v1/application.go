@@ -43,6 +43,11 @@ type auditApplicationParam struct {
 	Duration int    `json:"duration"` // Duration in months, for approval
 }
 
+type submitDraftParam struct {
+	Affiliation string `json:"affiliation"`
+	Position    string `json:"position"`
+}
+
 type resubmitApplicationParam struct {
 }
 
@@ -130,7 +135,12 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 		return
 	}
 
-	if err := a.applicationService.SubmitDraftApplication(id, userIDStr); err != nil {
+	var param submitDraftParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		// Ignore binding error as body might be empty for legacy clients, but fields will be empty strings
+	}
+
+	if err := a.applicationService.SubmitDraftApplication(id, userIDStr, param.Affiliation, param.Position); err != nil {
 		if errors.Is(err, service.ErrApplicationPermissionDenied) {
 			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
 			return
@@ -141,6 +151,45 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 		}
 		logger.Errorf("failed to submit application %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "提交申请失败"})
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{})
+}
+
+func (a *ApplicationApi) UpdateDraft(ctx *gin.Context) {
+	id := ctx.Param("id")
+	if id == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "无效的申请ID"})
+		return
+	}
+
+	userIDStr, err := getUserIDFromContext(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		return
+	}
+
+	var param submitDraftParam
+	if err := ctx.ShouldBindJSON(&param); err != nil {
+		// Ignore binding error
+	}
+
+	if err := a.applicationService.UpdateDraftApplication(id, userIDStr, param.Affiliation, param.Position); err != nil {
+		if errors.Is(err, service.ErrApplicationPermissionDenied) {
+			ctx.JSON(http.StatusForbidden, gin.H{"message": "权限不足"})
+			return
+		}
+		if errors.Is(err, service.ErrApplicationNotEditable) {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "申请不可编辑"})
+			return
+		}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
+			return
+		}
+		logger.Errorf("failed to update application draft %s: %v", id, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "暂存失败"})
 		return
 	}
 
@@ -332,6 +381,8 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		keptFileIDs  []string
 		newFileHeads []*multipart.FileHeader
 		newFileTypes []string
+		affiliation  string
+		position     string
 	)
 
 	if strings.HasPrefix(ctx.ContentType(), "multipart/form-data") {
@@ -354,6 +405,8 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 			if types, ok := form.Value["types"]; ok {
 				newFileTypes = types
 			}
+			affiliation = ctx.PostForm("affiliation")
+			position = ctx.PostForm("position")
 		}
 	} else {
 		var param resubmitApplicationParam
@@ -373,7 +426,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		return
 	}
 
-	application, err := a.applicationService.ResubmitApplication(id, userIDStr, keptFileIDs, newFileHeads, newFileTypes)
+	application, err := a.applicationService.ResubmitApplication(id, userIDStr, affiliation, position, keptFileIDs, newFileHeads, newFileTypes)
 	if err != nil {
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):

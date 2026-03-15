@@ -55,20 +55,24 @@ type Application struct {
 	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
 	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
 	Version     int               `gorm:"not null;default:0"`                                                                 // 申请的版本号，每次重新提交+1
+	Affiliation string            `gorm:"type:varchar(255)"`                                                                  // 代表单位
+	Position    string            `gorm:"type:varchar(255)"`                                                                  // 职务
 	ExpireAt    *time.Time        `json:"expireAt"`                                                                           // 审批通过后的过期时间
 
 	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"`
 }
 
 type ApplicationListItem struct {
-	ID        string       `json:"id"`
-	Status    string       `json:"status"`
-	Version   int          `json:"version"`
-	Applicant UserBrief    `json:"applicant"`
-	Dataset   DatasetBrief `json:"dataset"`
-	UpdatedAt time.Time    `json:"updatedAt"`
-	CreatedAt time.Time    `json:"createdAt"`
-	ExpireAt  *time.Time   `json:"expireAt"`
+	ID          string       `json:"id"`
+	Status      string       `json:"status"`
+	Version     int          `json:"version"`
+	Applicant   UserBrief    `json:"applicant"`
+	Dataset     DatasetBrief `json:"dataset"`
+	Affiliation string       `json:"affiliation"`
+	Position    string       `json:"position"`
+	UpdatedAt   time.Time    `json:"updatedAt"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	ExpireAt    *time.Time   `json:"expireAt"`
 }
 
 type ApplicationDetail struct {
@@ -78,14 +82,16 @@ type ApplicationDetail struct {
 
 func (app Application) ToListItem() ApplicationListItem {
 	item := ApplicationListItem{
-		ID:        app.ID,
-		Status:    app.Status.String(),
-		Version:   app.Version,
-		Applicant: app.Applicant.ToBrief(),
-		Dataset:   app.Dataset.ToBrief(),
-		CreatedAt: app.CreatedAt,
-		UpdatedAt: app.UpdatedAt,
-		ExpireAt:  app.ExpireAt,
+		ID:          app.ID,
+		Status:      app.Status.String(),
+		Version:     app.Version,
+		Applicant:   app.Applicant.ToBrief(),
+		Dataset:     app.Dataset.ToBrief(),
+		Affiliation: app.Affiliation,
+		Position:    app.Position,
+		CreatedAt:   app.CreatedAt,
+		UpdatedAt:   app.UpdatedAt,
+		ExpireAt:    app.ExpireAt,
 	}
 	return item
 }

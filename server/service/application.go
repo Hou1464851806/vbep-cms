@@ -132,7 +132,7 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 	return nil
 }
 
-func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) error {
+func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation, position string) error {
 	ctx := context.Background()
 	// 申请提交事务
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -152,7 +152,12 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 
 		// 更新状态为 PENDING，版本号为1，正式提交
 		// 同时更新关联的 Audit 时间，使其反映用户点击“提交”的时间
-		if err := tx.Model(&app).Updates(map[string]interface{}{"status": model.PENDING, "version": 1}).Error; err != nil {
+		if err := tx.Model(&app).Updates(map[string]interface{}{
+			"status":      model.PENDING,
+			"version":     1,
+			"affiliation": affiliation,
+			"position":    position,
+		}).Error; err != nil {
 			return err
 		}
 
@@ -171,6 +176,35 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID string) erro
 	}
 
 	s.sendNotificationEmailToPublic("有新申请")
+
+	return nil
+}
+
+func (s *ApplicationService) UpdateDraftApplication(id, applicantID, affiliation, position string) error {
+	ctx := context.Background()
+	var app model.Application
+
+	if err := global.DB.WithContext(ctx).
+		Select("id, applicant_id, status").
+		Where("id = ?", id).
+		First(&app).Error; err != nil {
+		return err
+	}
+
+	if app.ApplicantID != applicantID {
+		return ErrApplicationPermissionDenied
+	}
+
+	if app.Status != model.DRAFT && app.Status != model.RETURNED {
+		return ErrApplicationNotEditable
+	}
+
+	if err := global.DB.WithContext(ctx).Model(&app).Updates(map[string]interface{}{
+		"affiliation": affiliation,
+		"position":    position,
+	}).Error; err != nil {
+		return fmt.Errorf("failed to update application draft: %w", err)
+	}
 
 	return nil
 }
@@ -362,7 +396,7 @@ func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID st
 	return &detail, nil
 }
 
-func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFileIDs []string, newFiles []*multipart.FileHeader, newFileTypes []string) (*model.ApplicationDetail, error) {
+func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, position string, keptFileIDs []string, newFiles []*multipart.FileHeader, newFileTypes []string) (*model.ApplicationDetail, error) {
 	ctx := context.Background()
 	cleanup := func(success bool) {}
 
@@ -394,8 +428,10 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID string, keptFil
 		if err := tx.Model(&model.Application{}).
 			Where("id = ?", id).
 			Updates(map[string]any{
-				"status":  model.PENDING,
-				"version": application.Version + 1,
+				"status":      model.PENDING,
+				"version":     application.Version + 1,
+				"affiliation": affiliation,
+				"position":    position,
 			}).Error; err != nil {
 			return fmt.Errorf("failed to resubmit application %s: %w", id, err)
 		}

@@ -36,8 +36,9 @@ const fetchApplicationFilesAPI = (id) => apiClient.get(`/api/v1/applications/${i
 const downloadApplicationFileAPI = (applicationId, fileId) =>
   apiClient.get(`/api/v1/applications/${applicationId}/files/${fileId}`, { responseType: 'blob' })
 const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
-const confirmApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/submit`)
+const confirmApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/submit`, data)
 const createApplicationAPI = (data) => apiClient.post('/api/v1/applications/', data)
+const updateApplicationDraftAPI = (id, data) => apiClient.put(`/api/v1/applications/${id}`, data)
 const fetchPublicTemplateFilesAPI = () => apiClient.get('/api/v1/files/public/templates')
 const downloadPublicFileAPI = (fileId) => apiClient.get(`/api/v1/files/public/${fileId}/download`, { responseType: 'blob' })
 const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
@@ -173,6 +174,8 @@ const draftDialog = reactive({
   isSubmitting: false,
   data: null,
   mode: 'create', // 'create' | 'resubmit'
+  affiliation: '',
+  position: '',
   mandatory: { list: [] },
   identity: { list: [] },
   optional: { list: [] },
@@ -244,6 +247,8 @@ const normalizeApplication = (item = {}) => {
       id: item.dataset?.id,
       title: item.dataset?.title,
     },
+    affiliation: item.affiliation || '',
+    position: item.position || '',
     applicant: {
       id: item.applicant?.id,
       nickname: item.applicant?.nickname,
@@ -577,6 +582,8 @@ const handleAuditSubmit = async () => {
 const openEditDialog = async (row, mode = 'create') => {
   draftDialog.data = row
   draftDialog.mode = mode
+  draftDialog.affiliation = row.affiliation || ''
+  draftDialog.position = row.position || ''
   draftDialog.mandatory.list = []
   draftDialog.identity.list = []
   draftDialog.optional.list = []
@@ -607,6 +614,8 @@ const openEditDialog = async (row, mode = 'create') => {
 const performResubmit = async (applicationId, keptFileIDs, newFiles) => {
   const formData = new FormData()
   formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
+  formData.append('affiliation', draftDialog.affiliation)
+  formData.append('position', draftDialog.position)
   newFiles.forEach((item) => {
     if (item.file) {
       formData.append('files', item.file, item.name)
@@ -762,6 +771,26 @@ const handleDeleteDraft = async (row) => {
   }
 }
 
+const handleSaveDraft = async () => {
+  if (!draftDialog.data?.id) return
+
+  draftDialog.isSubmitting = true
+  try {
+    await updateApplicationDraftAPI(draftDialog.data.id, {
+      affiliation: draftDialog.affiliation,
+      position: draftDialog.position,
+    })
+    ElMessage.success('已暂存')
+    draftDialog.visible = false
+    await fetchApplications()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error.response?.data?.message || '暂存失败')
+  } finally {
+    draftDialog.isSubmitting = false
+  }
+}
+
 const handleSubmitDraft = async () => {
   // 校验逻辑：检查列表中是否有文件（无论是新上传的还是已有的）
   // 此时文件应该已经上传，item 应该有 id (旧文件) 或 response.file.fileID (新文件)
@@ -812,12 +841,17 @@ const handleSubmitDraft = async () => {
       // 调用 resubmit 接口，只传 keptFileIDs，不传 files (因为都已上传)
       const formData = new FormData()
       formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
+      formData.append('affiliation', draftDialog.affiliation)
+      formData.append('position', draftDialog.position)
       await resubmitApplicationAPI(applicationId, formData)
       
       ElMessage.success('申请已重新提交')
     } else {
       // 草稿模式：文件已在选择时上传，直接确认提交
-      await confirmApplicationAPI(applicationId)
+      await confirmApplicationAPI(applicationId, {
+        affiliation: draftDialog.affiliation,
+        position: draftDialog.position,
+      })
       ElMessage.success('申请已提交')
     }
     
@@ -1116,8 +1150,8 @@ onMounted(fetchApplications)
   >
     <div v-loading="draftDialog.isSubmitting">
       <div class="upload-section">
-        <div class="upload-label required-label">1. 上传申请文件 (必填)</div>
-        <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
+        <div class="upload-label required-label">1. 申请表 (必填)</div>
+        <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个（每个不超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}）。</div>
         <el-upload
           class="upload-demo"
           ref="mandatoryUploadRef"
@@ -1131,37 +1165,49 @@ onMounted(fetchApplications)
           :on-remove="handleRemoveFile"
           v-model:file-list="draftDialog.mandatory.list"
         >
-          <el-button type="primary" :icon="Upload">{{ draftDialog.mandatory.list.length > 0 ? '替换文件' : '选择 PDF 文件' }}</el-button>
+          <el-button :icon="Upload">{{ draftDialog.mandatory.list.length > 0 ? '替换文件' : '选择文件' }}</el-button>
         </el-upload>
       </div>
 
       <el-divider />
 
       <div class="upload-section">
-        <div class="upload-label required-label">2. 上传身份证明文件 (必填)</div>
-        <div class="upload-desc">请上传身份证、学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个。</div>
-        <el-upload
-          class="upload-demo"
-          ref="identityUploadRef"
-          action="#"
-          :auto-upload="true"
-          :accept="IDENTITY_EXTENSIONS.join(',')"
-          :limit="1"
-          :on-exceed="handleExceedIdentity"
-          :http-request="(options) => handleUploadRequest(options, 'identity')"
-          :before-upload="(file) => handleBeforeUpload(file, 'identity')"
-          :on-remove="handleRemoveFile"
-          v-model:file-list="draftDialog.identity.list"
-        >
-          <el-button :icon="Upload">{{ draftDialog.identity.list.length > 0 ? '替换文件' : '选择文件' }}</el-button>
-        </el-upload>
+        <div class="upload-label required-label">2. 身份信息 (必填)</div>
+        
+        <div class="sub-input-group">
+          <div class="input-guide-text">请再次确认您所代表的单位和职务：</div>
+          <div style="display: flex; gap: 16px;">
+            <el-input v-model="draftDialog.affiliation" placeholder="单位全称" style="flex: 2" />
+            <el-input v-model="draftDialog.position" placeholder="职务" style="flex: 1" />
+          </div>
+        </div>
+
+        <div class="sub-input-group">
+          <div class="input-guide-text">请上传身份证明文件：</div>
+          <div class="upload-desc">请上传学生证或工作证等有效身份证明文件，支持 PDF、Word、图片格式，限传 1 个（每个不超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}）。</div>
+          <el-upload
+            class="upload-demo"
+            ref="identityUploadRef"
+            action="#"
+            :auto-upload="true"
+            :accept="IDENTITY_EXTENSIONS.join(',')"
+            :limit="1"
+            :on-exceed="handleExceedIdentity"
+            :http-request="(options) => handleUploadRequest(options, 'identity')"
+            :before-upload="(file) => handleBeforeUpload(file, 'identity')"
+            :on-remove="handleRemoveFile"
+            v-model:file-list="draftDialog.identity.list"
+          >
+            <el-button :icon="Upload">{{ draftDialog.identity.list.length > 0 ? '替换文件' : '选择文件' }}</el-button>
+          </el-upload>
+        </div>
       </div>
 
       <el-divider />
 
       <div class="upload-section">
         <div class="upload-label">3. 补充材料 (可选)</div>
-        <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
+        <div class="upload-desc">如有其他证明材料或情况说明，可在此上传。支持大部分常见格式，不限数量。（每个不超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}）。</div>
         <el-upload
           class="upload-demo"
           action="#"
@@ -1177,7 +1223,7 @@ onMounted(fetchApplications)
       </div>
     </div>
     <template #footer>
-      <el-button @click="draftDialog.visible = false" :disabled="draftDialog.isSubmitting">暂存</el-button>
+      <el-button @click="handleSaveDraft" :loading="draftDialog.isSubmitting">暂存</el-button>
       <el-button 
         type="primary" 
         @click="handleSubmitDraft" 
@@ -1210,17 +1256,21 @@ onMounted(fetchApplications)
                   </span>
                 </el-tooltip>
               </el-descriptions-item>
+              <el-descriptions-item label="创建时间">
+                {{ detailDialog.data.createdAt }}
+              </el-descriptions-item>
               <el-descriptions-item label="申请人">
                 {{ detailDialog.data.applicant.nickname }}
                 <span v-if="detailDialog.data.applicant.email" class="sub-text">
                   ({{ detailDialog.data.applicant.email }})
                 </span>
               </el-descriptions-item>
-              <el-descriptions-item label="创建时间">
-                {{ detailDialog.data.createdAt }}
-              </el-descriptions-item>
               <el-descriptions-item label="最后修改时间">
                 {{ detailDialog.data.auditedAt || '-' }}
+              </el-descriptions-item>
+              <el-descriptions-item label="单位/职务">
+                {{ detailDialog.data.affiliation || '-' }}
+                <span v-if="detailDialog.data.position"> / {{ detailDialog.data.position }}</span>
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
@@ -1848,5 +1898,13 @@ onMounted(fetchApplications)
 }
 .license-status-box.is-unavailable .license-icon {
   color: #c8c9cc;
+}
+.sub-input-group {
+  margin-bottom: 20px;
+}
+.input-guide-text {
+  font-size: 14px;
+  color: #606266;
+  margin-bottom: 8px;
 }
 </style>

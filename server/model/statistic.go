@@ -22,23 +22,24 @@ type DatasetStats struct {
 }
 
 type ApplicationStats struct {
-	TotalApplications    int64 `gorm:"not null" json:"totalApplications"`    // 总申请数量
-	ApprovedApplications int64 `gorm:"not null" json:"approvedApplications"` // 通过的申请量
-	PendingApplications  int64 `gorm:"not null" json:"pendingApplications"`  // 待审核/未提交
-	RejectedApplications int64 `gorm:"not null" json:"rejectedApplications"` // 已拒绝
-	ReturnedApplications int64 `gorm:"not null" json:"returnedApplications"` // 已退回
+	TotalApplications       int64            `gorm:"not null" json:"totalApplications"`              // 总申请数量
+	ApprovedApplications    int64            `gorm:"not null" json:"approvedApplications"`           // 通过的申请量
+	PendingApplications     int64            `gorm:"not null" json:"pendingApplications"`            // 待审核/未提交
+	RejectedApplications    int64            `gorm:"not null" json:"rejectedApplications"`           // 已拒绝
+	ReturnedApplications    int64            `gorm:"not null" json:"returnedApplications"`           // 已退回
+	AffiliationDistribution map[string]int64 `gorm:"serializer:json" json:"affiliationDistribution"` // 各单位申请分布
 }
 
 type AuditStats struct {
-	Submissions   int64 `gorm:"not null" json:"submissions"`   // 总申请提交次数
-	AuditApproved int64 `gorm:"not null" json:"auditApproved"` // 审批通过次数 (Audit)
-	AuditRejected int64 `gorm:"not null" json:"auditRejected"` // 审批拒绝次数 (Audit)
-	AuditReturned int64 `gorm:"not null" json:"auditReturned"` // 审批退回次数 (Audit)
-	AuditPending  int64 `gorm:"not null" json:"auditPending"`  // 待审核次数 (Audit)
+	TotalAudits    int64 `gorm:"not null" json:"totalAudits"`    // 总申请提交次数
+	ApprovedAudits int64 `gorm:"not null" json:"approvedAudits"` // 审批通过次数 (Audit)
+	RejectedAudits int64 `gorm:"not null" json:"rejectedAudits"` // 审批拒绝次数 (Audit)
+	ReturnedAudits int64 `gorm:"not null" json:"returnedAudits"` // 审批退回次数 (Audit)
+	PendingAudits  int64 `gorm:"not null" json:"pendingAudits"`  // 待审核次数 (Audit)
 }
 
 type FileStats struct {
-	Files            int64 `gorm:"not null;default:0" json:"files"`            // 文件总数 (全量)
+	TotalFiles       int64 `gorm:"not null;default:0" json:"totalFiles"`       // 文件总数 (全量)
 	DatasetFiles     int64 `gorm:"not null;default:0" json:"datasetFiles"`     // 数据集文件总数
 	PublicFiles      int64 `gorm:"not null;default:0" json:"publicFiles"`      // 公开下载文件总数
 	ApplicationFiles int64 `gorm:"not null;default:0" json:"applicationFiles"` // 申请附件总数

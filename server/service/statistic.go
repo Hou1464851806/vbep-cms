@@ -66,19 +66,19 @@ func (s *StatisticService) GenerateStats() error {
 	}
 
 	// 4. 提交次数统计
-	if err := db.Model(&model.Audit{}).Count(&stats.Audit.Submissions).Error; err != nil {
+	if err := db.Model(&model.Audit{}).Count(&stats.Audit.TotalAudits).Error; err != nil {
 		return err
 	}
-	if err := db.Model(&model.Audit{}).Where("action = ?", model.PENDING).Count(&stats.Audit.AuditPending).Error; err != nil {
+	if err := db.Model(&model.Audit{}).Where("action = ?", model.PENDING).Count(&stats.Audit.PendingAudits).Error; err != nil {
 		return err
 	}
-	if err := db.Model(&model.Audit{}).Where("action = ?", model.APPROVED).Count(&stats.Audit.AuditApproved).Error; err != nil {
+	if err := db.Model(&model.Audit{}).Where("action = ?", model.APPROVED).Count(&stats.Audit.ApprovedAudits).Error; err != nil {
 		return err
 	}
-	if err := db.Model(&model.Audit{}).Where("action = ?", model.REJECTED).Count(&stats.Audit.AuditRejected).Error; err != nil {
+	if err := db.Model(&model.Audit{}).Where("action = ?", model.REJECTED).Count(&stats.Audit.RejectedAudits).Error; err != nil {
 		return err
 	}
-	if err := db.Model(&model.Audit{}).Where("action = ?", model.RETURNED).Count(&stats.Audit.AuditReturned).Error; err != nil {
+	if err := db.Model(&model.Audit{}).Where("action = ?", model.RETURNED).Count(&stats.Audit.ReturnedAudits).Error; err != nil {
 		return err
 	}
 
@@ -96,8 +96,23 @@ func (s *StatisticService) GenerateStats() error {
 		return err
 	}
 
+	// 统计各单位申请数量 (用于词云)
+	var affiliationCounts []struct {
+		Affiliation string
+		Count       int64
+	}
+	if err := db.Model(&model.Application{}).Select("affiliation, count(*) as count").Group("affiliation").Scan(&affiliationCounts).Error; err != nil {
+		return err
+	}
+	stats.Application.AffiliationDistribution = make(map[string]int64)
+	for _, u := range affiliationCounts {
+		if u.Affiliation != "" {
+			stats.Application.AffiliationDistribution[u.Affiliation] = u.Count
+		}
+	}
+
 	// 6. 文件统计
-	if err := db.Model(&model.File{}).Count(&stats.File.Files).Error; err != nil {
+	if err := db.Model(&model.File{}).Count(&stats.File.TotalFiles).Error; err != nil {
 		return err
 	}
 	if err := db.Model(&model.File{}).Where("owner_type = ?", datasetOwnerType).Count(&stats.File.DatasetFiles).Error; err != nil {
