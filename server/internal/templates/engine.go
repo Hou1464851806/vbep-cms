@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"path/filepath"
+	"server/logger"
 	"sync"
 )
 
@@ -14,13 +15,13 @@ type TemplateEngine struct {
 	templateDir string
 }
 
-func NewTemplateEngine(dir string) (*TemplateEngine, error) {
+func NewTemplateEngine(dir string) *TemplateEngine {
 	engine := &TemplateEngine{templateDir: dir}
 	err := engine.Reload()
 	if err != nil {
-		return nil, fmt.Errorf("failed to reload templates: %v", err)
+		logger.Errorf("Failed to reload templates: %v", err)
 	}
-	return engine, nil
+	return engine
 }
 
 // Reload 提供热更新机制，可在其他地方调用来更新模板

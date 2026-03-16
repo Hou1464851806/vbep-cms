@@ -353,6 +353,7 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	}
 
 	if err := u.service.SendOTP(param.Target); err != nil {
+		logger.Errorf("Failed to send otp: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "发送失败"})
 		return
 	}

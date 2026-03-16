@@ -19,12 +19,13 @@ import (
 )
 
 type UserService struct {
-	otpService   OTPService
+	otpService   *OTPService
 	emailService *MailService
 }
 
-func NewUserServiceWithEmailService(emailService *MailService) *UserService {
+func NewUserServiceWithEmailService(emailService *MailService, otpService *OTPService) *UserService {
 	return &UserService{
+		otpService:   otpService,
 		emailService: emailService,
 	}
 }

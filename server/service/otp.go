@@ -16,12 +16,22 @@ var (
 	captchaStore = base64Captcha.DefaultMemStore
 )
 
+const ExpireMinute = 10
+
 type otpData struct {
 	Code      string
 	ExpiresAt time.Time
 }
 
-type OTPService struct{}
+type OTPService struct {
+	emailService *MailService
+}
+
+func NewOPTService(emailService *MailService) *OTPService {
+	return &OTPService{
+		emailService: emailService,
+	}
+}
 
 func (s *OTPService) GenerateCaptcha() (string, string) {
 	// 切换为字符模式：高度80, 宽度240, 噪点2, 线条2, 长度4, 字符源(数字+字母)
@@ -54,14 +64,10 @@ func (s *OTPService) SendOTP(target string) error {
 
 	otpStore.Store(target, otpData{
 		Code:      code,
-		ExpiresAt: time.Now().Add(10 * time.Minute),
+		ExpiresAt: time.Now().Add(time.Duration(ExpireMinute) * time.Minute),
 	})
 
-	// Mock sending email/SMS by printing to console
-	fmt.Printf("\n========================================\n")
-	fmt.Printf("[MOCK OTP] To: %s | Code: %s\n", target, code)
-	fmt.Printf("========================================\n\n")
-	return nil
+	return s.emailService.SendVerificationCode(target, "您的账户注册验证码", code, ExpireMinute)
 }
 
 func (s *OTPService) VerifyOTP(target, code string) bool {

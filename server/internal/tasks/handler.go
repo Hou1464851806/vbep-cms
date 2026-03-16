@@ -9,6 +9,10 @@ import (
 	"server/logger"
 )
 
+const (
+	QueueCritical = "critical"
+)
+
 type EmailTaskHandler struct {
 	Sender mail.EmailSender
 }
