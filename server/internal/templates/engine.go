@@ -11,7 +11,7 @@ import (
 
 type TemplateEngine struct {
 	mu          sync.RWMutex
-	templates   *template.Template
+	templates   map[string]*template.Template
 	templateDir string
 }
 
@@ -26,11 +26,30 @@ func NewTemplateEngine(dir string) *TemplateEngine {
 
 // Reload 提供热更新机制，可在其他地方调用来更新模板
 func (e *TemplateEngine) Reload() error {
+	layoutPath := filepath.Join(e.templateDir, "layout.html")
+
 	pattern := filepath.Join(e.templateDir, "*.html")
-	newTemplates, err := template.ParseGlob(pattern)
+	templateFiles, err := filepath.Glob(pattern)
 	if err != nil {
-		return fmt.Errorf("failed to parse html files: %v", err)
+		return fmt.Errorf("failed to glob template files: %v", err)
 	}
+
+	newTemplates := make(map[string]*template.Template)
+	for _, file := range templateFiles {
+		templateName := filepath.Base(file)
+		if templateName == "layout.html" {
+			continue
+		}
+
+		tmpl, err := template.ParseFiles(layoutPath, file)
+		if err != nil {
+			return fmt.Errorf("failed to parse html template %s: %v", templateName, err)
+		}
+
+		newTemplates[templateName] = tmpl
+	}
+
+	logger.Debugf("All templates: %v", newTemplates)
 
 	// 重载模板时加写锁，是为了保证模板加载的操作唯一性
 	e.mu.Lock()
@@ -46,24 +65,13 @@ func (e *TemplateEngine) Render(templateName string, data Data) (string, error) 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	t := e.templates.Lookup(templateName)
-	if t == nil {
-		return "", fmt.Errorf("failed to find template of [%s]", templateName)
-	}
-
-	clone, err := e.templates.Clone()
-	if err != nil {
-		return "", fmt.Errorf("failed to clone templates: %v", err)
-	}
-
-	_, err = clone.AddParseTree("content", t.Tree)
-	if err != nil {
-		return "", fmt.Errorf("failed to add content to base template: %v", err)
+	t, exists := e.templates[templateName]
+	if !exists {
+		return "", fmt.Errorf("failed to find template [%s]", templateName)
 	}
 
 	var buf bytes.Buffer
-
-	err = clone.ExecuteTemplate(&buf, "layout", data)
+	err := t.ExecuteTemplate(&buf, "layout", data)
 	if err != nil {
 		return "", fmt.Errorf("failed to execute final html: %v", err)
 	}
