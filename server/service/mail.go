@@ -54,18 +54,24 @@ func (s *MailService) SendVerificationCode(target string, subject string, code s
 	return s.pushNewMail(msg, tasks.QueueCritical, 3)
 }
 
-func (s *MailService) SendResetPassword(target, subject, content string) error {
-	msg := mail.Message{
-		To:      target,
+func (s *MailService) SendResetPassword(target string, subject string, link string, expireTime int) error {
+	data := templates.Data{
 		Subject: subject,
-		Body:    content,
+		Content: templates.ResetPasswordContent{
+			Link:       link,
+			ExpireTime: expireTime,
+		},
 	}
-	task, err := tasks.NewEmailDeliveryTask(msg)
+	body, err := s.engine.Render(templates.ResetPasswordHtml, data)
 	if err != nil {
 		return err
 	}
-	_, err = s.client.Enqueue(task, asynq.Queue("critical"), asynq.MaxRetry(3))
-	return err
+	msg := mail.Message{
+		To:      target,
+		Subject: subject,
+		Body:    body,
+	}
+	return s.pushNewMail(msg, tasks.QueueCritical, 3)
 }
 
 func (s *MailService) SendNotification(target string, subject string, content string) error {

@@ -16,8 +16,6 @@ var (
 	captchaStore = base64Captcha.DefaultMemStore
 )
 
-const ExpireMinute = 10
-
 type otpData struct {
 	Code      string
 	ExpiresAt time.Time
@@ -61,13 +59,14 @@ func (s *OTPService) SendOTP(target string) error {
 		return err
 	}
 	code := fmt.Sprintf("%06d", n.Int64())
+	expireMinute := 10
 
 	otpStore.Store(target, otpData{
 		Code:      code,
-		ExpiresAt: time.Now().Add(time.Duration(ExpireMinute) * time.Minute),
+		ExpiresAt: time.Now().Add(time.Duration(expireMinute) * time.Minute),
 	})
 
-	return s.emailService.SendVerificationCode(target, "您的账户注册验证码", code, ExpireMinute)
+	return s.emailService.SendVerificationCode(target, "您的账户注册验证码", code, expireMinute)
 }
 
 func (s *OTPService) VerifyOTP(target, code string) bool {

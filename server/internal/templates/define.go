@@ -2,6 +2,7 @@ package templates
 
 const (
 	VerificationCodeHtml = "verification_code.html"
+	ResetPasswordHtml    = "reset_password.html"
 )
 
 type Data struct {
