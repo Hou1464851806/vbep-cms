@@ -1,11 +1,11 @@
 package service
 
 import (
-	"fmt"
 	"github.com/hibiken/asynq"
 	"server/internal/mail"
 	"server/internal/tasks"
 	"server/internal/templates"
+	"server/logger"
 )
 
 // MailService 向asynq队列发送邮件
@@ -30,8 +30,26 @@ func (s *MailService) pushNewMail(msg mail.Message, queueName string, maxRetry i
 	if maxRetry > 0 {
 		opts = append(opts, asynq.MaxRetry(maxRetry))
 	}
-	_, err = s.client.Enqueue(task, opts...)
+	t, err := s.client.Enqueue(task, opts...)
+	logger.Debugf("Task info: %s %s", t.Queue, t.MaxRetry)
 	return err
+}
+
+func (s *MailService) SendNewMail(target string, subject string, templateName string, content any, queueName string, maxRetry int) error {
+	data := templates.Data{
+		Subject: subject,
+		Content: content,
+	}
+	body, err := s.engine.Render(templateName, data)
+	if err != nil {
+		return err
+	}
+	msg := mail.Message{
+		To:      target,
+		Subject: subject,
+		Body:    body,
+	}
+	return s.pushNewMail(msg, queueName, maxRetry)
 }
 
 func (s *MailService) SendVerificationCode(target string, subject string, code string, expireTime int) error {
@@ -114,19 +132,4 @@ func (s *MailService) SendAppChangeNotification(target string, subject string, d
 		Body:    body,
 	}
 	return s.pushNewMail(msg, tasks.QueueDefault, 0)
-}
-
-func (s *MailService) SendNotification(target string, subject string, content string) error {
-	body := fmt.Sprintf("收到一条新的系统提醒：<br/> %s", content)
-	msg := mail.Message{
-		To:      target,
-		Subject: subject,
-		Body:    body,
-	}
-	task, err := tasks.NewEmailDeliveryTask(msg)
-	if err != nil {
-		return err
-	}
-	_, err = s.client.Enqueue(task, asynq.Queue("default"))
-	return err
 }

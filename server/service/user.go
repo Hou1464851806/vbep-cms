@@ -9,6 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"server/global"
+	"server/internal/tasks"
+	"server/internal/templates"
 	"server/logger"
 	"server/model"
 	"server/pkg/utils"
@@ -211,9 +213,14 @@ func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) er
 	}
 
 	resetUrl := fmt.Sprintf("%s?token=%s", frontendUrl, token)
+
 	// 向用户邮箱发送密码重置邮件
 	subject := "重置您的密码"
-	return s.emailService.SendResetPassword(userEmail, subject, resetUrl, expireMinute)
+	content := templates.ResetPasswordContent{
+		Link:       resetUrl,
+		ExpireTime: expireMinute,
+	}
+	return s.emailService.SendNewMail(userEmail, subject, templates.ResetPasswordHtml, content, tasks.QueueCritical, 3)
 }
 
 func (s *UserService) ConfirmResetPassword(token string, newPassword string) error {

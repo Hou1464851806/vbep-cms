@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"server/internal/tasks"
+	"server/internal/templates"
 	"strings"
 	"sync"
 	"time"
@@ -66,7 +68,11 @@ func (s *OTPService) SendOTP(target string) error {
 		ExpiresAt: time.Now().Add(time.Duration(expireMinute) * time.Minute),
 	})
 
-	return s.emailService.SendVerificationCode(target, "您的账户注册验证码", code, expireMinute)
+	content := templates.VerificationCodeContent{
+		Code:       code,
+		ExpireTime: expireMinute,
+	}
+	return s.emailService.SendNewMail(target, "您的账户注册验证码", templates.VerificationCodeHtml, content, tasks.QueueCritical, 3)
 }
 
 func (s *OTPService) VerifyOTP(target, code string) bool {

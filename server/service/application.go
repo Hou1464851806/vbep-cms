@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"mime/multipart"
+	"server/internal/tasks"
+	"server/internal/templates"
 	"server/logger"
 	"time"
 
@@ -380,7 +382,12 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 
 	subject := fmt.Sprintf("您的申请%s", statusStr)
 	datasetTitle := appDetail.Dataset.Title
-	err = s.mailService.SendAppChangeNotification(userEmail, subject, datasetTitle, statusStr, id)
+	content := templates.AppChangeNotificationContent{
+		DatasetTitle: datasetTitle,
+		Status:       statusStr,
+		Url:          id,
+	}
+	err = s.mailService.SendNewMail(userEmail, subject, templates.AppChangeNotificationHtml, content, tasks.QueueDefault, 0)
 	if err != nil {
 		logger.Errorf("failed to send app change notification to user email %s: %v", userEmail, err)
 	}
@@ -491,16 +498,13 @@ func (s *ApplicationService) sendNewAppNotificationEmail(subject string, dataset
 		logger.Warnf("public email is empty")
 		return
 	}
-	err = s.mailService.SendNewAppNotification(publicEmail, subject, datasetTitle, url)
+	content := templates.NewAppNotificationContent{
+		DatasetTitle: datasetTitle,
+		Url:          url,
+	}
+	err = s.mailService.SendNewMail(publicEmail, subject, templates.NewAppNotificationHtml, content, tasks.QueueDefault, 0)
 	if err != nil {
 		logger.Errorf("failed to send new application notification to public mail: %v", err)
 		return
-	}
-}
-
-func (s *ApplicationService) sendNotificationEmailToUser(userEmail string, subject string, content string) {
-	err := s.mailService.SendNotification(userEmail, subject, content)
-	if err != nil {
-		logger.Errorf("failed to send notification to user mail: %v", err)
 	}
 }
