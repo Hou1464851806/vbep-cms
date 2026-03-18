@@ -361,20 +361,28 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 	}
 
 	userEmail := appDetail.Applicant.Email
-	if userEmail != "" {
-		var subject string
-		switch status {
-		case model.APPROVED:
-			subject = "您的申请已经通过"
-		case model.REJECTED:
-			subject = "您的申请无法通过"
-		case model.RETURNED:
-			subject = "您的申请已被退回"
-		default:
-			subject = "您的申请状态更新"
-		}
+	if userEmail == "" {
+		logger.Warnf("user email is empty")
+		return appDetail, nil
+	}
 
-		s.sendNotificationEmailToUser(userEmail, subject, "")
+	var statusStr string
+	switch status {
+	case model.APPROVED:
+		statusStr = "已经通过"
+	case model.REJECTED:
+		statusStr = "已被拒绝"
+	case model.RETURNED:
+		statusStr = "已被退回"
+	default:
+		statusStr = "状态更新"
+	}
+
+	subject := fmt.Sprintf("您的申请%s", statusStr)
+	datasetTitle := appDetail.Dataset.Title
+	err = s.mailService.SendAppChangeNotification(userEmail, subject, datasetTitle, statusStr, id)
+	if err != nil {
+		logger.Errorf("failed to send app change notification to user email %s: %v", userEmail, err)
 	}
 
 	return appDetail, nil

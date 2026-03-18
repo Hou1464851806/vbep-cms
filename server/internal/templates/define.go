@@ -1,9 +1,10 @@
 package templates
 
 const (
-	VerificationCodeHtml   = "verification_code.html"
-	ResetPasswordHtml      = "reset_password.html"
-	NewAppNotificationHtml = "new_app_notification.html"
+	VerificationCodeHtml      = "verification_code.html"
+	ResetPasswordHtml         = "reset_password.html"
+	NewAppNotificationHtml    = "new_app_notification.html"
+	AppChangeNotificationHtml = "app_change_notification.html"
 )
 
 type Data struct {
@@ -23,5 +24,11 @@ type ResetPasswordContent struct {
 
 type NewAppNotificationContent struct {
 	DatasetTitle string
+	Url          string
+}
+
+type AppChangeNotificationContent struct {
+	DatasetTitle string
+	Status       string
 	Url          string
 }

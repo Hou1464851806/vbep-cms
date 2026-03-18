@@ -95,6 +95,27 @@ func (s *MailService) SendNewAppNotification(target string, subject string, data
 	return s.pushNewMail(msg, tasks.QueueDefault, 0)
 }
 
+func (s *MailService) SendAppChangeNotification(target string, subject string, datasetTittle string, status string, url string) error {
+	data := templates.Data{
+		Subject: subject,
+		Content: templates.AppChangeNotificationContent{
+			DatasetTitle: datasetTittle,
+			Status:       status,
+			Url:          url,
+		},
+	}
+	body, err := s.engine.Render(templates.AppChangeNotificationHtml, data)
+	if err != nil {
+		return err
+	}
+	msg := mail.Message{
+		To:      target,
+		Subject: subject,
+		Body:    body,
+	}
+	return s.pushNewMail(msg, tasks.QueueDefault, 0)
+}
+
 func (s *MailService) SendNotification(target string, subject string, content string) error {
 	body := fmt.Sprintf("收到一条新的系统提醒：<br/> %s", content)
 	msg := mail.Message{
