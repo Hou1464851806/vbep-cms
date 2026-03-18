@@ -1,8 +1,9 @@
 package templates
 
 const (
-	VerificationCodeHtml = "verification_code.html"
-	ResetPasswordHtml    = "reset_password.html"
+	VerificationCodeHtml   = "verification_code.html"
+	ResetPasswordHtml      = "reset_password.html"
+	NewAppNotificationHtml = "new_app_notification.html"
 )
 
 type Data struct {
@@ -18,4 +19,9 @@ type VerificationCodeContent struct {
 type ResetPasswordContent struct {
 	Link       string // 重置密码链接
 	ExpireTime int    // 链接过期时间
+}
+
+type NewAppNotificationContent struct {
+	DatasetTitle string
+	Url          string
 }

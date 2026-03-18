@@ -11,6 +11,7 @@ import (
 
 const (
 	QueueCritical = "critical"
+	QueueDefault  = "default"
 )
 
 type EmailTaskHandler struct {

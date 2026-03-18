@@ -74,6 +74,27 @@ func (s *MailService) SendResetPassword(target string, subject string, link stri
 	return s.pushNewMail(msg, tasks.QueueCritical, 3)
 }
 
+// SendNewAppNotification 后面的参数应该允许使用任意的数据，接收数据后解析到模板数据上（或者可以展开参数按位置进行匹配，html模板里的参数用T1 T2来占位）
+func (s *MailService) SendNewAppNotification(target string, subject string, datasetTittle string, url string) error {
+	data := templates.Data{
+		Subject: subject,
+		Content: templates.NewAppNotificationContent{
+			DatasetTitle: datasetTittle,
+			Url:          url,
+		},
+	}
+	body, err := s.engine.Render(templates.NewAppNotificationHtml, data)
+	if err != nil {
+		return err
+	}
+	msg := mail.Message{
+		To:      target,
+		Subject: subject,
+		Body:    body,
+	}
+	return s.pushNewMail(msg, tasks.QueueDefault, 0)
+}
+
 func (s *MailService) SendNotification(target string, subject string, content string) error {
 	body := fmt.Sprintf("收到一条新的系统提醒：<br/> %s", content)
 	msg := mail.Message{

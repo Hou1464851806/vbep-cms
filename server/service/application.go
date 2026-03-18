@@ -134,10 +134,14 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 
 func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation, position string) error {
 	ctx := context.Background()
+
+	var datasetTitle string
+
 	// 申请提交事务
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var app model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Preload("Dataset").
 			Where("id = ?", id).
 			First(&app).Error; err != nil {
 			return err
@@ -168,6 +172,8 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation
 			return err
 		}
 
+		datasetTitle = app.Dataset.Title
+
 		return nil
 	})
 	// 事务执行失败则不继续发送邮件
@@ -175,7 +181,8 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation
 		return err
 	}
 
-	s.sendNotificationEmailToPublic("有新申请")
+	subject := fmt.Sprintf("数据集有新的申请")
+	s.sendNewAppNotificationEmail(subject, datasetTitle, id)
 
 	return nil
 }
@@ -400,10 +407,13 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 	ctx := context.Background()
 	cleanup := func(success bool) {}
 
+	var datasetTitle string
+
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var application model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id, applicant_id, status, version").
+			Select("id, applicant_id, status, version, dataset_id").
+			Preload("Dataset").
 			Where("id = ?", id).
 			First(&application).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -445,6 +455,8 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 			return fmt.Errorf("failed to create resubmit audit for application %s: %w", id, err)
 		}
 
+		datasetTitle = application.Dataset.Title
+
 		return nil
 	})
 	if err != nil {
@@ -454,22 +466,27 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 
 	cleanup(true)
 
-	s.sendNotificationEmailToPublic("有重新提交的申请")
+	subject := fmt.Sprintf("数据集有新的申请")
+	s.sendNewAppNotificationEmail(subject, datasetTitle, id)
 
 	return s.GetApplicationByID(id)
 }
 
-func (s *ApplicationService) sendNotificationEmailToPublic(content string) {
+func (s *ApplicationService) sendNewAppNotificationEmail(subject string, datasetTitle string, url string) {
 	setting, err := s.settingService.GetSetting()
 	if err != nil {
 		logger.Errorf("failed to get setting: %v", err)
+		return
 	}
 	publicEmail := setting.PublicEmail
-	if publicEmail != "" {
-		err = s.mailService.SendNotification(publicEmail, "系统通知", content)
-		if err != nil {
-			logger.Errorf("failed to send notification to public mail: %v", err)
-		}
+	if publicEmail == "" {
+		logger.Warnf("public email is empty")
+		return
+	}
+	err = s.mailService.SendNewAppNotification(publicEmail, subject, datasetTitle, url)
+	if err != nil {
+		logger.Errorf("failed to send new application notification to public mail: %v", err)
+		return
 	}
 }
 
