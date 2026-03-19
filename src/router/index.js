@@ -11,6 +11,8 @@ import StatisticView from '@/views/home/StatisticView.vue'
 import SendView from "@/views/reset/SendView.vue";
 import ConfirmView from "@/views/reset/ConfirmView.vue";
 
+import { readAuthToken } from '@/request/axios.js'
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -48,7 +50,7 @@ const router = createRouter({
       name: 'home',
       component: HomeView,
       redirect: '/home/datasets', // 访问根路径时，默认重定向到数据集列表
-      // meta: { requiresAuth: true }, // 这个布局下的所有页面都需要登录
+      meta: { requiresAuth: true }, // 这个布局下的所有页面都需要登录
       children: [
         {
           path: 'datasets',
@@ -83,6 +85,21 @@ const router = createRouter({
       ],
     },
   ],
+})
+
+router.beforeEach((to, from, next) => {
+  const token = readAuthToken()
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+    if (requiresAuth && !token) {
+      next({
+        path: '/login',
+        query: {redirect: to.fullPath}
+      })
+    } else if (to.path === '/login' && token) {
+      next('/home')
+    } else {
+      next()
+    }
 })
 
 export default router

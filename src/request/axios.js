@@ -1,9 +1,10 @@
 import axios from 'axios'
+import router from '@/router'
 
 const AUTH_TOKEN_STORAGE_KEY = 'auth_token'
 const isBrowser = typeof window !== 'undefined'
 
-const readAuthToken = () => {
+export const readAuthToken = () => {
   if (!isBrowser) return null
   try {
     return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
@@ -61,6 +62,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error?.response) {
+      if (error.response.status === 401) {
+        clearAuthToken()
+        router.replace({
+          path: '/login',
+          query: { redirect: router.currentRoute.value.fullPath }
+        })
+      }
       console.error('API request failed:', error.response.status, error.response.data)
     }
     return Promise.reject(error)

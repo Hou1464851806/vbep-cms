@@ -7,12 +7,13 @@ import qrCodeSrc from '@/assets/img/QRcode.jpg'
 
 import thirdPartyQrSrc from '@/assets/img/qr-code.svg'
 import thirdPartyChatSrc from '@/assets/img/wechat.png'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import apiClient, { setAuthToken } from '@/request/axios.js'
 import '@/assets/styles/login.css'
 import sha256 from "crypto-js/sha256.js"
 
+const route = useRoute()
 const router = useRouter()
 
 const saveUserId = (userId) => {
@@ -60,9 +61,11 @@ const submitLoginFrom = async () => {
     }
     saveUserId(response.data?.userID)
     ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
+
+    const redirectPath = route.query.redirect || '/home'
     // 跳转到主页或用户仪表盘
     setTimeout(() => {
-      router.push({ name: 'home' })
+      router.replace(redirectPath)
     }, 1000)
   } catch (error) {
     // 步骤 D: 统一错误处理
