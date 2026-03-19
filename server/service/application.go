@@ -184,7 +184,8 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation
 	}
 
 	subject := fmt.Sprintf("数据集有新的申请")
-	s.sendNewAppNotificationEmail(subject, datasetTitle, id)
+	url := fmt.Sprintf("%s/home/applications?id=%s", global.CFG.Web.Url, id)
+	s.sendNewAppNotificationEmail(subject, datasetTitle, url)
 
 	return nil
 }
@@ -382,10 +383,11 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 
 	subject := fmt.Sprintf("您的申请%s", statusStr)
 	datasetTitle := appDetail.Dataset.Title
+	url := fmt.Sprintf("%s/home/applications?id=%s", global.CFG.Web.Url, id)
 	content := templates.AppChangeNotificationContent{
 		DatasetTitle: datasetTitle,
 		Status:       statusStr,
-		Url:          id,
+		Url:          url,
 	}
 	err = s.mailService.SendNewMail(userEmail, subject, templates.AppChangeNotificationHtml, content, tasks.QueueDefault, 0)
 	if err != nil {
@@ -482,7 +484,8 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 	cleanup(true)
 
 	subject := fmt.Sprintf("数据集有新的申请")
-	s.sendNewAppNotificationEmail(subject, datasetTitle, id)
+	url := fmt.Sprintf("%s/home/applications?id=%s", global.CFG.Web.Url, id)
+	s.sendNewAppNotificationEmail(subject, datasetTitle, url)
 
 	return s.GetApplicationByID(id)
 }
