@@ -24,6 +24,10 @@ import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize, formatShortId } from '@/utils/format.js'
 import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
+import {useRoute, useRouter} from "vue-router";
+
+const route = useRoute()
+const router = useRouter()
 
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
 const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
@@ -211,7 +215,7 @@ const approvedDate = computed(() => {
 })
 
 
-// 状态：新增申请流程 
+// 状态：新增申请流程
 const newAppDialog = reactive({
   visible: false,
   loading: false,
@@ -464,7 +468,7 @@ const handleViewDetail = async (row) => {
   detailDialog.loading = true
   detailDialog.data = null
   detailDialog.timeline = []
-  detailDialog.audit.result = '' // 重置 
+  detailDialog.audit.result = '' // 重置
   activeNames.value = isAdmin() ? ['3'] : ['1', '2']
   resetAttachmentState()
   try {
@@ -539,7 +543,7 @@ const handleAuditSubmit = async () => {
     reject: { label: '拒绝', apiAction: 'rejected', confirm: '您即将拒绝该申请，拒绝后用户将无法修改并重新提交申请' },
     return: { label: '退回', apiAction: 'returned', confirm: '您即将退回该申请，退回后用户可以修改并重新提交申请' }
   }
-  
+
   const actionInfo = actionMap[auditDialog.action]
   if (!actionInfo) return
 
@@ -642,7 +646,7 @@ const handleEditReturned = (row) => {
 
 const handleBeforeUpload = (rawFile, type) => {
   const fileName = rawFile.name.toLowerCase()
-  
+
   // Size check
   if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
     ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制`)
@@ -837,14 +841,14 @@ const handleSubmitDraft = async () => {
         ...draftDialog.optional.list,
       ]
       const keptFileIDs = allFiles.map(getFileId).filter((id) => !!id)
-      
+
       // 调用 resubmit 接口，只传 keptFileIDs，不传 files (因为都已上传)
       const formData = new FormData()
       formData.append('keptFileIDs', JSON.stringify(keptFileIDs))
       formData.append('affiliation', draftDialog.affiliation)
       formData.append('position', draftDialog.position)
       await resubmitApplicationAPI(applicationId, formData)
-      
+
       ElMessage.success('申请已重新提交')
     } else {
       // 草稿模式：文件已在选择时上传，直接确认提交
@@ -854,7 +858,7 @@ const handleSubmitDraft = async () => {
       })
       ElMessage.success('申请已提交')
     }
-    
+
     draftDialog.visible = false
     await fetchApplications()
   } catch (error) {
@@ -899,7 +903,7 @@ const handleCreateAndStart = async () => {
     const res = await createApplicationAPI({ datasetID: newAppDialog.selectedDatasetId })
     if (res.status === 200) {
       const appId = res.data.applicationID
-      
+
       // 2. 获取完整申请详情以填充 draftDialog
       const detailRes = await fetchApplicationDetailAPI(appId)
       if (detailRes.status === 200) {
@@ -947,6 +951,21 @@ const getActionTagType = (action) => {
   return 'info'
 }
 
+const openAppDetailById = () => {
+  const appId = route.query.id
+  if (appId) {
+    handleViewDetail({ id: appId })
+
+    const newQuery = { ...route.query }
+    delete newQuery.id
+
+    router.replace({
+      path: route.path,
+      query: newQuery,
+    })
+  }
+}
+
 watch(
   () => detailDialog.data,
   (value) => {
@@ -973,7 +992,10 @@ watch(
   },
 )
 
-onMounted(fetchApplications)
+onMounted(async () => {
+  await fetchApplications()
+  openAppDetailById()
+})
 </script>
 
 <template>
@@ -1173,7 +1195,7 @@ onMounted(fetchApplications)
 
       <div class="upload-section">
         <div class="upload-label required-label">2. 身份信息 (必填)</div>
-        
+
         <div class="sub-input-group">
           <div class="input-guide-text">请再次确认您所代表的单位和职务：</div>
           <div style="display: flex; gap: 16px;">
@@ -1224,9 +1246,9 @@ onMounted(fetchApplications)
     </div>
     <template #footer>
       <el-button @click="handleSaveDraft" :loading="draftDialog.isSubmitting">暂存</el-button>
-      <el-button 
-        type="primary" 
-        @click="handleSubmitDraft" 
+      <el-button
+        type="primary"
+        @click="handleSubmitDraft"
         :loading="draftDialog.isSubmitting"
       >
         {{ draftDialog.mode === 'resubmit' ? '确认修改并提交' : '提交申请' }}
@@ -1274,10 +1296,10 @@ onMounted(fetchApplications)
               </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
-          
+
           <el-collapse-item title="许可状态" name="2">
             <div v-if="detailDialog.data" class="license-status-wrapper">
-              <div v-if="detailDialog.data.status === 'approved'" 
+              <div v-if="detailDialog.data.status === 'approved'"
                   class="license-status-box"
                   :class="{
                       'is-valid': licenseStatus.type === 'success',
@@ -1306,7 +1328,7 @@ onMounted(fetchApplications)
                   <div class="license-right">
                     <div class="license-content">
                       <p>
-                          {{ detailDialog.data.status === 'pending' ? '您的申请正在审批中' : 
+                          {{ detailDialog.data.status === 'pending' ? '您的申请正在审批中' :
                             detailDialog.data.status === 'rejected' ? '您的申请已被拒绝' :
                             detailDialog.data.status === 'returned' ? '您的申请已被退回，请修改后重新提交' :
                             detailDialog.data.status === 'draft' ? '申请尚在草稿阶段，请完善后提交' : '未获得数据访问许可'

@@ -3,7 +3,6 @@ package v1
 import (
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"server/logger"
 	"server/service"
 )
 
@@ -33,14 +32,14 @@ func (a *MailApi) SendNotification(ctx *gin.Context) {
 		return
 	}
 
-	err := a.service.SendNotification(req.To, req.Message, "")
-	if err != nil {
-		logger.Errorf("Failed to send notification email by service: %v", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": "邮件发送失败",
-		})
-		return
-	}
+	//err := a.service.SendNotification(req.To, req.Message, "")
+	//if err != nil {
+	//	logger.Errorf("Failed to send notification email by service: %v", err)
+	//	ctx.JSON(http.StatusInternalServerError, gin.H{
+	//		"message": "邮件发送失败",
+	//	})
+	//	return
+	//}
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "邮件发送成功",

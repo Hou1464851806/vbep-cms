@@ -353,6 +353,7 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	}
 
 	if err := u.service.SendOTP(param.Target); err != nil {
+		logger.Errorf("Failed to send otp: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "发送失败"})
 		return
 	}
@@ -360,9 +361,15 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "发送成功"})
 }
 
+type Captcha struct {
+	Id     string `json:"id"`
+	Answer string `json:"answer"`
+}
+
 type ResetPassReq struct {
-	Email       string `json:"email" binding:"required"`
-	FrontendUrl string `json:"frontend_url" binding:"required"`
+	Email       string  `json:"email" binding:"required"`
+	FrontendUrl string  `json:"frontend_url" binding:"required"`
+	Captcha     Captcha `json:"captcha" binding:"required"`
 }
 
 func (u *UserApi) SendResetPassword(ctx *gin.Context) {
@@ -375,10 +382,18 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 		return
 	}
 
+	if !u.service.VerifyCaptcha(req.Captcha.Id, req.Captcha.Answer) {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "验证码错误",
+		})
+		return
+	}
+
 	if !u.isValidLink(req.FrontendUrl) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "非法的地址",
 		})
+		return
 	}
 
 	err := u.service.SendResetPassword(req.Email, req.FrontendUrl)

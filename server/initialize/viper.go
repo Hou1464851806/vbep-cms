@@ -22,6 +22,9 @@ func NewViper() *viper.Viper {
 	if appMode := os.Getenv("APP_MODE"); appMode != "" {
 		global.CFG.AppMode = appMode
 	}
-	logger.Infof("Config: %#v", global.CFG)
+	if webUrl := os.Getenv("WEB_URL"); webUrl != "" {
+		global.CFG.Web.Url = webUrl
+	}
+	logger.Debugf("Config: %#v", global.CFG)
 	return v
 }

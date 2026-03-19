@@ -9,6 +9,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"server/global"
+	"server/internal/tasks"
+	"server/internal/templates"
 	"server/logger"
 	"server/model"
 	"server/pkg/utils"
@@ -19,12 +21,13 @@ import (
 )
 
 type UserService struct {
-	otpService   OTPService
+	otpService   *OTPService
 	emailService *MailService
 }
 
-func NewUserServiceWithEmailService(emailService *MailService) *UserService {
+func NewUserServiceWithEmailService(emailService *MailService, otpService *OTPService) *UserService {
 	return &UserService{
+		otpService:   otpService,
 		emailService: emailService,
 	}
 }
@@ -203,27 +206,21 @@ func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) er
 	}
 
 	redisKey := fmt.Sprintf("pwd_reset:%s", token)
-	err = global.REDIS.Set(ctx, redisKey, userEmail, 15*time.Minute).Err()
+	expireMinute := 15
+	err = global.REDIS.Set(ctx, redisKey, userEmail, time.Duration(expireMinute)*time.Minute).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save token to redis: %v", err)
 	}
 
 	resetUrl := fmt.Sprintf("%s?token=%s", frontendUrl, token)
+
 	// 向用户邮箱发送密码重置邮件
 	subject := "重置您的密码"
-	content := fmt.Sprintf(`
-		<h1>密码重置请求</h1>
-		<p>您收到这封邮件是因为您请求重置密码。</p>
-		<p>请点击下面的链接设置新密码（链接 15 分钟内有效）：</p>
-		<a href="%s">%s</a>
-		<p>如果您没有请求重置密码，请忽略此邮件。</p>`, resetUrl, resetUrl)
-	logger.Infof("Sending email: %s", resetUrl)
-	err = s.emailService.SendResetPassword(userEmail, subject, content)
-	if err != nil {
-		return fmt.Errorf("failed to send reset password email to user: %v", err)
+	content := templates.ResetPasswordContent{
+		Link:       resetUrl,
+		ExpireTime: expireMinute,
 	}
-
-	return nil
+	return s.emailService.SendNewMail(userEmail, subject, templates.ResetPasswordHtml, content, tasks.QueueCritical, 3)
 }
 
 func (s *UserService) ConfirmResetPassword(token string, newPassword string) error {

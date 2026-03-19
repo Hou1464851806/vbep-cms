@@ -5,6 +5,7 @@ import (
 	"net/http"
 	api "server/api/v1"
 	"server/global"
+	"server/internal/templates"
 	"server/router"
 	"server/service"
 )
@@ -22,10 +23,14 @@ func NewRouter() *gin.Engine {
 
 	// email
 	asynqClient := global.ASYNQ
-	mailService := service.NewMailService(asynqClient)
+	templateEngine := templates.NewTemplateEngine("./html")
+	mailService := service.NewMailService(asynqClient, templateEngine)
+
+	// opt
+	optService := service.NewOPTService(mailService)
 
 	// user
-	userService := service.NewUserServiceWithEmailService(mailService)
+	userService := service.NewUserServiceWithEmailService(mailService, optService)
 	userApi := api.NewUserApi(userService)
 	userRouter := router.NewUserRouter(userApi)
 	userRouter.InitUserRouter(v1)
