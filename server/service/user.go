@@ -86,13 +86,19 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
-func (s *UserService) GetAllUsers() ([]*model.User, error) {
+func (s *UserService) GetAllUsers(page int, pageSize int) ([]*model.User, int64, error) {
 	ctx := context.Background()
-	users, err := gorm.G[*model.User](global.DB).Find(ctx)
-	if err != nil {
-		return nil, err
+	var users []*model.User
+	var total int64
+	baseQuery := global.DB.WithContext(ctx).Model(&model.User{})
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
-	return users, nil
+	offset := (page - 1) * pageSize
+	if err := baseQuery.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to query users: %w", err)
+	}
+	return users, total, nil
 }
 
 func (s *UserService) DeleteUser(id string) error {

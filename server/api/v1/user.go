@@ -9,6 +9,7 @@ import (
 	"server/model"
 	"server/pkg/utils"
 	"server/service"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -296,8 +297,16 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 }
 
 func (u *UserApi) GetAllUsers(ctx *gin.Context) {
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
 	// 1. 调用 Service 获取数据
-	users, err := u.service.GetAllUsers()
+	users, total, err := u.service.GetAllUsers(page, pageSize)
 	if err != nil {
 		logger.Errorf("failed to query all users: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -322,7 +331,8 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 
 	// 3. 返回 JSON
 	ctx.JSON(http.StatusOK, gin.H{
-		"data": userList, // 这里直接放入数组
+		"data":  userList, // 这里直接放入数组
+		"total": total,
 	})
 }
 

@@ -7,10 +7,11 @@ import { ElMessage } from 'element-plus'
 import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatShortId } from '@/utils/format.js'
+import ListPagination from "@/components/ListPagination.vue";
 
 // --- API 定义 ---
 // 获取所有用户列表 (假设后端支持该接口)
-const fetchUserListAPI = () => apiClient.get('/api/v1/users')
+const fetchUserListAPI = (page,size) => apiClient.get('/api/v1/users', { params: { page, size } })
 // 更新用户信息 (复用 HomeView 中的逻辑)
 const updateUserAPI = (userId, data) => apiClient.patch(`/api/v1/users/${userId}`, data)
 
@@ -18,6 +19,13 @@ const updateUserAPI = (userId, data) => apiClient.patch(`/api/v1/users/${userId}
 const currentUser = inject('userInfo')
 const userList = ref([])
 const isLoading = ref(true)
+
+// 分页相关
+const pagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+})
 
 // 编辑状态管理：key为userId, value为正在编辑的副本数据
 const editMap = reactive({})
@@ -46,10 +54,11 @@ const getRoleTag = (roleVal) => {
 const fetchUsers = async () => {
   isLoading.value = true
   try {
-    const res = await fetchUserListAPI()
+    const res = await fetchUserListAPI(pagination.currentPage, pagination.pageSize)
     if (res && Array.isArray(res.data?.data)) {
       // 直接赋值，后端 GORM 已经过滤了软删除用户，这里不需要再前端 filter
       userList.value = res.data.data
+      pagination.total = res.data.total || 0
     } else {
       ElMessage.error(res?.data?.message || '用户列表加载失败')
     }
@@ -62,6 +71,10 @@ const fetchUsers = async () => {
 }
 
 onMounted(fetchUsers)
+
+const handlePageChange = () => {
+  fetchUsers()
+}
 
 // --- 编辑逻辑 ---
 
@@ -219,6 +232,12 @@ const handleSave = async (originalRow) => {
         </template>
       </el-table-column>
     </el-table>
+    <list-pagination
+      v-model="pagination.currentPage"
+      v-model:page-size="pagination.pageSize"
+      :total="pagination.total"
+      @change="handlePageChange"
+    />
   </el-card>
 </template>
 
