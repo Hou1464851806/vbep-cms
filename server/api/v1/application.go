@@ -5,6 +5,7 @@ import (
 	"errors"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -207,6 +208,15 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 		return
 	}
 
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
 	// 2. 决定查询范围
 	var filterID *string
 	excludeDrafts := false
@@ -221,7 +231,7 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
 
 	// 3. 调用 Service
-	applications, err := a.applicationService.ListApplications(filterID, excludeDrafts)
+	applications, total, err := a.applicationService.ListApplications(filterID, excludeDrafts, page, pageSize)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请列表失败"})
@@ -230,6 +240,7 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"applications": applications,
+		"total":        total,
 	})
 }
 

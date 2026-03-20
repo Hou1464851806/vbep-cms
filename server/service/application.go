@@ -219,31 +219,39 @@ func (s *ApplicationService) UpdateDraftApplication(id, applicantID, affiliation
 	return nil
 }
 
-func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts bool) ([]model.ApplicationListItem, error) {
+func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts bool, page int, pageSize int) ([]model.ApplicationListItem, int64, error) {
 	ctx := context.Background()
 	var apps []model.Application
+	var total int64
 
-	db := global.DB.WithContext(ctx).
-		Model(&model.Application{}).
+	baseQuery := global.DB.WithContext(ctx).Model(&model.Application{})
+
+	// 只允许用户查询自己的申请
+	if applicantID != nil {
+		baseQuery = baseQuery.Where("applicant_id = ?", *applicantID)
+	}
+	if excludeDrafts {
+		baseQuery = baseQuery.Where("status != ?", model.DRAFT)
+	}
+
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count applications: %w", err)
+	}
+
+	offset := (page - 1) * pageSize
+	err := baseQuery.
 		Order("updated_at DESC").
+		Offset(offset).
+		Limit(pageSize).
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, title")
-		})
-
-	// 只允许用户查询自己的申请
-	if applicantID != nil {
-		db = db.Where("applicant_id = ?", *applicantID)
-	}
-
-	if excludeDrafts {
-		db = db.Where("status != ?", model.DRAFT)
-	}
-
-	if err := db.Find(&apps).Error; err != nil {
-		return nil, fmt.Errorf("failed to query applications: %w", err)
+		}).
+		Find(&apps).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query applications: %w", err)
 	}
 
 	// 模型转换 (Model -> DTO)
@@ -252,7 +260,7 @@ func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts
 		result[i] = app.ToListItem()
 	}
 
-	return result, nil
+	return result, total, nil
 }
 
 func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDetail, error) {

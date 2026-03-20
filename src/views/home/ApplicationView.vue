@@ -25,12 +25,13 @@ import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize, formatShortId } from '@/utils/format.js'
 import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import {useRoute, useRouter} from "vue-router";
+import ListPagination from "@/components/ListPagination.vue";
 
 const route = useRoute()
 const router = useRouter()
 
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
-const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
+const fetchApplicationListAPI = (page, size) => apiClient.get('/api/v1/applications/', { params: { page, size } })
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
 const auditApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/audit`, data)
 const resubmitApplicationAPI = (id, data, config = {}) =>
@@ -135,6 +136,13 @@ const readStoredUserId = () => {
 }
 
 const currentUserId = ref(readStoredUserId())
+
+// 分页相关
+const pagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+})
 
 const isAdmin = inject('isAdmin')
 const applicationList = ref([])
@@ -449,9 +457,10 @@ const handleDownloadAttachment = async (file) => {
 const fetchApplications = async () => {
   isLoading.value = true
   try {
-    const res = await fetchApplicationListAPI()
+    const res = await fetchApplicationListAPI(pagination.currentPage, pagination.pageSize)
     if (res.status === 200) {
       applicationList.value = res.data.applications.map((item) => normalizeApplication(item))
+      pagination.total = res.data.total || 0
     } else {
       ElMessage.error(res.data?.message || '申请列表加载失败')
     }
@@ -461,6 +470,10 @@ const fetchApplications = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+const handlePageChange = () => {
+  fetchApplications()
 }
 
 const handleViewDetail = async (row) => {
@@ -1125,6 +1138,12 @@ onMounted(async () => {
           </template>
         </el-table-column>
       </el-table>
+      <list-pagination
+        v-model="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        @change="handlePageChange"
+      />
     </el-skeleton>
   </el-card>
 
