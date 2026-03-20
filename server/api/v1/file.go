@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -365,7 +366,16 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		return
 	}
 
-	files, err := a.service.GetPublicFiles()
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	files, total, err := a.service.GetPublicFilesPaginated(page, pageSize)
 	if err != nil {
 		logger.Errorf("failed to list public files: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
@@ -382,7 +392,10 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		})
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"files": resp})
+	ctx.JSON(http.StatusOK, gin.H{
+		"files": resp,
+		"total": total,
+	})
 }
 
 func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
