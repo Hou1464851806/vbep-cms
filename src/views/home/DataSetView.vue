@@ -27,9 +27,10 @@ import {
 } from '@/utils/format.js'
 import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
+import ListPagination from "@/components/ListPagination.vue";
 
 // --- API 函数 ---
-const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
+const fetchDatasetListAPI = (params) => apiClient.get('/api/v1/datasets/', { params })
 const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`)
 const fetchDatasetStatisticsAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}/statistics`)
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
@@ -63,6 +64,13 @@ const router = useRouter()
 const isAdmin = inject('isAdmin')
 const datasetList = ref([])
 const isDataLoading = ref(true)
+
+// 分页相关
+const pagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+})
 
 // 获取全局 echarts 实例
 const { proxy } = getCurrentInstance()
@@ -182,11 +190,16 @@ const removeUploadTask = (uid, delay = 0) => {
 const fetchDatasets = async () => {
   isDataLoading.value = true
   try {
+    const params = {
+      page: pagination.currentPage,
+      size: pagination.pageSize
+    }
     // 仅获取数据集列表，不再预加载用户的申请历史，提升性能
-    const dsRes = await fetchDatasetListAPI()
+    const dsRes = await fetchDatasetListAPI(params)
 
     if (dsRes && dsRes.status === 200) {
       datasetList.value = normalizeDatasets(dsRes.data.datasets)
+      pagination.total = dsRes.data.total || 0
       return
     }
     ElMessage.error(dsRes?.data?.message || '数据集加载失败')
@@ -217,6 +230,11 @@ watch(
     }
   },
 )
+
+// 分页回调函数
+const handlePageChange = () => {
+  fetchDatasets()
+}
 
 const handleResize = () => {
   if (chartInstance) {
@@ -692,6 +710,13 @@ const handleCancelApplication = async () => {
             </template>
           </el-table-column>
         </el-table>
+
+        <list-pagination
+          v-model="pagination.currentPage"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          @change="handlePageChange"
+        />
       </el-skeleton>
     </el-card>
 

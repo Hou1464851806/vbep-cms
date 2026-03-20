@@ -28,14 +28,19 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	return nil
 }
 
-func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]model.DatasetListItem, error) {
+func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole, page int, pageSize int) ([]model.DatasetListItem, int64, error) {
 	ctx := context.Background()
 	// var results []model.DatasetListItem
 	results := make([]model.DatasetListItem, 0)
+	var total int64
 
 	db := global.DB.WithContext(ctx).
 		Model(&model.Dataset{}).
 		Joins("LEFT JOIN users ON users.id = datasets.creator_id")
+
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count records: %w", err)
+	}
 
 	selectQuery := `
 		datasets.id, 
@@ -58,11 +63,16 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]m
 			 AND (applications.expire_at IS NULL OR applications.expire_at > '%s')) > 0 as has_access`, userID, model.APPROVED, time.Now().Format("2006-01-02 15:04:05"))
 	}
 
-	err := db.Select(selectQuery).Scan(&results).Error
+	offset := (page - 1) * pageSize
+	err := db.Select(selectQuery).
+		Offset(offset).
+		Limit(pageSize).
+		Order("datasets.created_at DESC"). // 默认使用数据集创建时间的降序
+		Scan(&results).Error
 	if err != nil {
-		return nil, fmt.Errorf("failed to get dataset list: %w", err)
+		return nil, 0, fmt.Errorf("failed to get dataset list: %w", err)
 	}
-	return results, nil
+	return results, total, nil
 }
 
 func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.UserRole) (*model.Dataset, bool, error) {
