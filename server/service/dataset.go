@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"server/global"
+	"server/logger"
 	"server/model"
 	"time"
 
@@ -28,17 +29,60 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	return nil
 }
 
-func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole, page int, pageSize int) ([]model.DatasetListItem, int64, error) {
+// DatasetListQuery 前端表格的筛选/排序/分页参数
+type DatasetListQuery struct {
+	UserID    string
+	Role      model.UserRole
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "name", "createdAt", "creator"
+	Order     string // "asc" 或 "desc"
+	Keyword   string // 模糊搜索（数据集名称 / 创建者昵称）
+	DateStart string
+	DateEnd   string
+}
+
+// datasetSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var datasetSortWhitelist = map[string]string{
+	"name":      "datasets.title",
+	"createdAt": "datasets.created_at",
+	"creator":   "users.nick_name",
+	"fileCount": "file_count",
+}
+
+func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetListItem, int64, error) {
 	ctx := context.Background()
 	// var results []model.DatasetListItem
 	results := make([]model.DatasetListItem, 0)
 	var total int64
 
-	db := global.DB.WithContext(ctx).
+	baseQuery := global.DB.WithContext(ctx).
 		Model(&model.Dataset{}).
 		Joins("LEFT JOIN users ON users.id = datasets.creator_id")
 
-	if err := db.Count(&total).Error; err != nil {
+	// ── 关键词搜索（数据集名称 / 创建者昵称）──
+	if q.Keyword != "" {
+		kw := "%" + q.Keyword + "%"
+		baseQuery = baseQuery.Where("datasets.title LIKE ? OR users.nick_name LIKE ?", kw, kw)
+	}
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("datasets.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("datasets.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count records: %w", err)
 	}
 
@@ -50,28 +94,38 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole, page
 		(SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets' AND files.deleted_at IS NULL) as file_count
 	`
 
-	if role > model.Common {
-		// 管理员：默认拥有所有权限
+	if q.Role > model.Common {
 		selectQuery += ", 1 as has_access"
 	} else {
-		// 普通用户：检查是否存在已通过的申请
 		selectQuery += fmt.Sprintf(`, 
 			(SELECT COUNT(*) FROM applications 
 			 WHERE applications.dataset_id = datasets.id 
 			 AND applications.applicant_id = '%s' 
 			 AND applications.status = %d
-			 AND (applications.expire_at IS NULL OR applications.expire_at > '%s')) > 0 as has_access`, userID, model.APPROVED, time.Now().Format("2006-01-02 15:04:05"))
+			 AND (applications.expire_at IS NULL OR applications.expire_at > '%s')) > 0 as has_access`,
+			q.UserID, model.APPROVED, time.Now().Format("2006-01-02 15:04:05"))
 	}
-
-	offset := (page - 1) * pageSize
-	err := db.Select(selectQuery).
+	// ── 排序（白名单校验）──
+	orderClause := "datasets.created_at DESC"
+	if col, ok := datasetSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	err := baseQuery.
+		Select(selectQuery).
+		Order(orderClause).
 		Offset(offset).
-		Limit(pageSize).
-		Order("datasets.created_at DESC"). // 默认使用数据集创建时间的降序
+		Limit(q.PageSize).
 		Scan(&results).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get dataset list: %w", err)
 	}
+
 	return results, total, nil
 }
 

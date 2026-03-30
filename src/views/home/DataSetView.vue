@@ -28,6 +28,8 @@ import {
 import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 import ListPagination from "@/components/ListPagination.vue";
+import { useTableFilter } from "@/hooks/useTable.js";
+import TableToolsBar from "@/components/TableToolsBar.vue";
 
 // --- API 函数 ---
 const fetchDatasetListAPI = (params) => apiClient.get('/api/v1/datasets/', { params })
@@ -62,15 +64,15 @@ const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
 // --- 状态定义 ---
 const router = useRouter()
 const isAdmin = inject('isAdmin')
-const datasetList = ref([])
-const isDataLoading = ref(true)
+// const datasetList = ref([])
+// const isDataLoading = ref(true)
 
-// 分页相关
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 10,
-  total: 0
-})
+// // 分页相关
+// const pagination = reactive({
+//   currentPage: 1,
+//   pageSize: 10,
+//   total: 0
+// })
 
 // 获取全局 echarts 实例
 const { proxy } = getCurrentInstance()
@@ -187,28 +189,64 @@ const removeUploadTask = (uid, delay = 0) => {
   }
 }
 
-const fetchDatasets = async () => {
-  isDataLoading.value = true
-  try {
-    const params = {
-      page: pagination.currentPage,
-      size: pagination.pageSize
-    }
-    // 仅获取数据集列表，不再预加载用户的申请历史，提升性能
-    const dsRes = await fetchDatasetListAPI(params)
+// const fetchDatasets = async () => {
+//   isDataLoading.value = true
+//   try {
+//     const params = {
+//       page: pagination.currentPage,
+//       size: pagination.pageSize
+//     }
+//     // 仅获取数据集列表，不再预加载用户的申请历史，提升性能
+//     const dsRes = await fetchDatasetListAPI(params)
+//
+//     if (dsRes && dsRes.status === 200) {
+//       datasetList.value = normalizeDatasets(dsRes.data.datasets)
+//       pagination.total = dsRes.data.total || 0
+//       return
+//     }
+//     ElMessage.error(dsRes?.data?.message || '数据集加载失败')
+//   } catch {
+//     ElMessage.error('数据集加载失败')
+//   } finally {
+//     isDataLoading.value = false
+//   }
+// }
 
-    if (dsRes && dsRes.status === 200) {
-      datasetList.value = normalizeDatasets(dsRes.data.datasets)
-      pagination.total = dsRes.data.total || 0
-      return
-    }
-    ElMessage.error(dsRes?.data?.message || '数据集加载失败')
-  } catch {
-    ElMessage.error('数据集加载失败')
-  } finally {
-    isDataLoading.value = false
+const filterConfig = [
+  {
+    key: 'keyword',
+    type: 'input',
+    label: '数据集/创建者',
+    placeholder: '搜索数据集名称或创建者...',
+  },
+  {
+    key: 'date',
+    type: 'daterange',
+    label: '创建时间',
+  },
+]
+const {
+  loading: isDataLoading,
+  data: datasetList,
+  pagination,
+  filterForm,
+  loadData: fetchDatasets,
+  handleSortChange,
+  handleFilterChange,
+  handleFilterInputChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/datasets/', { params }),
+  {
+    normalize: normalizeOneDataset,
+    dataKey: 'datasets',
+    defaultSort: { prop: 'createdAt', order: 'descending' },
+    filterSchema: { keyword: '', date: [] },
+    pageSize: 10,
   }
-}
+)
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   fetchDatasets()
@@ -231,10 +269,10 @@ watch(
   },
 )
 
-// 分页回调函数
-const handlePageChange = () => {
-  fetchDatasets()
-}
+// // 分页回调函数
+// const handlePageChange = () => {
+//   fetchDatasets()
+// }
 
 const handleResize = () => {
   if (chartInstance) {
@@ -648,8 +686,21 @@ const handleCancelApplication = async () => {
         </div>
       </template>
 
-      <el-skeleton :rows="6" animated :loading="isDataLoading">
-        <el-table :data="datasetList" style="width: 100%">
+      <div v-loading="isDataLoading">
+        <table-tools-bar
+          :model-value="filterForm"
+          @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
+          :filters="filterConfig"
+          @search="handleFilterChange"
+          @input-change="handleFilterInputChange"
+          @reset="resetFilter"
+        />
+        <el-table
+          :data="datasetList"
+          style="width: 100%"
+          @sort-change="handleSortChange"
+          :default-sort="{ prop: 'createdAt', order: 'descending' }"
+        >
           <el-table-column label="内部ID" width="100">
             <template #default="{ row }">
               <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
@@ -660,15 +711,15 @@ const handleCancelApplication = async () => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="name" label="数据集名称" min-width="300">
+          <el-table-column prop="name" label="数据集名称" min-width="300" sortable="custom">
             <template #default="{ row }">
               <span style="font-weight: 500">{{ row.name }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
-          <el-table-column prop="creator" label="创建者" width="120" />
-          <el-table-column prop="createdAt" label="创建时间" width="160" />
+          <el-table-column prop="fileCount" label="文件数" width="90" align="center" sortable="custom" />
+          <el-table-column prop="creator" label="创建者" width="120" sortable="custom" />
+          <el-table-column prop="createdAt" label="创建时间" width="160" sortable="custom" />
           <el-table-column label="操作" :width="isAdmin() ? 260 : 260" fixed="right" align="center">
             <template #default="scope">
               <template v-if="isAdmin()">
@@ -717,7 +768,7 @@ const handleCancelApplication = async () => {
           :total="pagination.total"
           @change="handlePageChange"
         />
-      </el-skeleton>
+      </div>
     </el-card>
 
     <!-- ======== 所有对话框 ======== -->

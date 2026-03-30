@@ -56,7 +56,18 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 		// 此处简化处理：默认普通用户
 	}
 
-	datasets, total, err := a.service.GetAllDatasets(userID, role, page, pageSize)
+	query := service.DatasetListQuery{
+		UserID:    userID,
+		Role:      role,
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		Keyword:   ctx.Query("keyword"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
+	datasets, total, err := a.service.GetAllDatasets(query)
 	if err != nil {
 		logger.Errorf("failed to get all datasets: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
