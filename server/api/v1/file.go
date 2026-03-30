@@ -375,7 +375,16 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		pageSize = 10
 	}
 
-	files, total, err := a.service.GetPublicFilesPaginated(page, pageSize)
+	query := service.PublicFileListQuery{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		Keyword:   ctx.Query("keyword"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
+	files, total, err := a.service.GetPublicFilesPaginated(query)
 	if err != nil {
 		logger.Errorf("failed to list public files: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})

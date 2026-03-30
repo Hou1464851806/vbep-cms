@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -187,23 +188,76 @@ func (s *FileService) ListFiles(ctx context.Context, ownerID, ownerType string) 
 	return files, err
 }
 
-func (s *FileService) ListFilesPaginated(ctx context.Context, ownerID, ownerType string, page, pageSize int) ([]model.File, int64, error) {
+// PublicFileListQuery 前端表格的筛选/排序/分页参数
+type PublicFileListQuery struct {
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "name", "size", "createdAt"
+	Order     string // "asc" 或 "desc"
+	Keyword   string // 模糊搜索（文件名）
+	DateStart string // "YYYY-MM-DD"
+	DateEnd   string // "YYYY-MM-DD"
+}
+
+// publicFileSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var publicFileSortWhitelist = map[string]string{
+	"name":      "files.name",
+	"size":      "files.size",
+	"createdAt": "files.created_at",
+}
+
+func (s *FileService) ListFilesPaginated(q PublicFileListQuery) ([]model.File, int64, error) {
+	ctx := context.Background()
 	var files []model.File
 	var total int64
 
 	baseQuery := global.DB.WithContext(ctx).
-		Where("owner_id = ? AND owner_type = ?", ownerID, ownerType)
-
-	if err := baseQuery.Model(&model.File{}).Count(&total).Error; err != nil {
-		return nil, 0, err
+		Model(&model.File{}).
+		Where("owner_id = ? AND owner_type = ?", publicOwnerID, publicOwnerType)
+	// ── 关键词搜索（文件名）──
+	if q.Keyword != "" {
+		kw := "%" + q.Keyword + "%"
+		baseQuery = baseQuery.Where("files.name LIKE ?", kw)
 	}
-
-	offset := (page - 1) * pageSize
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("files.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("files.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count public files: %w", err)
+	}
+	// ── 排序（白名单校验）──
+	orderClause := "files.created_at DESC"
+	if col, ok := publicFileSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
 	err := baseQuery.
-		Order("created_at DESC").
+		Order(orderClause).
 		Offset(offset).
-		Limit(pageSize).
+		Limit(q.PageSize).
 		Find(&files).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query public files: %w", err)
+	}
 
 	return files, total, err
 }
@@ -264,9 +318,8 @@ func (s *FileService) GetPublicFiles() ([]model.File, error) {
 	return s.ListFiles(ctx, publicOwnerID, publicOwnerType)
 }
 
-func (s *FileService) GetPublicFilesPaginated(page, pageSize int) ([]model.File, int64, error) {
-	ctx := context.Background()
-	return s.ListFilesPaginated(ctx, publicOwnerID, publicOwnerType, page, pageSize)
+func (s *FileService) GetPublicFilesPaginated(q PublicFileListQuery) ([]model.File, int64, error) {
+	return s.ListFilesPaginated(q)
 }
 
 func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {

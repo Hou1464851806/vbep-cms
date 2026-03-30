@@ -8,6 +8,8 @@ import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatShortId } from '@/utils/format.js'
 import ListPagination from "@/components/ListPagination.vue";
+import { useTableFilter } from "@/hooks/useTable.js"
+import TableToolsBar from "@/components/TableToolsBar.vue"
 
 // --- API 定义 ---
 // 获取所有用户列表 (假设后端支持该接口)
@@ -17,15 +19,15 @@ const updateUserAPI = (userId, data) => apiClient.patch(`/api/v1/users/${userId}
 
 // --- 状态定义 ---
 const currentUser = inject('userInfo')
-const userList = ref([])
-const isLoading = ref(true)
+// const userList = ref([])
+// const isLoading = ref(true)
 
-// 分页相关
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 10,
-  total: 0
-})
+// // 分页相关
+// const pagination = reactive({
+//   currentPage: 1,
+//   pageSize: 10,
+//   total: 0
+// })
 
 // 编辑状态管理：key为userId, value为正在编辑的副本数据
 const editMap = reactive({})
@@ -50,31 +52,87 @@ const getRoleTag = (roleVal) => {
   return ROLE_MAP[roleVal] || { label: '未知', type: 'danger' }
 }
 
-// --- 数据加载 ---
-const fetchUsers = async () => {
-  isLoading.value = true
-  try {
-    const res = await fetchUserListAPI(pagination.currentPage, pagination.pageSize)
-    if (res && Array.isArray(res.data?.data)) {
-      // 直接赋值，后端 GORM 已经过滤了软删除用户，这里不需要再前端 filter
-      userList.value = res.data.data
-      pagination.total = res.data.total || 0
-    } else {
-      ElMessage.error(res?.data?.message || '用户列表加载失败')
-    }
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('无法获取用户列表')
-  } finally {
-    isLoading.value = false
+// // --- 数据加载 ---
+// const fetchUsers = async () => {
+//   isLoading.value = true
+//   try {
+//     const res = await fetchUserListAPI(pagination.currentPage, pagination.pageSize)
+//     if (res && Array.isArray(res.data?.data)) {
+//       // 直接赋值，后端 GORM 已经过滤了软删除用户，这里不需要再前端 filter
+//       userList.value = res.data.data
+//       pagination.total = res.data.total || 0
+//     } else {
+//       ElMessage.error(res?.data?.message || '用户列表加载失败')
+//     }
+//   } catch (error) {
+//     console.error(error)
+//     ElMessage.error('无法获取用户列表')
+//   } finally {
+//     isLoading.value = false
+//   }
+// }
+
+const normalizeUser = (item) => ({
+  userID: item.userID,
+  nickname: item.nickname,
+  email: item.email || '',
+  role: item.role,
+  createdAt: formatDateTime(item.createdAt),
+})
+
+// --- 筛选配置 ---
+const roleFilterOptions = [
+  { label: '普通用户', value: 0 },
+  { label: '管理员', value: 1 },
+  { label: '超级管理员', value: 2 },
+]
+const filterConfig = [
+  {
+    key: 'role',
+    type: 'select',
+    label: '权限组',
+    placeholder: '全部角色',
+    options: roleFilterOptions,
+  },
+  {
+    key: 'keyword',
+    type: 'input',
+    label: '姓名/邮箱',
+    placeholder: '搜索姓名或邮箱...',
+  },
+  {
+    key: 'date',
+    type: 'daterange',
+    label: '注册时间',
+  },
+]
+const {
+  loading: isLoading,
+  data: userList,
+  pagination,
+  filterForm,
+  loadData: fetchUsers,
+  handleSortChange,
+  handleFilterChange,
+  handleFilterInputChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/users', { params }),
+  {
+    normalize: normalizeUser,
+    dataKey: 'data',
+    defaultSort: { prop: 'createdAt', order: 'descending' },
+    filterSchema: { role: '', keyword: '', date: [] },
+    pageSize: 10,
   }
-}
+)
 
 onMounted(fetchUsers)
 
-const handlePageChange = () => {
-  fetchUsers()
-}
+// const handlePageChange = () => {
+//   fetchUsers()
+// }
 
 // --- 编辑逻辑 ---
 
@@ -163,81 +221,97 @@ const handleSave = async (originalRow) => {
       </div>
     </template>
 
-    <el-table :data="userList" style="width: 100%" v-loading="isLoading">
-      <el-table-column label="内部ID" width="100">
-        <template #default="{ row }">
-          <el-tooltip effect="dark" :content="row.userID" placement="top" :show-after="500">
-            <span class="monospace-id">
-              {{ formatShortId(row.userID) }}
-            </span>
-          </el-tooltip>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="姓名" min-width="120">
-        <template #default="{ row }">
-          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].nickname" size="small" />
-          <span v-else>{{ row.nickname }}</span>
-        </template>
-      </el-table-column>
-
-      <el-table-column label="邮箱" min-width="180">
-        <template #default="{ row }">
-          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].email" size="small" />
-          <span v-else>{{ row.email || '-' }}</span>
-        </template>
-      </el-table-column>
-
-<!--      <el-table-column label="手机号" width="140">-->
-<!--        <template #default="{ row }">-->
-<!--          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].phone" size="small" />-->
-<!--          <span v-else>{{ row.phone || '-' }}</span>-->
-<!--        </template>-->
-<!--      </el-table-column>-->
-
-      <el-table-column label="注册时间" width="180">
-        <template #default="{ row }">
-          {{ formatDateTime(row.createdAt) }}
-        </template>
-      </el-table-column>
-
-      <el-table-column label="权限组" width="140" align="center">
-        <template #default="{ row }">
-          <el-select
-            v-if="isEditing(row.userID) && isSuperAdmin"
-            v-model="editMap[row.userID].role"
-            size="small"
-          >
-            <el-option label="普通用户" :value="0" />
-            <el-option label="管理员" :value="1" />
-            <el-option label="超级管理员" :value="2" />
-          </el-select>
-
-          <el-tag v-else :type="getRoleTag(row.role).type">
-            {{ getRoleTag(row.role).label }}
-          </el-tag>
-        </template>
-      </el-table-column>
-
-      <el-table-column v-if="isSuperAdmin" label="操作" width="150" fixed="right" align="center">
-        <template #default="{ row }">
-          <template v-if="isEditing(row.userID)">
-            <el-button type="success" link :icon="Check" @click="handleSave(row)">确定</el-button>
-            <el-button type="info" link :icon="Close" @click="handleCancel(row.userID)">取消</el-button>
+    <div v-loading="isLoading">
+      <!-- 筛选栏 -->
+      <table-tools-bar
+        :model-value="filterForm"
+        @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
+        :filters="filterConfig"
+        @search="handleFilterChange"
+        @input-change="handleFilterInputChange"
+        @reset="resetFilter"
+      />
+      <el-table
+        :data="userList"
+        style="width: 100%"
+        @sort-change="handleSortChange"
+        :default-sort="{ prop: 'createdAt', order: 'descending' }"
+      >
+        <el-table-column label="内部ID" width="100">
+          <template #default="{ row }">
+            <el-tooltip effect="dark" :content="row.userID" placement="top" :show-after="500">
+              <span class="monospace-id">
+                {{ formatShortId(row.userID) }}
+              </span>
+            </el-tooltip>
           </template>
+        </el-table-column>
 
-          <template v-else>
-            <el-button v-if="isSuperAdmin" type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
+        <el-table-column label="姓名" min-width="120" prop="nickname" sortable="custom">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].nickname" size="small" />
+            <span v-else>{{ row.nickname }}</span>
           </template>
-        </template>
-      </el-table-column>
-    </el-table>
-    <list-pagination
-      v-model="pagination.currentPage"
-      v-model:page-size="pagination.pageSize"
-      :total="pagination.total"
-      @change="handlePageChange"
-    />
+        </el-table-column>
+
+        <el-table-column label="邮箱" min-width="180" prop="email" sortable="custom">
+          <template #default="{ row }">
+            <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].email" size="small" />
+            <span v-else>{{ row.email || '-' }}</span>
+          </template>
+        </el-table-column>
+
+  <!--      <el-table-column label="手机号" width="140">-->
+  <!--        <template #default="{ row }">-->
+  <!--          <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].phone" size="small" />-->
+  <!--          <span v-else>{{ row.phone || '-' }}</span>-->
+  <!--        </template>-->
+  <!--      </el-table-column>-->
+
+        <el-table-column label="注册时间" width="180" prop="createdAt" sortable="custom">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="权限组" width="140" align="center" prop="role" sortable="custom">
+          <template #default="{ row }">
+            <el-select
+              v-if="isEditing(row.userID) && isSuperAdmin"
+              v-model="editMap[row.userID].role"
+              size="small"
+            >
+              <el-option label="普通用户" :value="0" />
+              <el-option label="管理员" :value="1" />
+              <el-option label="超级管理员" :value="2" />
+            </el-select>
+
+            <el-tag v-else :type="getRoleTag(row.role).type">
+              {{ getRoleTag(row.role).label }}
+            </el-tag>
+          </template>
+        </el-table-column>
+
+        <el-table-column v-if="isSuperAdmin" label="操作" width="150" fixed="right" align="center">
+          <template #default="{ row }">
+            <template v-if="isEditing(row.userID)">
+              <el-button type="success" link :icon="Check" @click="handleSave(row)">确定</el-button>
+              <el-button type="info" link :icon="Close" @click="handleCancel(row.userID)">取消</el-button>
+            </template>
+
+            <template v-else>
+              <el-button v-if="isSuperAdmin" type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
+      <list-pagination
+        v-model="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        @change="handlePageChange"
+      />
+    </div>
   </el-card>
 </template>
 

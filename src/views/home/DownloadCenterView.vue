@@ -18,6 +18,8 @@ import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
 import {DOWNLOAD_FILE_LIMIT_MB} from "@/utils/constrains.js";
 import ListPagination from "@/components/ListPagination.vue";
+import { useTableFilter } from "@/hooks/useTable.js"
+import TableToolsBar from "@/components/TableToolsBar.vue"
 
 const DOWNLOAD_FILE_LIMIT_BYTES = DOWNLOAD_FILE_LIMIT_MB * 1024 * 1024
 
@@ -39,16 +41,16 @@ const downloadPublicFileAPI = (fileID) =>
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
-const fileList = ref([])
-const isLoading = ref(false)
+// const fileList = ref([])
+// const isLoading = ref(false)
 const isUploading = ref(false)
 
-// 分页相关
-const pagination = reactive({
-  currentPage: 1,
-  pageSize: 10,
-  total: 0
-})
+// // 分页相关
+// const pagination = reactive({
+//   currentPage: 1,
+//   pageSize: 10,
+//   total: 0
+// })
 
 // --- 辅助函数 ---
 const getFileIcon = (fileName) => {
@@ -68,28 +70,71 @@ const getFileIcon = (fileName) => {
   return Document
 }
 
-// --- 方法 ---
-const loadFiles = async () => {
-  isLoading.value = true
-  try {
-    const res = await fetchPublicFilesAPI(pagination.currentPage, pagination.pageSize)
-    if (res.status === 200) {
-      fileList.value = res.data.files || []
-      pagination.total = res.data.total || 0
-    } else {
-      ElMessage.error(res.data?.message || '加载文件列表失败')
-    }
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('加载文件列表失败')
-  } finally {
-    isLoading.value = false
-  }
-}
+const normalizeFile = (item) => ({
+  fileID: item.fileID || item.id,
+  name: item.name || '未命名文件',
+  size: Number(item.size ?? 0),
+  createdAt: formatDateTime(item.createdAt),
+})
 
-const handlePageChange = () => {
-  loadFiles()
-}
+// --- 筛选配置 ---
+const filterConfig = [
+  {
+    key: 'keyword',
+    type: 'input',
+    label: '文件名',
+    placeholder: '搜索文件名...',
+  },
+  {
+    key: 'date',
+    type: 'daterange',
+    label: '上传时间',
+  },
+]
+const {
+  loading: isLoading,
+  data: fileList,
+  pagination,
+  filterForm,
+  loadData: loadFiles,
+  handleSortChange,
+  handleFilterChange,
+  handleFilterInputChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/files/public', { params }),
+  {
+    normalize: normalizeFile,
+    dataKey: 'files',
+    defaultSort: { prop: 'createdAt', order: 'descending' },
+    filterSchema: { keyword: '', date: [] },
+    pageSize: 10,
+  }
+)
+
+// --- 方法 ---
+// const loadFiles = async () => {
+//   isLoading.value = true
+//   try {
+//     const res = await fetchPublicFilesAPI(pagination.currentPage, pagination.pageSize)
+//     if (res.status === 200) {
+//       fileList.value = res.data.files || []
+//       pagination.total = res.data.total || 0
+//     } else {
+//       ElMessage.error(res.data?.message || '加载文件列表失败')
+//     }
+//   } catch (error) {
+//     console.error(error)
+//     ElMessage.error('加载文件列表失败')
+//   } finally {
+//     isLoading.value = false
+//   }
+// }
+//
+// const handlePageChange = () => {
+//   loadFiles()
+// }
 
 const handleUpload = async (options) => {
   const { file } = options
@@ -187,58 +232,74 @@ onMounted(() => {
       </div>
     </template>
 
-    <el-table :data="fileList" style="width: 100%" v-loading="isLoading">
-      <el-table-column label="文件名" min-width="300">
-        <template #default="{ row }">
-          <div class="file-name-cell">
-            <el-icon class="file-icon">
-              <component :is="getFileIcon(row.name)" />
-            </el-icon>
-            <span class="file-name-text" :title="row.name">{{ row.name }}</span>
-          </div>
-        </template>
-      </el-table-column>
+    <div v-loading="isLoading">
+      <!-- 筛选栏 -->
+      <table-tools-bar
+        :model-value="filterForm"
+        @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
+        :filters="filterConfig"
+        @search="handleFilterChange"
+        @input-change="handleFilterInputChange"
+        @reset="resetFilter"
+      />
+      <el-table
+        :data="fileList"
+        style="width: 100%"
+        @sort-change="handleSortChange"
+        :default-sort="{ prop: 'createdAt', order: 'descending' }"
+      >
+        <el-table-column label="文件名" min-width="300" prop="name" sortable="custom">
+          <template #default="{ row }">
+            <div class="file-name-cell">
+              <el-icon class="file-icon">
+                <component :is="getFileIcon(row.name)" />
+              </el-icon>
+              <span class="file-name-text" :title="row.name">{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
 
-      <el-table-column label="大小" width="120">
-        <template #default="{ row }">
-          {{ formatFileSize(row.size) }}
-        </template>
-      </el-table-column>
+        <el-table-column label="大小" width="120" prop="size" sortable="custom">
+          <template #default="{ row }">
+            {{ formatFileSize(row.size) }}
+          </template>
+        </el-table-column>
 
-      <el-table-column label="上传时间" width="180">
-        <template #default="{ row }">
-          {{ formatDateTime(row.createdAt) }}
-        </template>
-      </el-table-column>
+        <el-table-column label="上传时间" width="180" prop="createdAt" sortable="custom">
+          <template #default="{ row }">
+            {{ formatDateTime(row.createdAt) }}
+          </template>
+        </el-table-column>
 
-      <el-table-column label="操作" width="180" align="center" fixed="right">
-        <template #default="{ row }">
-          <el-button
-            type="primary"
-            link
-            :icon="Download"
-            @click="handleDownload(row)"
-          >
-            下载
-          </el-button>
-          <el-button
-            v-if="isAdmin()"
-            type="danger"
-            link
-            :icon="Delete"
-            @click="handleDelete(row)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
-    <list-pagination
-      v-model="pagination.currentPage"
-      v-model:page-size="pagination.pageSize"
-      :total="pagination.total"
-      @change="handlePageChange"
-    />
+        <el-table-column label="操作" width="180" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              type="primary"
+              link
+              :icon="Download"
+              @click="handleDownload(row)"
+            >
+              下载
+            </el-button>
+            <el-button
+              v-if="isAdmin()"
+              type="danger"
+              link
+              :icon="Delete"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <list-pagination
+        v-model="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        @change="handlePageChange"
+      />
+    </div>
   </el-card>
 </template>
 

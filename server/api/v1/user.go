@@ -305,8 +305,19 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	if pageSize < 1 {
 		pageSize = 10
 	}
+
+	query := service.UserListQuery{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		Role:      ctx.Query("role"),
+		Keyword:   ctx.Query("keyword"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
 	// 1. 调用 Service 获取数据
-	users, total, err := u.service.GetAllUsers(page, pageSize)
+	users, total, err := u.service.GetAllUsers(query)
 	if err != nil {
 		logger.Errorf("failed to query all users: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
