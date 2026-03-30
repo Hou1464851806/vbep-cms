@@ -230,8 +230,22 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	}
 	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
 
+	// 构建查询参数
+	query := service.ApplicationListQuery{
+		ApplicantID:   filterID,
+		ExcludeDrafts: excludeDrafts,
+		Page:          page,
+		PageSize:      pageSize,
+		SortBy:        ctx.Query("sort_by"),
+		Order:         ctx.Query("order"),
+		Status:        ctx.Query("status"),
+		Keyword:       ctx.Query("keyword"),
+		DateStart:     ctx.Query("date_start"),
+		DateEnd:       ctx.Query("date_end"),
+	}
+
 	// 3. 调用 Service
-	applications, total, err := a.applicationService.ListApplications(filterID, excludeDrafts, page, pageSize)
+	applications, total, err := a.applicationService.ListApplications(query)
 	if err != nil {
 		logger.Errorf("failed to list applications: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请列表失败"})
