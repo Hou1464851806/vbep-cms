@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import {ref, onMounted, inject, reactive} from 'vue'
 import {
   Document,
   Upload,
@@ -17,11 +17,12 @@ import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
 import {DOWNLOAD_FILE_LIMIT_MB} from "@/utils/constrains.js";
+import ListPagination from "@/components/ListPagination.vue";
 
 const DOWNLOAD_FILE_LIMIT_BYTES = DOWNLOAD_FILE_LIMIT_MB * 1024 * 1024
 
 // --- API 函数 ---
-const fetchPublicFilesAPI = () => apiClient.get('/api/v1/files/public')
+const fetchPublicFilesAPI = (page, size) => apiClient.get('/api/v1/files/public', { params: { page, size } })
 
 const uploadPublicFileAPI = (file) => {
   const formData = new FormData()
@@ -41,6 +42,13 @@ const isAdmin = inject('isAdmin')
 const fileList = ref([])
 const isLoading = ref(false)
 const isUploading = ref(false)
+
+// 分页相关
+const pagination = reactive({
+  currentPage: 1,
+  pageSize: 10,
+  total: 0
+})
 
 // --- 辅助函数 ---
 const getFileIcon = (fileName) => {
@@ -64,9 +72,10 @@ const getFileIcon = (fileName) => {
 const loadFiles = async () => {
   isLoading.value = true
   try {
-    const res = await fetchPublicFilesAPI()
+    const res = await fetchPublicFilesAPI(pagination.currentPage, pagination.pageSize)
     if (res.status === 200) {
       fileList.value = res.data.files || []
+      pagination.total = res.data.total || 0
     } else {
       ElMessage.error(res.data?.message || '加载文件列表失败')
     }
@@ -76,6 +85,10 @@ const loadFiles = async () => {
   } finally {
     isLoading.value = false
   }
+}
+
+const handlePageChange = () => {
+  loadFiles()
 }
 
 const handleUpload = async (options) => {
@@ -220,6 +233,12 @@ onMounted(() => {
         </template>
       </el-table-column>
     </el-table>
+    <list-pagination
+      v-model="pagination.currentPage"
+      v-model:page-size="pagination.pageSize"
+      :total="pagination.total"
+      @change="handlePageChange"
+    />
   </el-card>
 </template>
 

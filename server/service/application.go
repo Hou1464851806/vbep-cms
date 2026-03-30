@@ -219,31 +219,109 @@ func (s *ApplicationService) UpdateDraftApplication(id, applicantID, affiliation
 	return nil
 }
 
-func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts bool) ([]model.ApplicationListItem, error) {
+// ApplicationListQuery 前端表格的筛选/排序/分页参数
+type ApplicationListQuery struct {
+	ApplicantID   *string
+	ExcludeDrafts bool
+	Page          int
+	PageSize      int
+	SortBy        string // 前端列 prop，如 "auditedAt", "status"
+	Order         string // "asc" 或 "desc"
+	Status        string // 状态筛选
+	Keyword       string // 模糊搜索（申请人昵称 / 数据集标题）
+	DateStart     string // "YYYY-MM-DD"
+	DateEnd       string // "YYYY-MM-DD"
+}
+
+// sortColumnWhitelist 将前端 el-table prop 映射到安全的数据库列
+// 只允许白名单内的列排序，防止 SQL 注入
+var sortColumnWhitelist = map[string]string{
+	"applicantName": "users.nick_name",
+	"datasetTitle":  "datasets.title",
+	"auditedAt":     "applications.updated_at",
+}
+
+// validStatuses 合法的状态值
+var validStatuses = map[string]bool{
+	"draft": true, "pending": true, "approved": true,
+	"rejected": true, "returned": true,
+}
+
+func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.ApplicationListItem, int64, error) {
 	ctx := context.Background()
 	var apps []model.Application
+	var total int64
 
-	db := global.DB.WithContext(ctx).
+	// 基础查询 + LEFT JOIN（用于关键词搜索 & 关联列排序）
+	baseQuery := global.DB.WithContext(ctx).
 		Model(&model.Application{}).
-		Order("updated_at DESC").
+		Joins("LEFT JOIN users ON users.id = applications.applicant_id").
+		Joins("LEFT JOIN datasets ON datasets.id = applications.dataset_id")
+	// ── 权限过滤 ──
+	if q.ApplicantID != nil {
+		baseQuery = baseQuery.Where("applications.applicant_id = ?", *q.ApplicantID)
+	}
+	if q.ExcludeDrafts {
+		baseQuery = baseQuery.Where("applications.status != ?", model.DRAFT)
+	}
+	// ── 状态筛选 ──
+	if q.Status != "" && validStatuses[q.Status] {
+		status, _ := model.ParseApplicationStatus(q.Status)
+		baseQuery = baseQuery.Where("applications.status = ?", status)
+	}
+	// ── 关键词搜索（申请人昵称 / 数据集标题）──
+	if q.Keyword != "" {
+		kw := "%" + q.Keyword + "%"
+		baseQuery = baseQuery.Where(
+			"users.nick_name LIKE ? OR datasets.title LIKE ?", kw, kw,
+		)
+	}
+	// ── 日期范围（基于 updated_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("applications.updated_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			// 包含当天整天：上界取次日零点
+			baseQuery = baseQuery.Where("applications.updated_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count applications: %w", err)
+	}
+	// ── 排序（白名单校验）──
+	orderClause := "applications.updated_at DESC" // 默认
+	if col, ok := sortColumnWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	err := baseQuery.
+		Select("applications.*"). // 避免 JOIN 列干扰 GORM 扫描
+		Order(orderClause).
+		Offset(offset).
+		Limit(q.PageSize).
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, nick_name, email")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, title")
-		})
-
-	// 只允许用户查询自己的申请
-	if applicantID != nil {
-		db = db.Where("applicant_id = ?", *applicantID)
-	}
-
-	if excludeDrafts {
-		db = db.Where("status != ?", model.DRAFT)
-	}
-
-	if err := db.Find(&apps).Error; err != nil {
-		return nil, fmt.Errorf("failed to query applications: %w", err)
+		}).
+		Find(&apps).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query applications: %w", err)
 	}
 
 	// 模型转换 (Model -> DTO)
@@ -252,7 +330,7 @@ func (s *ApplicationService) ListApplications(applicantID *string, excludeDrafts
 		result[i] = app.ToListItem()
 	}
 
-	return result, nil
+	return result, total, nil
 }
 
 func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDetail, error) {

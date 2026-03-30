@@ -187,6 +187,27 @@ func (s *FileService) ListFiles(ctx context.Context, ownerID, ownerType string) 
 	return files, err
 }
 
+func (s *FileService) ListFilesPaginated(ctx context.Context, ownerID, ownerType string, page, pageSize int) ([]model.File, int64, error) {
+	var files []model.File
+	var total int64
+
+	baseQuery := global.DB.WithContext(ctx).
+		Where("owner_id = ? AND owner_type = ?", ownerID, ownerType)
+
+	if err := baseQuery.Model(&model.File{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	err := baseQuery.
+		Order("created_at DESC").
+		Offset(offset).
+		Limit(pageSize).
+		Find(&files).Error
+
+	return files, total, err
+}
+
 func (s *FileService) GetFile(ctx context.Context, fileID, ownerID, ownerType string) (*model.File, error) {
 	var file model.File
 	err := global.DB.WithContext(ctx).
@@ -241,6 +262,11 @@ func (s *FileService) GetApplicationFile(applicationID, fileID string) (*model.F
 func (s *FileService) GetPublicFiles() ([]model.File, error) {
 	ctx := context.Background()
 	return s.ListFiles(ctx, publicOwnerID, publicOwnerType)
+}
+
+func (s *FileService) GetPublicFilesPaginated(page, pageSize int) ([]model.File, int64, error) {
+	ctx := context.Background()
+	return s.ListFilesPaginated(ctx, publicOwnerID, publicOwnerType, page, pageSize)
 }
 
 func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {

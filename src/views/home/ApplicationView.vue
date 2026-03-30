@@ -25,12 +25,16 @@ import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize, formatShortId } from '@/utils/format.js'
 import { APPLICATION_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import {useRoute, useRouter} from "vue-router";
+import ListPagination from "@/components/ListPagination.vue";
+
+import {useTableFilter} from "@/hooks/useTable.js"
+import TableToolsBar from "@/components/TableToolsBar.vue"
 
 const route = useRoute()
 const router = useRouter()
 
 const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
-const fetchApplicationListAPI = () => apiClient.get('/api/v1/applications/')
+const fetchApplicationListAPI = (page, size) => apiClient.get('/api/v1/applications/', { params: { page, size } })
 const fetchApplicationDetailAPI = (id) => apiClient.get(`/api/v1/applications/${id}`)
 const auditApplicationAPI = (id, data) => apiClient.post(`/api/v1/applications/${id}/audit`, data)
 const resubmitApplicationAPI = (id, data, config = {}) =>
@@ -136,9 +140,16 @@ const readStoredUserId = () => {
 
 const currentUserId = ref(readStoredUserId())
 
+// // 分页相关
+// const pagination = reactive({
+//   currentPage: 1,
+//   pageSize: 10,
+//   total: 0
+// })
+
 const isAdmin = inject('isAdmin')
-const applicationList = ref([])
-const isLoading = ref(true)
+// const applicationList = ref([])
+// const isLoading = ref(true)
 const datasetList = ref([])
 const detailDialog = reactive({
   visible: false,
@@ -446,22 +457,27 @@ const handleDownloadAttachment = async (file) => {
   }
 }
 
-const fetchApplications = async () => {
-  isLoading.value = true
-  try {
-    const res = await fetchApplicationListAPI()
-    if (res.status === 200) {
-      applicationList.value = res.data.applications.map((item) => normalizeApplication(item))
-    } else {
-      ElMessage.error(res.data?.message || '申请列表加载失败')
-    }
-  } catch (error) {
-    console.error('Failed to load applications', error)
-    ElMessage.error('申请列表加载失败')
-  } finally {
-    isLoading.value = false
-  }
-}
+// const fetchApplications = async () => {
+//   isLoading.value = true
+//   try {
+//     const res = await fetchApplicationListAPI(pagination.currentPage, pagination.pageSize)
+//     if (res.status === 200) {
+//       applicationList.value = res.data.applications.map((item) => normalizeApplication(item))
+//       pagination.total = res.data.total || 0
+//     } else {
+//       ElMessage.error(res.data?.message || '申请列表加载失败')
+//     }
+//   } catch (error) {
+//     console.error('Failed to load applications', error)
+//     ElMessage.error('申请列表加载失败')
+//   } finally {
+//     isLoading.value = false
+//   }
+// }
+
+// const handlePageChange = () => {
+//   fetchApplications()
+// }
 
 const handleViewDetail = async (row) => {
   detailDialog.visible = true
@@ -966,6 +982,55 @@ const openAppDetailById = () => {
   }
 }
 
+const statusFilterOptions = [
+  { label: '待提交', value: 'draft' },
+  { label: '待审批', value: 'pending' },
+  { label: '已批准', value: 'approved' },
+  { label: '已拒绝', value: 'rejected' },
+  { label: '已退回', value: 'returned' },
+]
+const filterConfig = [
+  {
+    key: 'status',
+    type: 'select',
+    label: '申请状态',
+    placeholder: '全部状态',
+    options: statusFilterOptions,
+  },
+  {
+    key: 'keyword',
+    type: 'input',
+    label: '申请人/数据集',
+    placeholder: '搜索申请人或数据集...',
+  },
+  {
+    key: 'date',
+    type: 'daterange',
+    label: '更新时间',
+  },
+]
+const {
+  loading: isLoading,
+  data: applicationList,
+  pagination,
+  filterForm,
+  loadData: fetchApplications,
+  handleSortChange,
+  handleFilterChange,
+  handleFilterInputChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/applications/', { params }),
+  {
+    normalize: normalizeApplication,
+    dataKey: 'applications',
+    defaultSort: { prop: 'auditedAt', order: 'descending' },
+    filterSchema: { status: '', keyword: '', date: [] },
+    pageSize: 10,
+  }
+)
+
 watch(
   () => detailDialog.data,
   (value) => {
@@ -1010,9 +1075,24 @@ onMounted(async () => {
       </div>
     </template>
 
-    <el-skeleton :rows="5" animated :loading="isLoading">
-      <el-table :data="applicationList" style="width: 100%">
-        <el-table-column label="内部ID" width="100">
+<!--    <el-skeleton :rows="5" animated :loading="isLoading">-->
+    <div v-loading="isLoading">
+      <!-- 筛选栏 -->
+      <table-tools-bar
+        :model-value="filterForm"
+        @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
+        :filters="filterConfig"
+        @search="handleFilterChange"
+        @input-change="handleFilterInputChange"
+        @reset="resetFilter"
+      />
+      <el-table
+        :data="applicationList"
+        style="width: 100%"
+        @sort-change="handleSortChange"
+        :default-sort="{ prop: 'auditedAt', order: 'descending' }"
+      >
+        <el-table-column label="内部ID" width="100" prop="id">
           <template #default="{ row }">
             <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
               <span class="monospace-id">
@@ -1021,18 +1101,18 @@ onMounted(async () => {
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="申请人" width="120">
+        <el-table-column label="申请人" width="120" prop="applicantName" sortable="custom">
           <template #default="scope">
             <div>{{ scope.row.applicant.nickname }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="目标数据集" min-width="150" show-overflow-tooltip>
+        <el-table-column label="目标数据集" min-width="150" prop="datasetTitle" sortable="custom" show-overflow-tooltip>
           <template #default="scope">
             {{ scope.row.dataset.title || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="auditedAt" label="最后更新时间" width="180" />
-        <el-table-column label="状态" width="120">
+        <el-table-column prop="auditedAt" label="最后更新时间" width="180" sortable="custom" />
+        <el-table-column label="状态" width="120" prop="status">
           <template #default="scope">
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
@@ -1125,7 +1205,14 @@ onMounted(async () => {
           </template>
         </el-table-column>
       </el-table>
-    </el-skeleton>
+      <list-pagination
+        v-model="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        @change="handlePageChange"
+      />
+<!--    </el-skeleton>-->
+    </div>
   </el-card>
 
   <!-- 1. 新增申请对话框 (合并说明与选择) -->
