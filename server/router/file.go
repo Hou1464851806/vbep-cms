@@ -41,4 +41,11 @@ func (r *FileRouter) InitFileRouter(router *gin.RouterGroup) {
 		publicFiles.GET("/:fileID/download", middleware.AuthRole(model.Common), fileApi.DownloadPublic)
 		publicFiles.DELETE("/:fileID", middleware.AuthRole(model.SuperAdmin), fileApi.DeletePublic)
 	}
+
+	adminFiles := router.Group("/files")
+	adminFiles.Use(middleware.JWTAuth(), middleware.AuthRole(model.SuperAdmin)) // 至少是管理员
+	{
+		adminFiles.GET("/:fileID/download", fileApi.DownloadGeneric)
+	}
+
 }

@@ -1,12 +1,12 @@
 <script setup>
 import { ref, onMounted, inject, reactive, computed } from 'vue'
-import { Edit, Check, Close, Refresh } from '@element-plus/icons-vue'
+import {Edit, Check, Close, Refresh, Document, Download} from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
 // 复用现有的 axios 实例
 import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
-import { formatDateTime, formatShortId } from '@/utils/format.js'
+import {formatDateTime, formatFileSize, formatShortId} from '@/utils/format.js'
 import ListPagination from "@/components/ListPagination.vue";
 import { useTableFilter } from "@/hooks/useTable.js"
 import TableToolsBar from "@/components/TableToolsBar.vue"
@@ -16,6 +16,11 @@ import TableToolsBar from "@/components/TableToolsBar.vue"
 const fetchUserListAPI = (page,size) => apiClient.get('/api/v1/users', { params: { page, size } })
 // 更新用户信息 (复用 HomeView 中的逻辑)
 const updateUserAPI = (userId, data) => apiClient.patch(`/api/v1/users/${userId}`, data)
+
+const fetchUserFilesAPI = (userId, page, size) => apiClient.get(`/api/v1/users/${userId}/files`, { params: { page, size } })
+
+// 获取通用文件下载
+const downloadFileAPI = (fileID) => apiClient.get(`/api/v1/files/${fileID}/download`, { responseType: 'blob' })
 
 // --- 状态定义 ---
 const currentUser = inject('userInfo')
@@ -39,6 +44,12 @@ const ROLE_MAP = {
   2: { label: '超级管理员', type: 'warning', value: 2 },
 }
 
+const OWNER_TYPE_MAP = {
+  datasets: { label: '数据集文件', type: 'primary' },
+  applications: { label: '申请附件', type: 'success' },
+  public_downloads: { label: '公共下载文件', type: 'warning' }
+}
+
 // --- 计算属性 ---
 
 // 动态判断当前登录用户是否为超级管理员 (Role === 2)
@@ -51,6 +62,8 @@ const isSimpleAdmin = computed(() => currentUser && currentUser.roleId === 1)
 const getRoleTag = (roleVal) => {
   return ROLE_MAP[roleVal] || { label: '未知', type: 'danger' }
 }
+
+const getOwnerTypeTag = (typeVal) => OWNER_TYPE_MAP[typeVal] || { label: typeVal || '未知', type: 'info' }
 
 // // --- 数据加载 ---
 // const fetchUsers = async () => {
@@ -201,6 +214,71 @@ const handleSave = async (originalRow) => {
     ElMessage.error(msg)
   }
 }
+
+// 查看用户文件列表关联逻辑
+const filesDialogVisible = ref(false)
+const currentSelectedUser = ref(null)
+const userFiles = ref([])
+const filesLoading = ref(false)
+const filesPagination = reactive({ currentPage: 1, pageSize: 10, total: 0 })
+const handleViewFiles = (user) => {
+  currentSelectedUser.value = user
+  filesDialogVisible.value = true
+  filesPagination.currentPage = 1
+  loadUserFiles()
+}
+const loadUserFiles = async () => {
+  if (!currentSelectedUser.value) return
+  filesLoading.value = true
+  try {
+    const res = await fetchUserFilesAPI(
+      currentSelectedUser.value.userID,
+      filesPagination.currentPage,
+      filesPagination.pageSize
+    )
+    if (res && res.data) {
+      userFiles.value = res.data.data || []
+      filesPagination.total = res.data.total || 0
+    }
+  } catch (error) {
+    ElMessage.error('无法获取该用户的文件列表')
+    console.error(error)
+  } finally {
+    filesLoading.value = false
+  }
+}
+const handleFilesPageChange = () => {
+  loadUserFiles()
+}
+
+// --- 下载文件逻辑 ---
+const isDownloading = ref(false)
+const handleDownloadFile = async (row) => {
+  isDownloading.value = true
+  try {
+    const res = await downloadFileAPI(row.id)
+    if (!res || !res.data) {
+      ElMessage.error('下载失败：未获取到文件数据')
+      return
+    }
+
+    // Blob 转换与触发下载
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', row.name || '已下载文件')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error(error)
+    ElMessage.error('下载出错，可能是文件不存在或权限不足')
+  } finally {
+    isDownloading.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -301,6 +379,7 @@ const handleSave = async (originalRow) => {
 
             <template v-else>
               <el-button v-if="isSuperAdmin" type="primary" link :icon="Edit" @click="handleEdit(row)">修改</el-button>
+              <el-button v-if="isSuperAdmin" type="primary" link :icon="Document" @click="handleViewFiles(row)">文件</el-button>
             </template>
           </template>
         </el-table-column>
@@ -313,6 +392,74 @@ const handleSave = async (originalRow) => {
       />
     </div>
   </el-card>
+
+  <!-- 用户文件列表弹窗 -->
+  <el-dialog
+    v-model="filesDialogVisible"
+    :title="`文件列表 - ${currentSelectedUser?.nickname || ''}`"
+    width="75%"
+    destroy-on-close
+  >
+    <el-table
+      :data="userFiles"
+      v-loading="filesLoading"
+      height="400"
+      style="width: 100%"
+    >
+      <el-table-column prop="name" label="文件名" min-width="180" show-overflow-tooltip />
+
+<!--      <el-table-column label="文件类型" width="120" prop="Type" align="center">-->
+<!--        <template #default="{ row }">-->
+<!--          <el-tag :type="row.Type ? 'info' : ''" size="small">{{ row.Type || '未分类' }}</el-tag>-->
+<!--        </template>-->
+<!--      </el-table-column>-->
+      <el-table-column label="文件类型" width="160" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getOwnerTypeTag(row.owner_type).type">
+            {{ getOwnerTypeTag(row.owner_type).label }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="md5" label="MD5" width="120" show-overflow-tooltip>
+        <template #default="{ row }">
+          <span class="monospace-id">{{ formatShortId(row.md5) || row.md5 }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="大小" width="100" align="right">
+        <template #default="{ row }">
+          {{ formatFileSize(row.size) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="上传时间" width="160" align="center">
+        <template #default="{ row }">
+          {{ formatDateTime(row.created_at) }}
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="100" align="center" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            type="primary"
+            link
+            :icon="Download"
+            :disabled="isDownloading"
+            @click="handleDownloadFile(row)"
+          >
+            下载
+          </el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+    <!-- 文件列表的分页 -->
+    <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+      <el-pagination
+        v-model:current-page="filesPagination.currentPage"
+        v-model:page-size="filesPagination.pageSize"
+        :total="filesPagination.total"
+        layout="total, prev, pager, next"
+        @current-change="handleFilesPageChange"
+      />
+    </div>
+  </el-dialog>
 </template>
 
 <style scoped>

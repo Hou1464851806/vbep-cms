@@ -12,14 +12,14 @@ func GetDir(ownerType, ownerID string) string {
 
 type File struct {
 	Base
-	Name string `gorm:"not null"`
-	MD5  string `gorm:"not null"`
-	Size uint
+	Name string `gorm:"not null" json:"name"`
+	MD5  string `gorm:"not null" json:"md5"`
+	Size uint   `json:"size"`
 
-	OwnerID   string `gorm:"not null;index"`
-	OwnerType string `gorm:"not null"`
-	CreatorID string `gorm:"not null;index"`
-	Type      string `gorm:"default:''"` // e.g. "form", "identity", "general"
+	OwnerID   string `gorm:"not null;index" json:"owner_id"`
+	OwnerType string `gorm:"not null" json:"owner_type"`
+	CreatorID string `gorm:"not null;index" json:"creator_id"`
+	Type      string `gorm:"default:''" json:"type"` // e.g. "form", "identity", "general"
 }
 
 func (f *File) GetPath() string {
