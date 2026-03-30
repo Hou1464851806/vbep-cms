@@ -14,6 +14,7 @@ import (
 	"server/logger"
 	"server/model"
 	"server/pkg/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,18 +87,82 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
-func (s *UserService) GetAllUsers(page int, pageSize int) ([]*model.User, int64, error) {
+// UserListQuery 前端表格的筛选/排序/分页参数
+type UserListQuery struct {
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "nickname", "email", "createdAt", "role"
+	Order     string // "asc" 或 "desc"
+	Role      string // "" 表示不筛选，"0"/"1"/"2" 筛选具体角色
+	Keyword   string // 模糊搜索（姓名 / 邮箱）
+	DateStart string // "YYYY-MM-DD"
+	DateEnd   string // "YYYY-MM-DD"
+}
+
+// userSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var userSortWhitelist = map[string]string{
+	"nickname":  "users.nick_name",
+	"email":     "users.email",
+	"createdAt": "users.created_at",
+	"role":      "users.role",
+}
+
+func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error) {
 	ctx := context.Background()
 	var users []*model.User
 	var total int64
+
 	baseQuery := global.DB.WithContext(ctx).Model(&model.User{})
-	if err := baseQuery.Count(&total).Error; err != nil {
+	// ── 角色筛选 ──
+	if q.Role != "" {
+		if r, err := strconv.Atoi(q.Role); err == nil {
+			baseQuery = baseQuery.Where("users.role = ?", r)
+		}
+	}
+	// ── 关键词搜索（姓名 / 邮箱）──
+	if q.Keyword != "" {
+		kw := "%" + q.Keyword + "%"
+		baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.email LIKE ?", kw, kw)
+	}
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("users.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("users.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
-	offset := (page - 1) * pageSize
-	if err := baseQuery.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&users).Error; err != nil {
+	// ── 排序（白名单校验）──
+	orderClause := "users.created_at DESC"
+	if col, ok := userSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	if err := baseQuery.
+		Order(orderClause).
+		Offset(offset).
+		Limit(q.PageSize).
+		Find(&users).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to query users: %w", err)
 	}
+
 	return users, total, nil
 }
 
