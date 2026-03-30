@@ -478,3 +478,35 @@ func (u *UserApi) isValidLink(link string) bool {
 
 	return allowedHosts[parsedUrl.Host]
 }
+
+func (u *UserApi) GetUserAllFiles(ctx *gin.Context) {
+	// 1. 从 URL 路径中获取用户ID
+	userID := ctx.Param("id")
+	if userID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "用户ID不能为空"})
+		return
+	}
+	// 2. 从查询参数中获取分页信息
+	page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	size, err := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if err != nil || size < 1 || size > 100 { // 增加一个最大size限制，防止滥用
+		size = 10
+	}
+	// 3. 调用 Service 层方法获取数据
+	files, total, err := u.service.GetUserFiles(userID, page, size)
+	if err != nil {
+		// Service层已经记录了详细错误，这里只返回一个通用的服务器错误
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "获取文件列表失败",
+		})
+		return
+	}
+	// 4. 成功响应，返回数据和总数
+	ctx.JSON(http.StatusOK, gin.H{
+		"data":  files,
+		"total": total,
+	})
+}

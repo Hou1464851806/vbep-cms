@@ -618,3 +618,19 @@ func buildApplicationFileResponse(file model.File) applicationFileResponse {
 		CreatedAt:     file.CreatedAt,
 	}
 }
+
+// DownloadGeneric 管理员根据文件主键直接下载任何类型的文件
+func (f *FileApi) DownloadGeneric(ctx *gin.Context) {
+	fileID := ctx.Param("fileID")
+
+	// 1. 查询数据库获取文件记录
+	var file model.File
+	if err := global.DB.First(&file, "id = ?", fileID).Error; err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
+		return
+	}
+
+	// 2. 本地磁盘读取
+	filePath := file.GetPath()
+	ctx.FileAttachment(filePath, file.Name)
+}
