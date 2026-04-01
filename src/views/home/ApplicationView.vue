@@ -14,9 +14,9 @@ import {
   Plus,
   Back,
   Close,
-  Check,
   Warning,
   CircleCheck,
+  TopRight,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -200,31 +200,7 @@ const draftDialog = reactive({
 const mandatoryUploadRef = ref()
 const identityUploadRef = ref()
 
-const licenseStatus = computed(() => {
-  const app = detailDialog.data
-  if (!app) return { text: '未知', type: 'info', reason: '' }
-
-  if (app.status !== 'approved') {
-    return { text: '未获许可', type: 'info', reason: '' }
-  }
-
-  if (app.expireAt && new Date(app.expireAt) < new Date()) {
-    return { text: '已撤销', type: 'danger', reason: '许可已过期' }
-  }
-
-  return { text: '正常', type: 'success', reason: '' }
-})
-
-const approvedDate = computed(() => {
-  if (!detailDialog.timeline || detailDialog.timeline.length === 0) {
-    return null
-  }
-  const approvedAudit = detailDialog.timeline.find(
-    (audit) => audit.action === 'approved'
-  )
-  return approvedAudit ? approvedAudit.time : null
-})
-
+// (Removed licenseStatus and approvedDate logic)
 
 // 状态：新增申请流程
 const newAppDialog = reactive({
@@ -247,11 +223,6 @@ const statusMetaMap = {
 
 const normalizeApplication = (item = {}) => {
   let meta = statusMetaMap[item.status] || { label: '未知', type: 'info' }
-
-  // 如果状态是 Approved，但当前时间已超过 expireAt，则在前端显示为“已撤销”
-  if (item.status === 'approved' && item.expireAt && new Date(item.expireAt) < new Date()) {
-    meta = { label: '已撤销', type: 'danger' }
-  }
 
   return {
     id: item.id,
@@ -485,7 +456,7 @@ const handleViewDetail = async (row) => {
   detailDialog.data = null
   detailDialog.timeline = []
   detailDialog.audit.result = '' // 重置
-  activeNames.value = isAdmin() ? ['3'] : ['1', '2']
+  activeNames.value = ['2']
   resetAttachmentState()
   try {
     const detailRes = await fetchApplicationDetailAPI(row.id)
@@ -509,6 +480,20 @@ const handleViewDetail = async (row) => {
   } finally {
     detailDialog.loading = false
   }
+}
+
+const goToLicense = (applicationId) => {
+  ElMessageBox.confirm(
+    '您即将离开当前页，前往查看对应的许可记录。确定吗？',
+    '提示',
+    {
+      confirmButtonText: '前往',
+      cancelButtonText: '取消',
+      type: 'info',
+    }
+  ).then(() => {
+    router.push({ path: '/home/licenses', query: { application_id: applicationId } })
+  }).catch(() => {})
 }
 
 const updateApplicationEntry = (nextData) => {
@@ -1381,53 +1366,15 @@ onMounted(async () => {
                 {{ detailDialog.data.affiliation || '-' }}
                 <span v-if="detailDialog.data.position"> / {{ detailDialog.data.position }}</span>
               </el-descriptions-item>
+              <el-descriptions-item v-if="detailDialog.data.status === 'approved'" label="许可状态">
+                <el-link type="primary" @click="goToLicense(detailDialog.data.id)" style="display: inline-flex; align-items: center; gap: 4px;">
+                  查看许可 <el-icon><TopRight /></el-icon>
+                </el-link>
+              </el-descriptions-item>
             </el-descriptions>
           </el-collapse-item>
 
-          <el-collapse-item title="许可状态" name="2">
-            <div v-if="detailDialog.data" class="license-status-wrapper">
-              <div v-if="detailDialog.data.status === 'approved'"
-                  class="license-status-box"
-                  :class="{
-                      'is-valid': licenseStatus.type === 'success',
-                      'is-revoked': licenseStatus.type === 'danger'
-                  }">
-                  <div class="license-left">
-                    <el-icon class="license-icon">
-                      <CircleCheck v-if="licenseStatus.type === 'success'" />
-                      <Warning v-else />
-                    </el-icon>
-                    <div class="license-title">许可状态：{{ licenseStatus.text }}</div>
-                  </div>
-                  <div class="license-right">
-                    <div class="license-content">
-                      <p><strong>许可获取日期：</strong>{{ approvedDate || 'N/A' }}</p>
-                      <p><strong>预计过期日期：</strong>{{ detailDialog.data.expireAt ? formatDateTime(detailDialog.data.expireAt) : '永久' }}</p>
-                      <p v-if="licenseStatus.reason"><strong>描述：</strong>{{ licenseStatus.reason }}</p>
-                    </div>
-                  </div>
-              </div>
-              <div v-else class="license-status-box is-unavailable">
-                  <div class="license-left">
-                    <el-icon class="license-icon"><Warning /></el-icon>
-                    <div class="license-title">许可状态：等待中</div>
-                  </div>
-                  <div class="license-right">
-                    <div class="license-content">
-                      <p>
-                          {{ detailDialog.data.status === 'pending' ? '您的申请正在审批中' :
-                            detailDialog.data.status === 'rejected' ? '您的申请已被拒绝' :
-                            detailDialog.data.status === 'returned' ? '您的申请已被退回，请修改后重新提交' :
-                            detailDialog.data.status === 'draft' ? '申请尚在草稿阶段，请完善后提交' : '未获得数据访问许可'
-                          }}
-                      </p>
-                    </div>
-                  </div>
-              </div>
-            </div>
-          </el-collapse-item>
-
-          <el-collapse-item title="审批时间线" name="3">
+          <el-collapse-item title="审批时间线" name="2">
             <el-row :gutter="20">
               <!-- 左侧：时间轴 -->
               <el-col :span="12" class="audit-timeline-col">

@@ -63,6 +63,11 @@ const router = createRouter({
           component: ApplicationView,
         },
         {
+          path: 'licenses',
+          name: 'license-list',
+          component: () => import('@/views/home/LicenseView.vue'),
+        },
+        {
           path: 'downloads',
           name: 'download-center',
           component: DownloadCenterView,

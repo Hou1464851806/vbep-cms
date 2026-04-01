@@ -98,12 +98,13 @@ func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetList
 		selectQuery += ", 1 as has_access"
 	} else {
 		selectQuery += fmt.Sprintf(`, 
-			(SELECT COUNT(*) FROM applications 
-			 WHERE applications.dataset_id = datasets.id 
-			 AND applications.applicant_id = '%s' 
-			 AND applications.status = %d
-			 AND (applications.expire_at IS NULL OR applications.expire_at > '%s')) > 0 as has_access`,
-			q.UserID, model.APPROVED, time.Now().Format("2006-01-02 15:04:05"))
+			(SELECT COUNT(*) FROM licenses 
+			 WHERE licenses.dataset_id = datasets.id 
+			 AND licenses.applicant_id = '%s' 
+			 AND licenses.status = %d
+			 AND licenses.deleted_at IS NULL
+			 AND (licenses.expire_at IS NULL OR licenses.expire_at > '%s')) > 0 as has_access`,
+			q.UserID, model.LicenseNormal, time.Now().Format("2006-01-02 15:04:05"))
 	}
 	// ── 排序（白名单校验）──
 	orderClause := "datasets.created_at DESC"
@@ -153,11 +154,11 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 		return &dataset, true, nil
 	}
 
-	// 3. 普通用户查申请记录
+	// 3. 普通用户查许可记录
 	var count int64
 	err = global.DB.WithContext(ctx).
-		Model(&model.Application{}).
-		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.APPROVED).
+		Model(&model.License{}).
+		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.LicenseNormal).
 		Where("expire_at IS NULL OR expire_at > ?", time.Now()).
 		Count(&count).Error
 
@@ -202,20 +203,33 @@ func (s *DatasetService) UpdateDataset(id string, title, description string) (*m
 func (s *DatasetService) DeleteDataset(id string) error {
 	ctx := context.Background()
 
-	if err := NewFileService().DeleteFilesByDataset(id); err != nil {
-		return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
-	}
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := NewFileService().DeleteFilesByDataset(id); err != nil {
+			return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
+		}
 
-	res := global.DB.WithContext(ctx).Where("id = ?", id).Delete(&model.Dataset{})
-	if res.Error != nil {
-		return fmt.Errorf("failed to delete dataset: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return fmt.Errorf("dataset not found")
-	} else if res.RowsAffected > 1 {
-		return fmt.Errorf("more than 1 dataset affected")
-	}
-	return nil
+		if err := tx.Model(&model.License{}).
+			Where("dataset_id = ? AND status = ?", id, model.LicenseNormal).
+			Updates(map[string]interface{}{
+				"status":        model.LicenseRevoked,
+				"revoke_reason": "对应数据集已被移除",
+			}).Error; err != nil {
+			return fmt.Errorf("failed to revoke licenses: %w", err)
+		}
+
+		res := tx.Where("id = ?", id).Delete(&model.Dataset{})
+		if res.Error != nil {
+			return fmt.Errorf("failed to delete dataset: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("dataset not found")
+		} else if res.RowsAffected > 1 {
+			return fmt.Errorf("more than 1 dataset affected")
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (s *DatasetService) GetDatasetStatistics(datasetID string) (*model.DatasetStatistics, error) {

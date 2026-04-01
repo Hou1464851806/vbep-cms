@@ -57,6 +57,12 @@ func NewRouter() *gin.Engine {
 	statisticRouter := new(router.StatisticRouter)
 	statisticRouter.InitStatisticRouter(v1)
 
+	// license
+	licenseService := service.NewLicenseService()
+	licenseApi := api.NewLicenseApi(licenseService)
+	licenseRouter := router.NewLicenseRouter(licenseApi)
+	licenseRouter.InitLicenseRouter(v1)
+
 	//mailApi := api.NewMailApi(mailService)
 	//mailRouter := router.NewMailRouter(mailApi)
 	//mailRouter.InitMailRouter(v1)

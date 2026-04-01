@@ -183,7 +183,7 @@ func (s *ApplicationService) SubmitDraftApplication(id, applicantID, affiliation
 		return err
 	}
 
-	subject := fmt.Sprintf("数据集有新的申请")
+	subject := "数据集有新的申请"
 	url := fmt.Sprintf("%s/home/applications?id=%s", global.CFG.Web.Url, id)
 	s.sendNewAppNotificationEmail(subject, datasetTitle, url)
 
@@ -387,7 +387,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.Application
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Select("id, status").
+			Select("id, status, dataset_id, applicant_id").
 			Where("id = ?", id).
 			First(&existing).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -428,6 +428,34 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 
 		if err := tx.Model(&lastAudit).Updates(updates).Error; err != nil {
 			return fmt.Errorf("failed to update audit for application %s: %w", id, err)
+		}
+
+		if status == model.APPROVED {
+			var license model.License
+			if err := tx.Where("application_id = ?", id).First(&license).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					newLicense := model.License{
+						DatasetID:     existing.DatasetID,
+						ApplicantID:   existing.ApplicantID,
+						ApplicationID: id,
+						Status:        model.LicenseNormal,
+						ExpireAt:      expireAt,
+					}
+					if err := tx.Create(&newLicense).Error; err != nil {
+						return fmt.Errorf("failed to create license: %w", err)
+					}
+				} else {
+					return fmt.Errorf("failed to query license: %w", err)
+				}
+			} else {
+				if err := tx.Model(&license).Updates(map[string]interface{}{
+					"status":        model.LicenseNormal,
+					"expire_at":     expireAt,
+					"revoke_reason": "",
+				}).Error; err != nil {
+					return fmt.Errorf("failed to update license: %w", err)
+				}
+			}
 		}
 
 		return nil
@@ -561,7 +589,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 
 	cleanup(true)
 
-	subject := fmt.Sprintf("数据集有新的申请")
+	subject := "数据集有新的申请"
 	url := fmt.Sprintf("%s/home/applications?id=%s", global.CFG.Web.Url, id)
 	s.sendNewAppNotificationEmail(subject, datasetTitle, url)
 

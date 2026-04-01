@@ -66,6 +66,29 @@ func autoMigrate(db *gorm.DB) error {
 		&model.Audit{},
 		&model.Setting{},
 		&model.Statistic{},
+		&model.License{},
 	)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Auto mitigate existing approved applications to licenses
+	// This ensures that all existing approved applications have a corresponding license.
+	var apps []model.Application
+	db.Where("status = ?", model.APPROVED).Find(&apps)
+	for _, app := range apps {
+		var count int64
+		db.Model(&model.License{}).Where("application_id = ?", app.ID).Count(&count)
+		if count == 0 {
+			db.Create(&model.License{
+				DatasetID:     app.DatasetID,
+				ApplicantID:   app.ApplicantID,
+				ApplicationID: app.ID,
+				Status:        model.LicenseNormal,
+				ExpireAt:      app.ExpireAt,
+			})
+		}
+	}
+
+	return nil
 }
