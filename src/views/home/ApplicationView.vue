@@ -957,13 +957,23 @@ const getActionTagType = (action) => {
 }
 
 
-const statusFilterOptions = [
-  { label: '待提交', value: 'draft',    tagType: statusMetaMap.draft.type },
-  { label: '待审批', value: 'pending',  tagType: statusMetaMap.pending.type },
-  { label: '已批准', value: 'approved', tagType: statusMetaMap.approved.type },
-  { label: '已拒绝', value: 'rejected', tagType: statusMetaMap.rejected.type },
-  { label: '已退回', value: 'returned', tagType: statusMetaMap.returned.type },
-]
+const statusFilterOptions = computed(() => {
+  const allOptions = [
+    { label: '待提交', value: 'draft',    tagType: statusMetaMap.draft.type },
+    { label: '待审批', value: 'pending',  tagType: statusMetaMap.pending.type },
+    { label: '已批准', value: 'approved', tagType: statusMetaMap.approved.type },
+    { label: '已拒绝', value: 'rejected', tagType: statusMetaMap.rejected.type },
+    { label: '已退回', value: 'returned', tagType: statusMetaMap.returned.type },
+  ]
+  
+  // 管理员无需管理他人的未提交草稿，故过滤掉
+  if (isAdmin()) {
+    return allOptions.filter(opt => opt.value !== 'draft')
+  }
+  
+  // 普通用户需要管理自己的草稿，显示所有选项
+  return allOptions
+})
 const {
   loading: isLoading,
   data: applicationList,

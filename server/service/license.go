@@ -47,7 +47,7 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 	var total int64
 
 	baseQuery := global.DB.WithContext(ctx).
-		Model(&model.License{}).
+		Model(&model.License{}).Unscoped().
 		Joins("LEFT JOIN users ON users.id = licenses.applicant_id").
 		Joins("LEFT JOIN datasets ON datasets.id = licenses.dataset_id")
 

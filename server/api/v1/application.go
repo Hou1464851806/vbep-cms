@@ -220,15 +220,13 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 	// 2. 决定查询范围
 	var filterID *string
 	excludeDrafts := false
-	// 假设 model.Common == 0, model.Admin == 1.
-	// 如果角色是 Common (0)，则传入当前用户ID进行筛选
 	if currentUser.Role == model.Common {
+		// 普通用户只能看自己的，且默认包含草稿
 		filterID = &currentUser.ID
-	} else if currentUser.Role == model.Admin {
-		// 普通管理员不可见草稿，超级管理员(Role > Admin)可见
+	} else {
+		// 管理员及以上角色默认不看草稿
 		excludeDrafts = true
 	}
-	// 如果是 Admin 或更高，filterID 保持为 nil (查询所有)
 
 	// 构建查询参数
 	query := service.ApplicationListQuery{

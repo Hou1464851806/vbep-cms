@@ -257,9 +257,10 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 
 	// 基础查询 + LEFT JOIN（用于关键词搜索 & 关联列排序）
 	baseQuery := global.DB.WithContext(ctx).
-		Model(&model.Application{}).
+		Model(&model.Application{}).Unscoped().
 		Joins("LEFT JOIN users ON users.id = applications.applicant_id").
-		Joins("LEFT JOIN datasets ON datasets.id = applications.dataset_id")
+		Joins("LEFT JOIN datasets ON datasets.id = applications.dataset_id").
+		Where("applications.deleted_at IS NULL")
 	// ── 权限过滤 ──
 	if q.ApplicantID != nil {
 		baseQuery = baseQuery.Where("applications.applicant_id = ?", *q.ApplicantID)
@@ -358,7 +359,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDe
 	var app model.Application
 
 	err := global.DB.WithContext(ctx).
-		Model(&model.Application{}).
+		Model(&model.Application{}).Unscoped().
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
 			return db.Unscoped().Select("id, nick_name, email, deleted_at")
 		}).
@@ -370,7 +371,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDe
 				return db.Unscoped().Select("id, nick_name, email, deleted_at")
 			})
 		}).
-		Where("id = ?", id).
+		Where("applications.id = ? AND applications.deleted_at IS NULL", id).
 		First(&app).Error
 
 	if err != nil {
