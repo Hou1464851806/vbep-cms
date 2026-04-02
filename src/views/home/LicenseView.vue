@@ -1,6 +1,6 @@
 <script setup>
-import { ref, reactive, onMounted, inject, computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { reactive, onMounted, inject } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Warning,
@@ -19,13 +19,20 @@ import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
 import IdCell from "@/components/IdCell.vue"
 
 const router = useRouter()
-const route = useRoute()
 const isAdmin = inject('isAdmin')
 
 // Normalize data
 const normalizeLicense = (item) => {
-  let statusText = item.status === 'normal' ? '正常' : '撤销'
-  let statusType = item.status === 'normal' ? 'success' : 'danger'
+  let statusText = '正常'
+  let statusType = 'success'
+
+  if (item.status === 'revoked') {
+    statusText = '撤销'
+    statusType = 'danger'
+  } else if (item.status === 'expired') {
+    statusText = '过期'
+    statusType = 'warning'
+  }
 
   return {
     id: item.id,
@@ -43,8 +50,9 @@ const normalizeLicense = (item) => {
 }
 
 const statusFilterOptions = [
-  { label: '正常', value: 'normal' },
-  { label: '撤销', value: 'revoked' },
+  { label: '正常', value: 'normal', tagType: 'success' },
+  { label: '过期', value: 'expired', tagType: 'warning' },
+  { label: '撤销', value: 'revoked', tagType: 'danger' },
 ]
 
 const {
@@ -175,6 +183,7 @@ const submitRevoke = async () => {
                 label="所属数据集"
                 type="input"
                 v-model="filterForm.dataset_name"
+                placeholder="搜索名称或 ID..."
                 @change="handleFilterChange"
                 sort-prop="datasetTitle"
                 :sort-state="sortState"
@@ -193,6 +202,7 @@ const submitRevoke = async () => {
                 label="获得者"
                 type="input"
                 v-model="filterForm.applicant"
+                placeholder="搜索姓名或 ID..."
                 @change="handleFilterChange"
                 sort-prop="applicantName"
                 :sort-state="sortState"
@@ -286,7 +296,7 @@ const submitRevoke = async () => {
                 type="danger"
                 link
                 :icon="Remove"
-                :disabled="scope.row.status === 'revoked'"
+                :disabled="scope.row.status === 'revoked' || scope.row.status === 'expired'"
                 @click="handleRevokeClick(scope.row)"
               >
                 撤回
@@ -331,6 +341,11 @@ const submitRevoke = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* Ensure disabled danger link buttons appear gray */
+:deep(.el-button.is-disabled.el-button--danger.is-link) {
+  color: var(--el-text-color-placeholder) !important;
 }
 </style>
 

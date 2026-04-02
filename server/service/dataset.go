@@ -7,6 +7,7 @@ import (
 	"server/global"
 	"server/logger"
 	"server/model"
+	"server/pkg/utils"
 	"time"
 
 	"gorm.io/gorm"
@@ -72,11 +73,19 @@ func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetList
 	}
 	// ── 数据集名称搜索 ──
 	if q.Name != "" {
-		baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.Name+"%")
+		if len(q.Name) == 36 || (len(q.Name) >= 8 && utils.IsHex(q.Name)) {
+			baseQuery = baseQuery.Where("datasets.title LIKE ? OR datasets.id LIKE ?", "%"+q.Name+"%", q.Name+"%")
+		} else {
+			baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.Name+"%")
+		}
 	}
 	// ── 创建者昵称搜索 ──
 	if q.Creator != "" {
-		baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Creator+"%")
+		if len(q.Creator) == 36 || (len(q.Creator) >= 8 && utils.IsHex(q.Creator)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Creator+"%", q.Creator+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Creator+"%")
+		}
 	}
 	// ── 日期范围（基于 created_at）──
 	loc := time.Local

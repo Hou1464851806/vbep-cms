@@ -15,6 +15,7 @@ import (
 
 	"server/global"
 	"server/model"
+	"server/pkg/utils"
 )
 
 var (
@@ -281,11 +282,19 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 	}
 	// ── 数据集名称搜索 ──
 	if q.DatasetName != "" {
-		baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.DatasetName+"%")
+		if len(q.DatasetName) == 36 || (len(q.DatasetName) >= 8 && utils.IsHex(q.DatasetName)) {
+			baseQuery = baseQuery.Where("datasets.title LIKE ? OR datasets.id LIKE ?", "%"+q.DatasetName+"%", q.DatasetName+"%")
+		} else {
+			baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.DatasetName+"%")
+		}
 	}
 	// ── 申请人昵称搜索 ──
 	if q.Applicant != "" {
-		baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Applicant+"%")
+		if len(q.Applicant) == 36 || (len(q.Applicant) >= 8 && utils.IsHex(q.Applicant)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Applicant+"%", q.Applicant+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Applicant+"%")
+		}
 	}
 	// ── 日期范围（基于 updated_at）──
 	loc := time.Local

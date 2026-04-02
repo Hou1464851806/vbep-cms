@@ -44,9 +44,9 @@ const getOwnerTypeTag = (v) => OWNER_TYPE_MAP[v] || { label: v || '未知', type
 
 // --- 筛选选项 ---
 const roleFilterOptions = [
-  { label: '普通用户',   value: 0 },
-  { label: '管理员',     value: 1 },
-  { label: '超级管理员', value: 2 },
+  { label: '普通用户',   value: 0, tagType: ROLE_MAP[0].type },
+  { label: '管理员',     value: 1, tagType: ROLE_MAP[1].type },
+  { label: '超级管理员', value: 2, tagType: ROLE_MAP[2].type },
 ]
 
 const normalizeUser = (item) => ({
@@ -75,8 +75,9 @@ const {
     normalize:    normalizeUser,
     dataKey:      'data',
     defaultSort:  { prop: 'createdAt', order: 'descending' },
-    filterSchema: { role: '', keyword: '', date: [], id_prefix: '' },
+    filterSchema: { role: '', nickname: '', email: '', date: [], id_prefix: '' },
     pageSize:     10,
+    syncUrl:      true,
   }
 )
 
@@ -223,10 +224,10 @@ const handleDownloadFile = async (row) => {
         style="width: 100%"
       >
         <!-- 用户 ID -->
-        <el-table-column label="内部ID" width="110">
+        <el-table-column label="用户ID" width="110">
           <template #header>
             <table-header-filter
-              label="内部ID"
+              label="用户ID"
               type="id-search"
               v-model="filterForm.id_prefix"
               @change="handleFilterChange"
@@ -243,11 +244,9 @@ const handleDownloadFile = async (row) => {
             <table-header-filter
               label="姓名"
               type="input"
-              v-model="filterForm.keyword"
+              v-model="filterForm.nickname"
+              placeholder="搜索姓名或 ID..."
               @change="handleFilterChange"
-              sort-prop="nickname"
-              :sort-state="sortState"
-              @sort="handleSortChange"
             />
           </template>
           <template #default="{ row }">
@@ -261,14 +260,15 @@ const handleDownloadFile = async (row) => {
           <template #header>
             <table-header-filter
               label="邮箱"
-              sort-prop="email"
-              :sort-state="sortState"
-              @sort="handleSortChange"
+              type="input"
+              v-model="filterForm.email"
+              placeholder="搜索邮箱或 ID..."
+              @change="handleFilterChange"
             />
           </template>
           <template #default="{ row }">
             <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].email" size="small" />
-            <span v-else class="sub-text">{{ row.email || '-' }}</span>
+            <span v-else>{{ row.email || '-' }}</span>
           </template>
         </el-table-column>
 

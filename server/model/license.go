@@ -57,8 +57,8 @@ func (l License) ToListItem() LicenseListItem {
 
 	// 动态检测是否时间过期
 	if l.Status == LicenseNormal && l.ExpireAt != nil && l.ExpireAt.Before(time.Now()) {
-		item.Status = "revoked"
-		item.RevokeReason = "已达过期时间，正常过期"
+		item.Status = "expired"
+		item.RevokeReason = ""
 	}
 
 	return item

@@ -19,7 +19,7 @@ import (
 	"server/global"
 	"server/logger"
 	"server/model"
-	"server/pkg/uuid"
+	"server/pkg/utils"
 )
 
 const (
@@ -77,7 +77,7 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 	}
 	defer src.Close()
 
-	fileUUID := uuid.NewV4()
+	fileUUID := utils.NewV4()
 	ownerDir := model.GetDir(ownerType, ownerID)
 	if err := os.MkdirAll(ownerDir, os.ModePerm); err != nil {
 		return nil, "", fmt.Errorf("failed to create upload directory: %w", err)

@@ -955,11 +955,11 @@ const getActionTagType = (action) => {
 
 
 const statusFilterOptions = [
-  { label: '待提交', value: 'draft' },
-  { label: '待审批', value: 'pending' },
-  { label: '已批准', value: 'approved' },
-  { label: '已拒绝', value: 'rejected' },
-  { label: '已退回', value: 'returned' },
+  { label: '待提交', value: 'draft',    tagType: statusMetaMap.draft.type },
+  { label: '待审批', value: 'pending',  tagType: statusMetaMap.pending.type },
+  { label: '已批准', value: 'approved', tagType: statusMetaMap.approved.type },
+  { label: '已拒绝', value: 'rejected', tagType: statusMetaMap.rejected.type },
+  { label: '已退回', value: 'returned', tagType: statusMetaMap.returned.type },
 ]
 const {
   loading: isLoading,
@@ -1067,6 +1067,7 @@ onMounted(async () => {
               label="申请人"
               type="input"
               v-model="filterForm.applicant"
+              placeholder="搜索姓名或 ID..."
               @change="handleFilterChange"
               sort-prop="applicantName"
               :sort-state="sortState"
@@ -1084,6 +1085,7 @@ onMounted(async () => {
               label="目标数据集"
               type="input"
               v-model="filterForm.dataset_name"
+              placeholder="搜索名称或 ID..."
               @change="handleFilterChange"
               sort-prop="datasetTitle"
               :sort-state="sortState"

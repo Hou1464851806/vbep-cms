@@ -313,6 +313,9 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 		Order:     ctx.Query("order"),
 		Role:      ctx.Query("role"),
 		Keyword:   ctx.Query("keyword"),
+		IdPrefix:  ctx.Query("id_prefix"),
+		Nickname:  ctx.Query("nickname"),
+		Email:     ctx.Query("email"),
 		DateStart: ctx.Query("date_start"),
 		DateEnd:   ctx.Query("date_end"),
 	}

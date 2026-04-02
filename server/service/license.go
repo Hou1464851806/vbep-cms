@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"server/global"
 	"server/model"
+	"server/pkg/utils"
 	"time"
 
 	"gorm.io/gorm"
@@ -74,12 +75,20 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 
 	// ── 数据集名称搜索 ──
 	if q.DatasetName != "" {
-		baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.DatasetName+"%")
+		if len(q.DatasetName) == 36 || (len(q.DatasetName) >= 8 && utils.IsHex(q.DatasetName)) {
+			baseQuery = baseQuery.Where("datasets.title LIKE ? OR datasets.id LIKE ?", "%"+q.DatasetName+"%", q.DatasetName+"%")
+		} else {
+			baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.DatasetName+"%")
+		}
 	}
 
 	// ── 获得者昵称搜索 ──
 	if q.Applicant != "" {
-		baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Applicant+"%")
+		if len(q.Applicant) == 36 || (len(q.Applicant) >= 8 && utils.IsHex(q.Applicant)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Applicant+"%", q.Applicant+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Applicant+"%")
+		}
 	}
 
 	// ── 状态筛选 ──
@@ -87,7 +96,9 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 		if q.Status == "normal" {
 			baseQuery = baseQuery.Where("licenses.status = ? AND (licenses.expire_at IS NULL OR licenses.expire_at > ?)", model.LicenseNormal, time.Now())
 		} else if q.Status == "revoked" {
-			baseQuery = baseQuery.Where("licenses.status = ? OR (licenses.status = ? AND licenses.expire_at <= ?)", model.LicenseRevoked, model.LicenseNormal, time.Now())
+			baseQuery = baseQuery.Where("licenses.status = ?", model.LicenseRevoked)
+		} else if q.Status == "expired" {
+			baseQuery = baseQuery.Where("licenses.status = ? AND licenses.expire_at <= ?", model.LicenseNormal, time.Now())
 		}
 	}
 

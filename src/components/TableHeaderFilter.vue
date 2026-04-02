@@ -82,7 +82,7 @@ const validateId = (val) => {
   if (!val) return ''
   const len = val.length
   if (len > 0 && len < 8)  return '请输入至少 8 位 ID 前缀'
-  if (len > 8 && len < 36) return '请输入 8 位前缀或完整 UUID（36 位）'
+  if (len > 8 && len < 36) return '请输入 8 位前缀或完整 36 位 ID'
   if (len > 36) return 'ID 过长'
   return ''
 }
@@ -208,7 +208,7 @@ const handleKeyEnter = () => {
         <el-input
           ref="inputRef"
           v-model="localValue"
-          placeholder="8 位前缀或完整 UUID（36 位）"
+          placeholder="8位ID前缀或完整36位ID"
           clearable size="small"
           @keyup.enter="handleKeyEnter"
           @clear="handleClear"
@@ -234,7 +234,18 @@ const handleKeyEnter = () => {
           class="th-select-item"
           :class="{ 'is-active': modelValue === opt.value }"
           @click="handleSelectChange(opt.value)"
-        >{{ opt.label }}</div>
+        >
+          <el-tag
+            v-if="opt.tagType !== undefined"
+            :type="opt.tagType"
+            size="small"
+            :effect="modelValue === opt.value ? 'dark' : 'light'"
+            class="th-opt-tag"
+          >
+            {{ opt.label }}
+          </el-tag>
+          <span v-else>{{ opt.label }}</span>
+        </div>
       </div>
 
     </el-popover>
@@ -376,5 +387,14 @@ const handleKeyEnter = () => {
   height: 1px;
   background: var(--el-border-color-lighter);
   margin: 4px 6px;
+}
+
+/* 标签样式微调 */
+.th-filter-popover .th-opt-tag {
+  border-radius: 4px;
+  height: 20px;
+  line-height: 18px;
+  padding: 0 6px;
+  font-weight: normal;
 }
 </style>

@@ -95,6 +95,9 @@ type UserListQuery struct {
 	Order     string // "asc" 或 "desc"
 	Role      string // "" 表示不筛选，"0"/"1"/"2" 筛选具体角色
 	Keyword   string // 模糊搜索（姓名 / 邮箱）
+	IdPrefix  string // ID前缀匹配
+	Nickname  string // 姓名精确/模糊匹配
+	Email     string // 邮箱精确/模糊匹配
 	DateStart string // "YYYY-MM-DD"
 	DateEnd   string // "YYYY-MM-DD"
 }
@@ -119,10 +122,29 @@ func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error)
 			baseQuery = baseQuery.Where("users.role = ?", r)
 		}
 	}
-	// ── 关键词搜索（姓名 / 邮箱）──
+	// ── 关键词搜索（姓名 / 邮箱 回退兼容）──
 	if q.Keyword != "" {
 		kw := "%" + q.Keyword + "%"
 		baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.email LIKE ?", kw, kw)
+	}
+	// ── 独立字段搜索 ──
+	if q.IdPrefix != "" {
+		idkw := q.IdPrefix + "%"
+		baseQuery = baseQuery.Where("users.id LIKE ?", idkw)
+	}
+	if q.Nickname != "" {
+		if len(q.Nickname) == 36 || (len(q.Nickname) >= 8 && utils.IsHex(q.Nickname)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Nickname+"%", q.Nickname+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Nickname+"%")
+		}
+	}
+	if q.Email != "" {
+		if len(q.Email) == 36 || (len(q.Email) >= 8 && utils.IsHex(q.Email)) {
+			baseQuery = baseQuery.Where("users.email LIKE ? OR users.id LIKE ?", "%"+q.Email+"%", q.Email+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.email LIKE ?", "%"+q.Email+"%")
+		}
 	}
 	// ── 日期范围（基于 created_at）──
 	loc := time.Local
