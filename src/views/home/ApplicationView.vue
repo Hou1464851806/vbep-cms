@@ -29,6 +29,7 @@ import ListPagination from "@/components/ListPagination.vue";
 
 import {useTableFilter} from "@/hooks/useTable.js"
 import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
+import IdCell from "@/components/IdCell.vue"
 
 const route = useRoute()
 const router = useRouter()
@@ -1056,9 +1057,7 @@ onMounted(async () => {
             />
           </template>
           <template #default="{ row }">
-            <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-              <span class="monospace-id">{{ formatShortId(row.id) }}</span>
-            </el-tooltip>
+            <id-cell :id="row.id" />
           </template>
         </el-table-column>
 
@@ -1092,7 +1091,7 @@ onMounted(async () => {
             />
           </template>
           <template #default="scope">
-            {{ scope.row.dataset.title || '-' }}
+            <span class="table-name-text">{{ scope.row.dataset.title || '-' }}</span>
           </template>
         </el-table-column>
 
@@ -1109,7 +1108,7 @@ onMounted(async () => {
             />
           </template>
           <template #default="{ row }">
-            {{ row.auditedAt }}
+            <span class="table-time-text">{{ row.auditedAt }}</span>
           </template>
         </el-table-column>
 

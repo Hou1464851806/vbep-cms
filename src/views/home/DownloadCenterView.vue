@@ -1,5 +1,5 @@
 <script setup>
-import {ref, onMounted, inject, reactive} from 'vue'
+import {ref, onMounted, inject} from 'vue'
 import {
   Document,
   Upload,
@@ -10,6 +10,9 @@ import {
   VideoPlay,
   Headset,
   Box,
+  Memo,
+  DataAnalysis,
+  Tickets,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -41,34 +44,28 @@ const downloadPublicFileAPI = (fileID) =>
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
-// const fileList = ref([])
-// const isLoading = ref(false)
 const isUploading = ref(false)
 
-// // 分页相关
-// const pagination = reactive({
-//   currentPage: 1,
-//   pageSize: 10,
-//   total: 0
-// })
-
 // --- 辅助函数 ---
-const getFileIcon = (fileName) => {
-  if (!fileName) return Document
+const FILE_TYPE_MAP = [
+  { exts: ['pdf'],                                           icon: Document,     cls: 'file-icon-pdf'     },
+  { exts: ['doc', 'docx', 'wps', 'odt', 'rtf'],             icon: Memo,         cls: 'file-icon-word'    },
+  { exts: ['xls', 'xlsx', 'et', 'ods', 'csv'],              icon: DataAnalysis, cls: 'file-icon-excel'   },
+  { exts: ['ppt', 'pptx', 'dps', 'odp'],                    icon: Tickets,      cls: 'file-icon-ppt'     },
+  { exts: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'], icon: Picture,  cls: 'file-icon-image'   },
+  { exts: ['mp4', 'avi', 'mov', 'mkv', 'webm'],             icon: VideoPlay,    cls: 'file-icon-video'   },
+  { exts: ['mp3', 'wav', 'ogg', 'flac'],                    icon: Headset,      cls: 'file-icon-audio'   },
+  { exts: ['zip', 'rar', '7z', 'tar', 'gz', 'tgz'],        icon: Box,          cls: 'file-icon-zip'     },
+]
+
+const getFileType = (fileName) => {
+  if (!fileName) return { icon: Document, cls: 'file-icon-default' }
   const ext = fileName.split('.').pop().toLowerCase()
-
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp']
-  const videoExts = ['mp4', 'avi', 'mov', 'mkv', 'webm']
-  const audioExts = ['mp3', 'wav', 'ogg', 'flac']
-  const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz']
-
-  if (imageExts.includes(ext)) return Picture
-  if (videoExts.includes(ext)) return VideoPlay
-  if (audioExts.includes(ext)) return Headset
-  if (archiveExts.includes(ext)) return Box
-
-  return Document
+  return FILE_TYPE_MAP.find(t => t.exts.includes(ext)) || { icon: Document, cls: 'file-icon-default' }
 }
+
+const getFileIcon = (fileName) => getFileType(fileName).icon
+const getFileIconClass = (fileName) => getFileType(fileName).cls
 
 const normalizeFile = (item) => ({
   fileID: item.fileID || item.id,
@@ -104,27 +101,6 @@ const {
 )
 
 // --- 方法 ---
-// const loadFiles = async () => {
-//   isLoading.value = true
-//   try {
-//     const res = await fetchPublicFilesAPI(pagination.currentPage, pagination.pageSize)
-//     if (res.status === 200) {
-//       fileList.value = res.data.files || []
-//       pagination.total = res.data.total || 0
-//     } else {
-//       ElMessage.error(res.data?.message || '加载文件列表失败')
-//     }
-//   } catch (error) {
-//     console.error(error)
-//     ElMessage.error('加载文件列表失败')
-//   } finally {
-//     isLoading.value = false
-//   }
-// }
-//
-// const handlePageChange = () => {
-//   loadFiles()
-// }
 
 const handleUpload = async (options) => {
   const { file } = options
@@ -204,8 +180,7 @@ onMounted(() => {
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
-        <span v-if="isAdmin()">下载中心（上传文件大小不能超过 {{ formatFileSize(DOWNLOAD_FILE_LIMIT_BYTES) }}）</span>
-        <span v-else>下载中心</span>
+        <span>下载中心</span>
         <div class="header-actions">
           <el-button
             v-if="isFilterActive"
@@ -248,8 +223,8 @@ onMounted(() => {
           </template>
           <template #default="{ row }">
             <div class="file-name-cell">
-              <el-icon class="file-icon"><component :is="getFileIcon(row.name)" /></el-icon>
-              <span class="file-name-text" :title="row.name">{{ row.name }}</span>
+              <el-icon class="file-icon" :class="getFileIconClass(row.name)"><component :is="getFileIcon(row.name)" /></el-icon>
+              <span class="file-name-text table-name-text" :title="row.name">{{ row.name }}</span>
             </div>
           </template>
         </el-table-column>
@@ -278,7 +253,9 @@ onMounted(() => {
               @sort="handleSortChange"
             />
           </template>
-          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+          <template #default="{ row }">
+            <span class="table-time-text">{{ formatDateTime(row.createdAt) }}</span>
+          </template>
         </el-table-column>
 
         <el-table-column label="操作" width="180" align="center" fixed="right">

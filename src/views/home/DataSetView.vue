@@ -30,6 +30,7 @@ import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 import ListPagination from "@/components/ListPagination.vue";
 import { useTableFilter } from "@/hooks/useTable.js";
 import TableHeaderFilter from "@/components/TableHeaderFilter.vue";
+import IdCell from "@/components/IdCell.vue";
 
 // --- API 函数 ---
 const fetchDatasetListAPI = (params) => apiClient.get('/api/v1/datasets/', { params })
@@ -698,9 +699,7 @@ const handleCancelApplication = async () => {
               />
             </template>
             <template #default="{ row }">
-              <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-                <span class="monospace-id">{{ formatShortId(row.id) }}</span>
-              </el-tooltip>
+              <id-cell :id="row.id" />
             </template>
           </el-table-column>
 
@@ -717,7 +716,7 @@ const handleCancelApplication = async () => {
               />
             </template>
             <template #default="{ row }">
-              <span style="font-weight: 500">{{ row.name }}</span>
+              <span class="table-name-text">{{ row.name }}</span>
             </template>
           </el-table-column>
 
@@ -760,7 +759,9 @@ const handleCancelApplication = async () => {
                 @sort="handleSortChange"
               />
             </template>
-            <template #default="{ row }">{{ row.createdAt }}</template>
+            <template #default="{ row }">
+              <span class="table-time-text">{{ row.createdAt }}</span>
+            </template>
           </el-table-column>
 
           <el-table-column label="操作" :width="isAdmin() ? 260 : 260" fixed="right" align="center">

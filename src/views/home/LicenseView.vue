@@ -16,6 +16,7 @@ import { formatDateTime, formatShortId } from '@/utils/format.js'
 import ListPagination from "@/components/ListPagination.vue"
 import { useTableFilter } from "@/hooks/useTable.js"
 import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
+import IdCell from "@/components/IdCell.vue"
 
 const router = useRouter()
 const route = useRoute()
@@ -163,9 +164,7 @@ const submitRevoke = async () => {
               />
             </template>
             <template #default="{ row }">
-              <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-                <span class="monospace-id">{{ formatShortId(row.id) }}</span>
-              </el-tooltip>
+              <id-cell :id="row.id" />
             </template>
           </el-table-column>
 
@@ -183,12 +182,12 @@ const submitRevoke = async () => {
               />
             </template>
             <template #default="{ row }">
-              <span style="font-weight: 500">{{ row.datasetTitle }}</span>
+              <span class="table-name-text">{{ row.datasetTitle }}</span>
             </template>
           </el-table-column>
 
           <!-- 获得者（管理员可见） -->
-          <el-table-column v-if="isAdmin()" label="获得者" min-width="130">
+          <el-table-column v-if="isAdmin()" label="获得者" min-width="110">
             <template #header>
               <table-header-filter
                 label="获得者"
@@ -204,10 +203,10 @@ const submitRevoke = async () => {
           </el-table-column>
 
           <!-- 许可来源（申请 ID）-->
-          <el-table-column label="来源申请" min-width="150">
+          <el-table-column label="来源申请" min-width="140">
             <template #header>
               <table-header-filter
-                label="来源申请ID"
+                label="来源申请"
                 type="id-search"
                 v-model="filterForm.application_id"
                 @change="handleFilterChange"
@@ -222,7 +221,7 @@ const submitRevoke = async () => {
           </el-table-column>
 
           <!-- 许可授权时间 -->
-          <el-table-column label="许可授权时间" width="180">
+          <el-table-column label="许可授权时间" width="160">
             <template #header>
               <table-header-filter
                 label="许可授权时间"
@@ -234,11 +233,13 @@ const submitRevoke = async () => {
                 @sort="handleSortChange"
               />
             </template>
-            <template #default="{ row }">{{ row.createdAt }}</template>
+            <template #default="{ row }">
+              <span class="table-time-text">{{ row.createdAt }}</span>
+            </template>
           </el-table-column>
 
           <!-- 预计过期时间 -->
-          <el-table-column label="预计过期时间" width="170">
+          <el-table-column label="预计过期时间" width="160">
             <template #header>
               <table-header-filter
                 label="预计过期时间"
@@ -250,11 +251,13 @@ const submitRevoke = async () => {
                 @sort="handleSortChange"
               />
             </template>
-            <template #default="{ row }">{{ row.expireAt }}</template>
+            <template #default="{ row }">
+              <span class="table-time-text">{{ row.expireAt }}</span>
+            </template>
           </el-table-column>
 
           <!-- 状态 -->
-          <el-table-column label="状态" width="130">
+          <el-table-column label="状态" width="110">
             <template #header>
               <table-header-filter
                 label="状态"
