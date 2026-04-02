@@ -190,29 +190,6 @@ const removeUploadTask = (uid, delay = 0) => {
   }
 }
 
-// const fetchDatasets = async () => {
-//   isDataLoading.value = true
-//   try {
-//     const params = {
-//       page: pagination.currentPage,
-//       size: pagination.pageSize
-//     }
-//     // 仅获取数据集列表，不再预加载用户的申请历史，提升性能
-//     const dsRes = await fetchDatasetListAPI(params)
-//
-//     if (dsRes && dsRes.status === 200) {
-//       datasetList.value = normalizeDatasets(dsRes.data.datasets)
-//       pagination.total = dsRes.data.total || 0
-//       return
-//     }
-//     ElMessage.error(dsRes?.data?.message || '数据集加载失败')
-//   } catch {
-//     ElMessage.error('数据集加载失败')
-//   } finally {
-//     isDataLoading.value = false
-//   }
-// }
-
 const {
   loading: isDataLoading,
   data: datasetList,
@@ -260,11 +237,6 @@ watch(
   },
 )
 
-// // 分页回调函数
-// const handlePageChange = () => {
-//   fetchDatasets()
-// }
-
 const handleResize = () => {
   if (chartInstance) {
     chartInstance.resize()
@@ -303,11 +275,27 @@ const handleSaveDataset = async () => {
   }
 }
 const handleDelete = (row) => {
-  ElMessageBox.confirm(`确定要删除数据集 "${row.name}" 吗？`, '警告', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
+  ElMessageBox.confirm(
+    `
+    <p>您确定要删除数据集 <strong>"${row.name}"</strong> 吗？</p>
+    <p style="font-size: 13px; color: #606266; margin-top: 10px; line-height: 1.6;">
+      此操作会产生以下后果：<br/>
+      1. 所有已发放的针对此数据集的<b>授权许可</b>将被<b>立即撤销</b>；<br/>
+      2. 该数据集对应的所有历史<b>申请记录</b>所关联的数据集将被标记为<b>已删除</b>；<br/>
+      3. 用户将无法再申请或下载此数据集的文件。
+    </p>
+    <div style="margin-top: 10px; color: #f56c6c;">此操作不可逆，请谨慎操作。</div>
+    `,
+    `危险操作确认`,
+    {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'el-button--danger',
+      type: 'error',
+      dangerouslyUseHTMLString: true,
+      distinguishCancelAndClose: true,
+    }
+  )
     .then(async () => {
       try {
         const res = await deleteDatasetAPI(row.id)

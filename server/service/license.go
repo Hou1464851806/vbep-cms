@@ -146,10 +146,10 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 		Offset(offset).
 		Limit(q.PageSize).
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, nick_name, email")
+			return db.Unscoped().Select("id, nick_name, email, deleted_at")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, title")
+			return db.Unscoped().Select("id, title, deleted_at")
 		}).
 		Find(&licenses).Error
 

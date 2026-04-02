@@ -21,15 +21,17 @@ type User struct {
 }
 
 type UserBrief struct {
-	ID       string `json:"id"`
-	Nickname string `json:"nickname"`
-	Email    string `json:"email"`
+	ID        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	Email     string `json:"email"`
+	IsDeleted bool   `json:"isDeleted"`
 }
 
 func (u User) ToBrief() UserBrief {
 	return UserBrief{
-		ID:       u.ID,
-		Nickname: u.NickName,
-		Email:    u.Email,
+		ID:        u.ID,
+		Nickname:  u.NickName,
+		Email:     u.Email,
+		IsDeleted: u.DeletedAt.Valid,
 	}
 }

@@ -334,10 +334,10 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 		Offset(offset).
 		Limit(q.PageSize).
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, nick_name, email")
+			return db.Unscoped().Select("id, nick_name, email, deleted_at")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, title")
+			return db.Unscoped().Select("id, title, deleted_at")
 		}).
 		Find(&apps).Error
 	if err != nil {
@@ -360,14 +360,14 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDe
 	err := global.DB.WithContext(ctx).
 		Model(&model.Application{}).
 		Preload("Applicant", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, nick_name, email")
+			return db.Unscoped().Select("id, nick_name, email, deleted_at")
 		}).
 		Preload("Dataset", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, title")
+			return db.Unscoped().Select("id, title, deleted_at")
 		}).
 		Preload("Audits", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC").Preload("Operator", func(db *gorm.DB) *gorm.DB {
-				return db.Select("id, nick_name, email")
+				return db.Unscoped().Select("id, nick_name, email, deleted_at")
 			})
 		}).
 		Where("id = ?", id).
@@ -529,12 +529,12 @@ func (s *ApplicationService) GetApplicationAuditDetail(applicationID, auditID st
 		Where("id = ? AND application_id = ?", auditID, applicationID).
 		Preload("Files").
 		Preload("Operator", func(db *gorm.DB) *gorm.DB {
-			return db.Select("id, nick_name, email")
+			return db.Unscoped().Select("id, nick_name, email, deleted_at")
 		}).
 		Preload("Application", func(db *gorm.DB) *gorm.DB {
 			return db.Select("id, applicant_id").
 				Preload("Applicant", func(appDB *gorm.DB) *gorm.DB {
-					return appDB.Select("id, nick_name, email")
+					return appDB.Unscoped().Select("id, nick_name, email, deleted_at")
 				})
 		}).
 		First(&audit).Error

@@ -232,14 +232,16 @@ const normalizeApplication = (item = {}) => {
     version: item.version,
     dataset: {
       id: item.dataset?.id,
-      title: item.dataset?.title,
+      title: item.dataset?.title || '未知数据集',
+      isDeleted: item.dataset?.isDeleted || false,
     },
     affiliation: item.affiliation || '',
     position: item.position || '',
     applicant: {
       id: item.applicant?.id,
-      nickname: item.applicant?.nickname,
+      nickname: item.applicant?.nickname || '未知用户',
       email: item.applicant?.email,
+      isDeleted: item.applicant?.isDeleted || false,
     },
     createdAt: formatDateTime(item.createdAt),
     auditedAt: formatDateTime(item.updatedAt),
@@ -285,8 +287,9 @@ const normalizeAudit = (item = {}) => {
     operator: item.operator
       ? {
           id: item.operator.id,
-          nickname: item.operator.nickname,
+          nickname: item.operator.nickname || '未知用户',
           email: item.operator.email,
+          isDeleted: item.operator.isDeleted || false,
         }
       : null,
     result: item.result || '',
@@ -1075,7 +1078,10 @@ onMounted(async () => {
             />
           </template>
           <template #default="scope">
-            <div>{{ scope.row.applicant.nickname }}</div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <el-tag v-if="scope.row.applicant.isDeleted" size="small" type="info" effect="plain" disable-transitions>已注销</el-tag>
+              <span :style="{ color: scope.row.applicant.isDeleted ? '#909399' : 'inherit' }">{{ scope.row.applicant.nickname }}</span>
+            </div>
           </template>
         </el-table-column>
 
@@ -1093,7 +1099,10 @@ onMounted(async () => {
             />
           </template>
           <template #default="scope">
-            <span class="table-name-text">{{ scope.row.dataset.title || '-' }}</span>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <el-tag v-if="scope.row.dataset.isDeleted" size="small" type="info" effect="plain" disable-transitions>已删除</el-tag>
+              <span class="table-name-text" :style="{ color: scope.row.dataset.isDeleted ? '#909399' : 'inherit' }">{{ scope.row.dataset.title || '-' }}</span>
+            </div>
           </template>
         </el-table-column>
 
@@ -1370,7 +1379,12 @@ onMounted(async () => {
                 {{ detailDialog.data.version }}
               </el-descriptions-item>
               <el-descriptions-item label="目标数据集">
-                {{ detailDialog.data.dataset.title }}
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                  <el-tag v-if="detailDialog.data.dataset.isDeleted" size="small" type="info" effect="plain" disable-transitions>已删除</el-tag>
+                  <span :style="{ color: detailDialog.data.dataset.isDeleted ? '#909399' : 'inherit' }">
+                    {{ detailDialog.data.dataset.title }}
+                  </span>
+                </div>
                 <el-tooltip :content="detailDialog.data.dataset.id" placement="top">
                   <span class="sub-text">
                     (ID: {{ formatShortId(detailDialog.data.dataset.id) }})
@@ -1381,7 +1395,12 @@ onMounted(async () => {
                 {{ detailDialog.data.createdAt }}
               </el-descriptions-item>
               <el-descriptions-item label="申请人">
-                {{ detailDialog.data.applicant.nickname }}
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                  <el-tag v-if="detailDialog.data.applicant.isDeleted" size="small" type="info" effect="plain" disable-transitions>已注销</el-tag>
+                  <span :style="{ color: detailDialog.data.applicant.isDeleted ? '#909399' : 'inherit' }">
+                    {{ detailDialog.data.applicant.nickname }}
+                  </span>
+                </div>
                 <span v-if="detailDialog.data.applicant.email" class="sub-text">
                   ({{ detailDialog.data.applicant.email }})
                 </span>
@@ -1428,7 +1447,10 @@ onMounted(async () => {
                           <div class="subject-wrapper">
                             <span class="prefix">申请人：</span>
                             <el-tooltip :content="detailDialog.data.applicant.email" placement="top">
-                              <span class="subject">{{ detailDialog.data.applicant.nickname }}</span>
+                              <span class="subject">
+                                <el-tag v-if="detailDialog.data.applicant.isDeleted" size="small" type="info" effect="plain" style="margin-right: 4px;" disable-transitions>已注销</el-tag>
+                                <span :style="{ color: detailDialog.data.applicant.isDeleted ? '#909399' : 'inherit' }">{{ detailDialog.data.applicant.nickname }}</span>
+                              </span>
                             </el-tooltip>
                           </div>
                           <div class="meta-wrapper">
@@ -1467,7 +1489,10 @@ onMounted(async () => {
                             <div class="subject-wrapper">
                               <span class="prefix">经办人：</span>
                               <el-tooltip :content="item.operator?.email || '未知'" placement="top">
-                                <span class="subject">{{ item.operator?.nickname || '管理员' }}</span>
+                                <span class="subject">
+                                  <el-tag v-if="item.operator?.isDeleted" size="small" type="info" effect="plain" style="margin-right: 4px;" disable-transitions>已注销</el-tag>
+                                  <span :style="{ color: item.operator?.isDeleted ? '#909399' : 'inherit' }">{{ item.operator?.nickname || '管理员' }}</span>
+                                </span>
                               </el-tooltip>
                             </div>
                             <div class="meta-wrapper">

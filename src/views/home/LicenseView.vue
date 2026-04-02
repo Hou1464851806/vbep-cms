@@ -37,7 +37,9 @@ const normalizeLicense = (item) => {
   return {
     id: item.id,
     datasetTitle: item.dataset?.title || '未知数据集',
+    isDatasetDeleted: item.dataset?.isDeleted || false,
     applicantName: item.applicant?.nickname || '未知用户',
+    isApplicantDeleted: item.applicant?.isDeleted || false,
     applicationId: item.applicationId,
     createdAt: formatDateTime(item.createdAt),
     expireAt: item.expireAt ? formatDateTime(item.expireAt) : '永久',
@@ -113,7 +115,7 @@ const handleRevokeClick = (row) => {
 
 const submitRevoke = async () => {
   if (!revokeDialog.reason.trim()) {
-    ElMessage.warning('请填写撤回理由')
+    ElMessage.warning('请填写撤销理由')
     return
   }
 
@@ -123,7 +125,7 @@ const submitRevoke = async () => {
       reason: revokeDialog.reason
     })
     if (res.status === 200) {
-      ElMessage.success('许可已撤回')
+      ElMessage.success('许可已撤销')
       revokeDialog.visible = false
       fetchLicenses()
     } else {
@@ -191,7 +193,10 @@ const submitRevoke = async () => {
               />
             </template>
             <template #default="{ row }">
-              <span class="table-name-text">{{ row.datasetTitle }}</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.isDatasetDeleted" size="small" type="info" effect="plain" disable-transitions>已删除</el-tag>
+                <span :style="{ color: row.isDatasetDeleted ? '#909399' : 'inherit' }">{{ row.datasetTitle }}</span>
+              </div>
             </template>
           </el-table-column>
 
@@ -209,7 +214,12 @@ const submitRevoke = async () => {
                 @sort="handleSortChange"
               />
             </template>
-            <template #default="{ row }">{{ row.applicantName }}</template>
+            <template #default="{ row }">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <el-tag v-if="row.isApplicantDeleted" size="small" type="info" effect="plain" disable-transitions>已注销</el-tag>
+                <span :style="{ color: row.isApplicantDeleted ? '#909399' : 'inherit' }">{{ row.applicantName }}</span>
+              </div>
+            </template>
           </el-table-column>
 
           <!-- 许可来源（申请 ID）-->
@@ -299,7 +309,7 @@ const submitRevoke = async () => {
                 :disabled="scope.row.status === 'revoked' || scope.row.status === 'expired'"
                 @click="handleRevokeClick(scope.row)"
               >
-                撤回
+                撤销
               </el-button>
             </template>
           </el-table-column>
@@ -314,21 +324,21 @@ const submitRevoke = async () => {
       </div>
     </el-card>
 
-    <el-dialog v-model="revokeDialog.visible" title="撤回许可" width="400px">
+    <el-dialog v-model="revokeDialog.visible" title="撤销许可" width="400px">
       <div style="margin-bottom: 15px; display: flex; align-items: center; color: #E6A23C;">
         <el-icon style="margin-right: 5px;"><Warning /></el-icon>
-        <span>撤回后，用户将立即失去对该数据集的所有访问权限。</span>
+        <span>撤销后，用户将立即失去对该数据集的所有访问权限。</span>
       </div>
       <el-input
         v-model="revokeDialog.reason"
         type="textarea"
         :rows="4"
-        placeholder="请输入撤回理由..."
+        placeholder="请输入撤销理由..."
       />
       <template #footer>
         <span class="dialog-footer">
           <el-button @click="revokeDialog.visible = false">取消</el-button>
-          <el-button type="danger" :loading="revokeDialog.loading" @click="submitRevoke">确认撤回</el-button>
+          <el-button type="danger" :loading="revokeDialog.loading" @click="submitRevoke">确认撤销</el-button>
         </span>
       </template>
     </el-dialog>

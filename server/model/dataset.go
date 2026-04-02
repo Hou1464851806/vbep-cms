@@ -23,14 +23,16 @@ type DatasetListItem struct {
 }
 
 type DatasetBrief struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	IsDeleted bool   `json:"isDeleted"`
 }
 
 func (d Dataset) ToBrief() DatasetBrief {
 	return DatasetBrief{
-		ID:    d.ID,
-		Title: d.Title,
+		ID:        d.ID,
+		Title:     d.Title,
+		IsDeleted: d.DeletedAt.Valid,
 	}
 }
 
