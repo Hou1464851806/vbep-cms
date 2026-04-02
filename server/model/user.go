@@ -13,7 +13,7 @@ type User struct {
 	Base
 	Role            UserRole      `gorm:"not null;default:0"`
 	NickName        string        `gorm:"not null"`
-	Email           string        `gorm:"uniqueIndex:idx_unique_email;not null"`
+	Email           string        `gorm:"uniqueIndex:idx_unique_email,where:deleted_at IS NULL;not null"`
 	IsEmailVerified bool          `gorm:"default:false"`
 	PWDHash         string        `gorm:"not null"` // 密码哈希 bcrypt加密
 	Datasets        []Dataset     `gorm:"foreignKey:CreatorID;references:ID"`
