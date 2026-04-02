@@ -115,7 +115,7 @@ func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error)
 	var users []*model.User
 	var total int64
 
-	baseQuery := global.DB.WithContext(ctx).Model(&model.User{})
+	baseQuery := global.DB.WithContext(ctx).Model(&model.User{}).Unscoped()
 	// ── 角色筛选 ──
 	if q.Role != "" {
 		if r, err := strconv.Atoi(q.Role); err == nil {

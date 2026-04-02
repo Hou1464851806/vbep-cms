@@ -55,6 +55,7 @@ const normalizeUser = (item) => ({
   email:     item.email || '',
   role:      item.role,
   createdAt: formatDateTime(item.createdAt),
+  isDeleted: item.isDeleted,
 })
 
 const {
@@ -250,8 +251,17 @@ const handleDownloadFile = async (row) => {
             />
           </template>
           <template #default="{ row }">
-            <el-input v-if="isEditing(row.userID)" v-model="editMap[row.userID].nickname" size="small" />
-            <span v-else class="table-name-text">{{ row.nickname }}</span>
+            <template v-if="isEditing(row.userID)">
+              <el-input v-model="editMap[row.userID].nickname" size="small" />
+            </template>
+            <div v-else class="name-col-content">
+              <span class="table-name-text" :class="{ 'deleted-user-text': row.isDeleted }">
+                {{ row.nickname }}
+              </span>
+              <el-tag v-if="row.isDeleted" size="small" type="info" effect="plain" class="deleted-tag">
+                已注销
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
 
@@ -326,7 +336,14 @@ const handleDownloadFile = async (row) => {
               <el-button type="info"    link :icon="Close"  @click="handleCancel(row.userID)">取消</el-button>
             </template>
             <template v-else>
-              <el-button v-if="isSuperAdmin" type="primary" link :icon="Edit"     @click="handleEdit(row)">修改</el-button>
+              <el-button
+                v-if="isSuperAdmin"
+                type="primary"
+                link
+                :icon="Edit"
+                :disabled="row.isDeleted"
+                @click="handleEdit(row)"
+              >修改</el-button>
               <el-button v-if="isSuperAdmin" type="primary" link :icon="Document" @click="handleViewFiles(row)">文件</el-button>
             </template>
           </template>
@@ -399,4 +416,19 @@ const handleDownloadFile = async (row) => {
 </template>
 
 <style scoped>
+.name-col-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deleted-user-text {
+  color: #a8abb2;
+  font-style: italic;
+}
+
+.deleted-tag {
+  opacity: 0.8;
+  font-weight: normal;
+}
 </style>

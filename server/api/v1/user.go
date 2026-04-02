@@ -334,12 +334,13 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	var userList []gin.H
 	for _, user := range users {
 		userList = append(userList, gin.H{
-			"userID":   user.ID,
-			"nickname": user.NickName,
-			"email":    user.Email,
+			"userID":    user.ID,
+			"nickname":  user.NickName,
+			"email":     user.Email,
 			//"phone":     user.Phone,
 			"role":      user.Role,
 			"createdAt": user.CreatedAt,
+			"isDeleted": user.DeletedAt.Valid,
 		})
 	}
 
