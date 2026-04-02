@@ -228,7 +228,9 @@ type ApplicationListQuery struct {
 	SortBy        string // 前端列 prop，如 "auditedAt", "status"
 	Order         string // "asc" 或 "desc"
 	Status        string // 状态筛选
-	Keyword       string // 模糊搜索（申请人昵称 / 数据集标题）
+	IDPrefix      string // 申请 ID 前缀（8位）或完整 UUID（36位）
+	DatasetName   string // 模糊搜索数据集标题
+	Applicant     string // 模糊搜索申请人昵称
 	DateStart     string // "YYYY-MM-DD"
 	DateEnd       string // "YYYY-MM-DD"
 }
@@ -269,12 +271,21 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 		status, _ := model.ParseApplicationStatus(q.Status)
 		baseQuery = baseQuery.Where("applications.status = ?", status)
 	}
-	// ── 关键词搜索（申请人昵称 / 数据集标题）──
-	if q.Keyword != "" {
-		kw := "%" + q.Keyword + "%"
-		baseQuery = baseQuery.Where(
-			"users.nick_name LIKE ? OR datasets.title LIKE ?", kw, kw,
-		)
+	// ── ID 前缀 / 精确匹配 ──
+	if q.IDPrefix != "" {
+		if len(q.IDPrefix) == 36 {
+			baseQuery = baseQuery.Where("applications.id = ?", q.IDPrefix)
+		} else {
+			baseQuery = baseQuery.Where("applications.id LIKE ?", q.IDPrefix+"%")
+		}
+	}
+	// ── 数据集名称搜索 ──
+	if q.DatasetName != "" {
+		baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.DatasetName+"%")
+	}
+	// ── 申请人昵称搜索 ──
+	if q.Applicant != "" {
+		baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Applicant+"%")
 	}
 	// ── 日期范围（基于 updated_at）──
 	loc := time.Local

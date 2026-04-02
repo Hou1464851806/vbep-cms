@@ -28,7 +28,7 @@ import {useRoute, useRouter} from "vue-router";
 import ListPagination from "@/components/ListPagination.vue";
 
 import {useTableFilter} from "@/hooks/useTable.js"
-import TableToolsBar from "@/components/TableToolsBar.vue"
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
 
 const route = useRoute()
 const router = useRouter()
@@ -952,20 +952,6 @@ const getActionTagType = (action) => {
   return 'info'
 }
 
-const openAppDetailById = () => {
-  const appId = route.query.id
-  if (appId) {
-    handleViewDetail({ id: appId })
-
-    const newQuery = { ...route.query }
-    delete newQuery.id
-
-    router.replace({
-      path: route.path,
-      query: newQuery,
-    })
-  }
-}
 
 const statusFilterOptions = [
   { label: '待提交', value: 'draft' },
@@ -974,31 +960,13 @@ const statusFilterOptions = [
   { label: '已拒绝', value: 'rejected' },
   { label: '已退回', value: 'returned' },
 ]
-const filterConfig = [
-  {
-    key: 'status',
-    type: 'select',
-    label: '申请状态',
-    placeholder: '全部状态',
-    options: statusFilterOptions,
-  },
-  {
-    key: 'keyword',
-    type: 'input',
-    label: '申请人/数据集',
-    placeholder: '搜索申请人或数据集...',
-  },
-  {
-    key: 'date',
-    type: 'daterange',
-    label: '更新时间',
-  },
-]
 const {
   loading: isLoading,
   data: applicationList,
   pagination,
   filterForm,
+  sortState,
+  isFilterActive,
   loadData: fetchApplications,
   handleSortChange,
   handleFilterChange,
@@ -1011,8 +979,9 @@ const {
     normalize: normalizeApplication,
     dataKey: 'applications',
     defaultSort: { prop: 'auditedAt', order: 'descending' },
-    filterSchema: { status: '', keyword: '', date: [] },
+    filterSchema: { id_prefix: '', applicant: '', dataset_name: '', status: '', date: [] },
     pageSize: 10,
+    syncUrl: true,
   }
 )
 
@@ -1043,8 +1012,12 @@ watch(
 )
 
 onMounted(async () => {
+  // 保存 ?id= 参数，避免 syncUrl 替换 URL 后丢失
+  const pendingDetailId = route.query.id
   await fetchApplications()
-  openAppDetailById()
+  if (pendingDetailId) {
+    handleViewDetail({ id: pendingDetailId })
+  }
 })
 </script>
 
@@ -1054,6 +1027,13 @@ onMounted(async () => {
       <div class="card-header">
         <span>申请列表</span>
         <div class="header-actions">
+          <el-button
+            v-if="isFilterActive"
+            class="reset-filter-btn"
+            plain
+            size="small"
+            @click="resetFilter"
+          >重置筛选</el-button>
           <el-button :icon="Refresh" circle @click="fetchApplications" :loading="isLoading" title="刷新列表" />
           <el-button v-if="!isAdmin()" type="primary" :icon="Plus" @click="handleNewApplication">新增申请</el-button>
         </div>
@@ -1062,46 +1042,92 @@ onMounted(async () => {
 
 <!--    <el-skeleton :rows="5" animated :loading="isLoading">-->
     <div v-loading="isLoading">
-      <!-- 筛选栏 -->
-      <table-tools-bar
-        :model-value="filterForm"
-        @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
-        :filters="filterConfig"
-        @search="handleFilterChange"
-        @input-change="handleFilterInputChange"
-        @reset="resetFilter"
-      />
       <el-table
         :data="applicationList"
         style="width: 100%"
-        @sort-change="handleSortChange"
-        :default-sort="{ prop: 'auditedAt', order: 'descending' }"
       >
-        <el-table-column label="内部ID" width="100" prop="id">
+        <el-table-column label="申请ID" width="110">
+          <template #header>
+            <table-header-filter
+              label="申请ID"
+              type="id-search"
+              v-model="filterForm.id_prefix"
+              @change="handleFilterChange"
+            />
+          </template>
           <template #default="{ row }">
             <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-              <span class="monospace-id">
-                {{ formatShortId(row.id) }}
-              </span>
+              <span class="monospace-id">{{ formatShortId(row.id) }}</span>
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="申请人" width="120" prop="applicantName" sortable="custom">
+
+        <el-table-column label="申请人" width="140">
+          <template #header>
+            <table-header-filter
+              label="申请人"
+              type="input"
+              v-model="filterForm.applicant"
+              @change="handleFilterChange"
+              sort-prop="applicantName"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
           <template #default="scope">
             <div>{{ scope.row.applicant.nickname }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="目标数据集" min-width="150" prop="datasetTitle" sortable="custom" show-overflow-tooltip>
+
+        <el-table-column label="目标数据集" min-width="150" show-overflow-tooltip>
+          <template #header>
+            <table-header-filter
+              label="目标数据集"
+              type="input"
+              v-model="filterForm.dataset_name"
+              @change="handleFilterChange"
+              sort-prop="datasetTitle"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
           <template #default="scope">
             {{ scope.row.dataset.title || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="auditedAt" label="最后更新时间" width="180" sortable="custom" />
-        <el-table-column label="状态" width="120" prop="status">
+
+        <el-table-column label="最后更新时间" width="180">
+          <template #header>
+            <table-header-filter
+              label="最后更新时间"
+              type="daterange"
+              v-model="filterForm.date"
+              @change="handleFilterChange"
+              sort-prop="auditedAt"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
+          <template #default="{ row }">
+            {{ row.auditedAt }}
+          </template>
+        </el-table-column>
+
+        <el-table-column label="状态" width="130">
+          <template #header>
+            <table-header-filter
+              label="状态"
+              type="select"
+              v-model="filterForm.status"
+              :options="statusFilterOptions"
+              @change="handleFilterChange"
+            />
+          </template>
           <template #default="scope">
             <el-tag :type="scope.row.statusMeta.type">{{ scope.row.statusMeta.label }}</el-tag>
           </template>
         </el-table-column>
+
         <el-table-column label="详细信息" width="100" fixed="right" align="center">
           <template #default="scope">
             <el-button

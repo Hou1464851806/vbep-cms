@@ -194,7 +194,7 @@ type PublicFileListQuery struct {
 	PageSize  int
 	SortBy    string // 前端列 prop，如 "name", "size", "createdAt"
 	Order     string // "asc" 或 "desc"
-	Keyword   string // 模糊搜索（文件名）
+	Name      string // 模糊搜索文件名
 	DateStart string // "YYYY-MM-DD"
 	DateEnd   string // "YYYY-MM-DD"
 }
@@ -214,9 +214,9 @@ func (s *FileService) ListFilesPaginated(q PublicFileListQuery) ([]model.File, i
 	baseQuery := global.DB.WithContext(ctx).
 		Model(&model.File{}).
 		Where("owner_id = ? AND owner_type = ?", publicOwnerID, publicOwnerType)
-	// ── 关键词搜索（文件名）──
-	if q.Keyword != "" {
-		kw := "%" + q.Keyword + "%"
+	// ── 文件名搜索 ──
+	if q.Name != "" {
+		kw := "%" + q.Name + "%"
 		baseQuery = baseQuery.Where("files.name LIKE ?", kw)
 	}
 	// ── 日期范围（基于 created_at）──

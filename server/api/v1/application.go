@@ -239,7 +239,9 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 		SortBy:        ctx.Query("sort_by"),
 		Order:         ctx.Query("order"),
 		Status:        ctx.Query("status"),
-		Keyword:       ctx.Query("keyword"),
+		IDPrefix:      ctx.Query("id_prefix"),
+		DatasetName:   ctx.Query("dataset_name"),
+		Applicant:     ctx.Query("applicant"),
 		DateStart:     ctx.Query("date_start"),
 		DateEnd:       ctx.Query("date_end"),
 	}

@@ -380,7 +380,7 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		PageSize:  pageSize,
 		SortBy:    ctx.Query("sort_by"),
 		Order:     ctx.Query("order"),
-		Keyword:   ctx.Query("keyword"),
+		Name:      ctx.Query("name"),
 		DateStart: ctx.Query("date_start"),
 		DateEnd:   ctx.Query("date_end"),
 	}

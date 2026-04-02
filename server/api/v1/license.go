@@ -55,8 +55,14 @@ func (a *LicenseApi) GetAll(ctx *gin.Context) {
 		PageSize:      pageSize,
 		SortBy:        ctx.Query("sort_by"),
 		Order:         ctx.Query("order"),
-		Keyword:       ctx.Query("keyword"),
+		IDPrefix:      ctx.Query("id_prefix"),
+		DatasetName:   ctx.Query("dataset_name"),
+		Applicant:     ctx.Query("applicant"),
 		Status:        ctx.Query("status"),
+		DateStart:     ctx.Query("date_start"),
+		DateEnd:       ctx.Query("date_end"),
+		ExpireStart:   ctx.Query("expire_start"),
+		ExpireEnd:     ctx.Query("expire_end"),
 	}
 
 	licenses, total, err := a.licenseService.ListLicenses(query)

@@ -63,7 +63,9 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 		PageSize:  pageSize,
 		SortBy:    ctx.Query("sort_by"),
 		Order:     ctx.Query("order"),
-		Keyword:   ctx.Query("keyword"),
+		IDPrefix:  ctx.Query("id_prefix"),
+		Name:      ctx.Query("name"),
+		Creator:   ctx.Query("creator"),
 		DateStart: ctx.Query("date_start"),
 		DateEnd:   ctx.Query("date_end"),
 	}

@@ -29,7 +29,7 @@ import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
 import ListPagination from "@/components/ListPagination.vue";
 import { useTableFilter } from "@/hooks/useTable.js";
-import TableToolsBar from "@/components/TableToolsBar.vue";
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue";
 
 // --- API 函数 ---
 const fetchDatasetListAPI = (params) => apiClient.get('/api/v1/datasets/', { params })
@@ -212,24 +212,13 @@ const removeUploadTask = (uid, delay = 0) => {
 //   }
 // }
 
-const filterConfig = [
-  {
-    key: 'keyword',
-    type: 'input',
-    label: '数据集/创建者',
-    placeholder: '搜索数据集名称或创建者...',
-  },
-  {
-    key: 'date',
-    type: 'daterange',
-    label: '创建时间',
-  },
-]
 const {
   loading: isDataLoading,
   data: datasetList,
   pagination,
   filterForm,
+  sortState,
+  isFilterActive,
   loadData: fetchDatasets,
   handleSortChange,
   handleFilterChange,
@@ -242,8 +231,9 @@ const {
     normalize: normalizeOneDataset,
     dataKey: 'datasets',
     defaultSort: { prop: 'createdAt', order: 'descending' },
-    filterSchema: { keyword: '', date: [] },
+    filterSchema: { id_prefix: '', name: '', creator: '', date: [] },
     pageSize: 10,
+    syncUrl: true,
   }
 )
 
@@ -678,48 +668,101 @@ const handleCancelApplication = async () => {
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span>数据集列表</span>
-          <div class="header-actions">
-            <el-button :icon="Refresh" circle @click="fetchDatasets" :loading="isDataLoading" title="刷新列表" />
-            <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd">新增数据集</el-button>
-          </div>
+        <span>数据集列表</span>
+        <div class="header-actions">
+          <el-button
+            v-if="isFilterActive"
+            class="reset-filter-btn"
+            plain
+            size="small"
+            @click="resetFilter"
+          >重置筛选</el-button>
+          <el-button :icon="Refresh" circle @click="fetchDatasets" :loading="isDataLoading" title="刷新列表" />
+          <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd">新增数据集</el-button>
         </div>
+      </div>
       </template>
 
       <div v-loading="isDataLoading">
-        <table-tools-bar
-          :model-value="filterForm"
-          @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
-          :filters="filterConfig"
-          @search="handleFilterChange"
-          @input-change="handleFilterInputChange"
-          @reset="resetFilter"
-        />
         <el-table
           :data="datasetList"
           style="width: 100%"
-          @sort-change="handleSortChange"
-          :default-sort="{ prop: 'createdAt', order: 'descending' }"
         >
-          <el-table-column label="内部ID" width="100">
+          <el-table-column label="数据集ID" width="110">
+            <template #header>
+              <table-header-filter
+                label="数据集ID"
+                type="id-search"
+                v-model="filterForm.id_prefix"
+                @change="handleFilterChange"
+              />
+            </template>
             <template #default="{ row }">
               <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-                <span class="monospace-id">
-                  {{ formatShortId(row.id) }}
-                </span>
+                <span class="monospace-id">{{ formatShortId(row.id) }}</span>
               </el-tooltip>
             </template>
           </el-table-column>
 
-          <el-table-column prop="name" label="数据集名称" min-width="300" sortable="custom">
+          <el-table-column label="数据集名称" min-width="300">
+            <template #header>
+              <table-header-filter
+                label="数据集名称"
+                type="input"
+                v-model="filterForm.name"
+                @change="handleFilterChange"
+                sort-prop="name"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
             <template #default="{ row }">
               <span style="font-weight: 500">{{ row.name }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column prop="fileCount" label="文件数" width="90" align="center" sortable="custom" />
-          <el-table-column prop="creator" label="创建者" width="120" sortable="custom" />
-          <el-table-column prop="createdAt" label="创建时间" width="160" sortable="custom" />
+          <el-table-column label="文件数" width="90" align="center">
+            <template #header>
+              <table-header-filter
+                label="文件数"
+                sort-prop="fileCount"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.fileCount }}</template>
+          </el-table-column>
+
+          <el-table-column label="创建者" width="140">
+            <template #header>
+              <table-header-filter
+                label="创建者"
+                type="input"
+                v-model="filterForm.creator"
+                @change="handleFilterChange"
+                sort-prop="creator"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.creator }}</template>
+          </el-table-column>
+
+          <el-table-column label="创建时间" width="180">
+            <template #header>
+              <table-header-filter
+                label="创建时间"
+                type="daterange"
+                v-model="filterForm.date"
+                @change="handleFilterChange"
+                sort-prop="createdAt"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.createdAt }}</template>
+          </el-table-column>
+
           <el-table-column label="操作" :width="isAdmin() ? 260 : 260" fixed="right" align="center">
             <template #default="scope">
               <template v-if="isAdmin()">

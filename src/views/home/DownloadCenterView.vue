@@ -19,7 +19,7 @@ import { formatDateTime, formatFileSize } from '@/utils/format.js'
 import {DOWNLOAD_FILE_LIMIT_MB} from "@/utils/constrains.js";
 import ListPagination from "@/components/ListPagination.vue";
 import { useTableFilter } from "@/hooks/useTable.js"
-import TableToolsBar from "@/components/TableToolsBar.vue"
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
 
 const DOWNLOAD_FILE_LIMIT_BYTES = DOWNLOAD_FILE_LIMIT_MB * 1024 * 1024
 
@@ -77,29 +77,18 @@ const normalizeFile = (item) => ({
   createdAt: formatDateTime(item.createdAt),
 })
 
-// --- 筛选配置 ---
-const filterConfig = [
-  {
-    key: 'keyword',
-    type: 'input',
-    label: '文件名',
-    placeholder: '搜索文件名...',
-  },
-  {
-    key: 'date',
-    type: 'daterange',
-    label: '上传时间',
-  },
-]
+
+
 const {
   loading: isLoading,
   data: fileList,
   pagination,
   filterForm,
+  sortState,
+  isFilterActive,
   loadData: loadFiles,
   handleSortChange,
   handleFilterChange,
-  handleFilterInputChange,
   resetFilter,
   handlePageChange,
 } = useTableFilter(
@@ -108,8 +97,9 @@ const {
     normalize: normalizeFile,
     dataKey: 'files',
     defaultSort: { prop: 'createdAt', order: 'descending' },
-    filterSchema: { keyword: '', date: [] },
+    filterSchema: { name: '', date: [] },
     pageSize: 10,
+    syncUrl: true,
   }
 )
 
@@ -217,6 +207,13 @@ onMounted(() => {
         <span v-if="isAdmin()">下载中心（上传文件大小不能超过 {{ formatFileSize(DOWNLOAD_FILE_LIMIT_BYTES) }}）</span>
         <span v-else>下载中心</span>
         <div class="header-actions">
+          <el-button
+            v-if="isFilterActive"
+            class="reset-filter-btn"
+            plain
+            size="small"
+            @click="resetFilter"
+          >重置筛选</el-button>
           <el-button :icon="Refresh" circle @click="loadFiles" :loading="isLoading" title="刷新列表" />
           <el-upload
             v-if="isAdmin()"
@@ -233,42 +230,55 @@ onMounted(() => {
     </template>
 
     <div v-loading="isLoading">
-      <!-- 筛选栏 -->
-      <table-tools-bar
-        :model-value="filterForm"
-        @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
-        :filters="filterConfig"
-        @search="handleFilterChange"
-        @input-change="handleFilterInputChange"
-        @reset="resetFilter"
-      />
       <el-table
         :data="fileList"
         style="width: 100%"
-        @sort-change="handleSortChange"
-        :default-sort="{ prop: 'createdAt', order: 'descending' }"
       >
-        <el-table-column label="文件名" min-width="300" prop="name" sortable="custom">
+        <el-table-column label="文件名" min-width="300" prop="name">
+          <template #header>
+            <table-header-filter
+              label="文件名"
+              type="input"
+              v-model="filterForm.name"
+              @change="handleFilterChange"
+              sort-prop="name"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
           <template #default="{ row }">
             <div class="file-name-cell">
-              <el-icon class="file-icon">
-                <component :is="getFileIcon(row.name)" />
-              </el-icon>
+              <el-icon class="file-icon"><component :is="getFileIcon(row.name)" /></el-icon>
               <span class="file-name-text" :title="row.name">{{ row.name }}</span>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column label="大小" width="120" prop="size" sortable="custom">
-          <template #default="{ row }">
-            {{ formatFileSize(row.size) }}
+        <el-table-column label="大小" width="120">
+          <template #header>
+            <table-header-filter
+              label="大小"
+              sort-prop="size"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
           </template>
+          <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
         </el-table-column>
 
-        <el-table-column label="上传时间" width="180" prop="createdAt" sortable="custom">
-          <template #default="{ row }">
-            {{ formatDateTime(row.createdAt) }}
+        <el-table-column label="上传时间" width="180">
+          <template #header>
+            <table-header-filter
+              label="上传时间"
+              type="daterange"
+              v-model="filterForm.date"
+              @change="handleFilterChange"
+              sort-prop="createdAt"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
           </template>
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
 
         <el-table-column label="操作" width="180" align="center" fixed="right">

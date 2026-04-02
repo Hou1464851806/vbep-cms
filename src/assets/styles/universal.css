@@ -92,3 +92,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Reset filter button (shown in card header when any filter is active) */
+.reset-filter-btn {
+  font-size: 12px;
+}

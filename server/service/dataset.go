@@ -37,7 +37,9 @@ type DatasetListQuery struct {
 	PageSize  int
 	SortBy    string // 前端列 prop，如 "name", "createdAt", "creator"
 	Order     string // "asc" 或 "desc"
-	Keyword   string // 模糊搜索（数据集名称 / 创建者昵称）
+	IDPrefix  string // ID 前缀（8位）或完整 UUID（36位）精确匹配
+	Name      string // 模糊搜索数据集标题
+	Creator   string // 模糊搜索创建者昵称
 	DateStart string
 	DateEnd   string
 }
@@ -60,10 +62,21 @@ func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetList
 		Model(&model.Dataset{}).
 		Joins("LEFT JOIN users ON users.id = datasets.creator_id")
 
-	// ── 关键词搜索（数据集名称 / 创建者昵称）──
-	if q.Keyword != "" {
-		kw := "%" + q.Keyword + "%"
-		baseQuery = baseQuery.Where("datasets.title LIKE ? OR users.nick_name LIKE ?", kw, kw)
+	// ── ID 前缀 / 精确匹配 ──
+	if q.IDPrefix != "" {
+		if len(q.IDPrefix) == 36 {
+			baseQuery = baseQuery.Where("datasets.id = ?", q.IDPrefix)
+		} else {
+			baseQuery = baseQuery.Where("datasets.id LIKE ?", q.IDPrefix+"%")
+		}
+	}
+	// ── 数据集名称搜索 ──
+	if q.Name != "" {
+		baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.Name+"%")
+	}
+	// ── 创建者昵称搜索 ──
+	if q.Creator != "" {
+		baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Creator+"%")
 	}
 	// ── 日期范围（基于 created_at）──
 	loc := time.Local

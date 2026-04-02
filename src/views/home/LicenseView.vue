@@ -15,7 +15,7 @@ import '@/assets/styles/universal.css'
 import { formatDateTime, formatShortId } from '@/utils/format.js'
 import ListPagination from "@/components/ListPagination.vue"
 import { useTableFilter } from "@/hooks/useTable.js"
-import TableToolsBar from "@/components/TableToolsBar.vue"
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
 
 const router = useRouter()
 const route = useRoute()
@@ -41,24 +41,9 @@ const normalizeLicense = (item) => {
   }
 }
 
-// Filter configuration
-const filterConfig = [
-  {
-    key: 'keyword',
-    type: 'input',
-    label: '搜索',
-    placeholder: '搜索数据集或用户...',
-  },
-  {
-    key: 'status',
-    type: 'select',
-    label: '状态',
-    options: [
-      { label: '全部', value: '' },
-      { label: '正常', value: 'normal' },
-      { label: '撤销', value: 'revoked' },
-    ],
-  },
+const statusFilterOptions = [
+  { label: '正常', value: 'normal' },
+  { label: '撤销', value: 'revoked' },
 ]
 
 const {
@@ -66,10 +51,11 @@ const {
   data: licenseList,
   pagination,
   filterForm,
+  sortState,
+  isFilterActive,
   loadData: fetchLicenses,
   handleSortChange,
   handleFilterChange,
-  handleFilterInputChange,
   resetFilter,
   handlePageChange,
 } = useTableFilter(
@@ -78,22 +64,13 @@ const {
     normalize: normalizeLicense,
     dataKey: 'licenses',
     defaultSort: { prop: 'createdAt', order: 'descending' },
-    filterSchema: { keyword: '', status: '', application_id: '' },
+    filterSchema: { id_prefix: '', dataset_name: '', applicant: '', application_id: '', status: '', date: [], expire_date: [] },
     pageSize: 10,
+    syncUrl: true,
   }
 )
 
 onMounted(() => {
-  if (route.query.keyword) {
-    filterForm.keyword = route.query.keyword
-  }
-  if (route.query.status) {
-    filterForm.status = route.query.status
-  }
-  // application_id is a special param for exact match from ApplicationView
-  if (route.query.application_id) {
-    filterForm.application_id = route.query.application_id
-  }
   fetchLicenses()
 })
 
@@ -105,14 +82,9 @@ const revokeDialog = reactive({
   reason: '',
 })
 
-const reasonDialog = reactive({
-  visible: false,
-  reason: '',
-})
-
 const handleSourceClick = (row) => {
   ElMessageBox.confirm(
-    `您即将离开当前页，前往查看“申请${formatShortId(row.applicationId)}”的详情。确定吗？`,
+    `您即将离开当前页，前往查看"申请${formatShortId(row.applicationId)}"的详情。确定吗？`,
     '提示',
     {
       confirmButtonText: '前往',
@@ -154,9 +126,6 @@ const submitRevoke = async () => {
     revokeDialog.loading = false
   }
 }
-
-// (View Reason logic removed as we use tooltip)
-
 </script>
 
 <template>
@@ -166,28 +135,33 @@ const submitRevoke = async () => {
         <div class="card-header">
           <span>许可管理</span>
           <div class="header-actions">
+            <el-button
+              v-if="isFilterActive"
+              class="reset-filter-btn"
+              plain
+              size="small"
+              @click="resetFilter"
+            >重置筛选</el-button>
             <el-button :icon="Refresh" circle @click="fetchLicenses" :loading="isDataLoading" title="刷新列表" />
           </div>
         </div>
       </template>
 
       <div v-loading="isDataLoading">
-        <table-tools-bar
-          :model-value="filterForm"
-          @update:model-value="(newVal) => Object.assign(filterForm, newVal)"
-          :filters="filterConfig"
-          @search="handleFilterChange"
-          @input-change="handleFilterInputChange"
-          @reset="resetFilter"
-        />
-
         <el-table
           :data="licenseList"
           style="width: 100%"
-          @sort-change="handleSortChange"
-          :default-sort="{ prop: 'createdAt', order: 'descending' }"
         >
-          <el-table-column label="内部ID" width="100">
+          <!-- 许可 ID -->
+          <el-table-column label="许可ID" width="110">
+            <template #header>
+              <table-header-filter
+                label="许可ID"
+                type="id-search"
+                v-model="filterForm.id_prefix"
+                @change="handleFilterChange"
+              />
+            </template>
             <template #default="{ row }">
               <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
                 <span class="monospace-id">{{ formatShortId(row.id) }}</span>
@@ -195,15 +169,50 @@ const submitRevoke = async () => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="datasetTitle" label="所属数据集" min-width="180" sortable="custom">
+          <!-- 所属数据集 -->
+          <el-table-column label="所属数据集" min-width="180">
+            <template #header>
+              <table-header-filter
+                label="所属数据集"
+                type="input"
+                v-model="filterForm.dataset_name"
+                @change="handleFilterChange"
+                sort-prop="datasetTitle"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
             <template #default="{ row }">
               <span style="font-weight: 500">{{ row.datasetTitle }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column v-if="isAdmin()" prop="applicantName" label="获得者" min-width="120" sortable="custom" />
+          <!-- 获得者（管理员可见） -->
+          <el-table-column v-if="isAdmin()" label="获得者" min-width="130">
+            <template #header>
+              <table-header-filter
+                label="获得者"
+                type="input"
+                v-model="filterForm.applicant"
+                @change="handleFilterChange"
+                sort-prop="applicantName"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.applicantName }}</template>
+          </el-table-column>
 
-          <el-table-column label="许可来源" min-width="130">
+          <!-- 许可来源（申请 ID）-->
+          <el-table-column label="来源申请" min-width="150">
+            <template #header>
+              <table-header-filter
+                label="来源申请ID"
+                type="id-search"
+                v-model="filterForm.application_id"
+                @change="handleFilterChange"
+              />
+            </template>
             <template #default="{ row }">
               <el-link type="primary" @click="handleSourceClick(row)" style="display: inline-flex; align-items: center; gap: 4px;">
                 申请{{ formatShortId(row.applicationId) }}
@@ -212,10 +221,49 @@ const submitRevoke = async () => {
             </template>
           </el-table-column>
 
-          <el-table-column prop="createdAt" label="许可授权时间" width="160" sortable="custom" />
-          <el-table-column prop="expireAt" label="预计过期时间" width="160" sortable="custom" />
+          <!-- 许可授权时间 -->
+          <el-table-column label="许可授权时间" width="180">
+            <template #header>
+              <table-header-filter
+                label="许可授权时间"
+                type="daterange"
+                v-model="filterForm.date"
+                @change="handleFilterChange"
+                sort-prop="createdAt"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.createdAt }}</template>
+          </el-table-column>
 
-          <el-table-column label="状态" width="120" align="center">
+          <!-- 预计过期时间 -->
+          <el-table-column label="预计过期时间" width="170">
+            <template #header>
+              <table-header-filter
+                label="预计过期时间"
+                type="daterange"
+                v-model="filterForm.expire_date"
+                @change="handleFilterChange"
+                sort-prop="expireAt"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.expireAt }}</template>
+          </el-table-column>
+
+          <!-- 状态 -->
+          <el-table-column label="状态" width="130">
+            <template #header>
+              <table-header-filter
+                label="状态"
+                type="select"
+                v-model="filterForm.status"
+                :options="statusFilterOptions"
+                @change="handleFilterChange"
+              />
+            </template>
             <template #default="{ row }">
               <div style="display: inline-flex; align-items: center; gap: 4px;">
                 <el-tag :type="row.statusType">{{ row.statusText }}</el-tag>
@@ -228,12 +276,13 @@ const submitRevoke = async () => {
             </template>
           </el-table-column>
 
+          <!-- 操作（管理员） -->
           <el-table-column v-if="isAdmin()" label="操作" width="120" fixed="right" align="center">
             <template #default="scope">
-              <el-button 
-                type="danger" 
-                link 
-                :icon="Remove" 
+              <el-button
+                type="danger"
+                link
+                :icon="Remove"
                 :disabled="scope.row.status === 'revoked'"
                 @click="handleRevokeClick(scope.row)"
               >
@@ -275,13 +324,10 @@ const submitRevoke = async () => {
 </template>
 
 <style scoped>
-.monospace-id {
-  font-family: var(--font-family-mono, monospace);
-  color: var(--text-color-secondary, #909399);
-}
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 </style>
+
