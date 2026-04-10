@@ -23,7 +23,7 @@ func NewRouter() *gin.Engine {
 
 	// email
 	asynqClient := global.ASYNQ
-	templateEngine := templates.NewTemplateEngine("./html")
+	templateEngine := templates.NewTemplateEngine()
 	mailService := service.NewMailService(asynqClient, templateEngine)
 
 	// opt
