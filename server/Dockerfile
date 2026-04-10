@@ -34,6 +34,7 @@ COPY --from=builder /${EXEC} .
 
 # 复制后端服务的配置文件
 COPY config.toml .
+COPY html ./html
 
 EXPOSE 8080
 
