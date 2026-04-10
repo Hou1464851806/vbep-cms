@@ -51,6 +51,7 @@ services:
       - "8080:8080"
     volumes:
       - server-log:/app/logs
+      - backend-uploads:/app/uploads
 #      - ./config.toml:/app/config.toml # 用宿主机上的配置覆盖容器内的，方便修改配置
     depends_on:
       postgres:
@@ -110,6 +111,7 @@ volumes:
   postgres-data:
   redis-data:
   server-log:
+  backend-uploads:
   worker-log:
   nginx-log:
 
