@@ -57,9 +57,41 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/v1/ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     secrets:
       - db_user
       - db_password
+
+  worker:
+    image: vbep-cms/backend:latest
+    pull_policy: never
+    container_name: vbep-cms-worker
+    restart: always
+    environment:
+      APP_MODE: worker
+      DB_USER_FILE: /run/secrets/db_user
+      DB_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - worker-log:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    secrets:
+      - db_user
+      - db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f vbep-cms-backend || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   frontend:
     image: vbep-cms/frontend:latest
@@ -72,12 +104,13 @@ services:
       - nginx-log:/var/log/nginx
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   postgres-data:
   redis-data:
   server-log:
+  worker-log:
   nginx-log:
 
 secrets:
