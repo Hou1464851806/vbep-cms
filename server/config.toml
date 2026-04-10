@@ -10,20 +10,26 @@ token_expired_duration = 30
 url = "http://localhost:5173"
 
 [database]
-db_type = "sqlite"
+db_type = "postgres"
 # sqlite
 db_path = "./main.sqlite3"
 # postgres
-host = "127.0.0.1"
+# 本地调试
+#host = "127.0.0.1"
+# docker compose
+host = "postgres"
 port = 5432
-user = "nonbeing"
-password = "hou812712"
+#user = "nonbeing"
+#password = "nonbeing114514"
 db_name = "vbep_cms"
 ssl_mode = "disable"
 time_zone = "Asia/Shanghai"
 
 [redis]
-addr = "127.0.0.1:6379"
+# 本地调试
+#addr = "127.0.0.1:6379"
+# docker compose
+addr = "redis:6379"
 password = ""
 db = 0
 
