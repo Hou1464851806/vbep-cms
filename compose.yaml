@@ -45,6 +45,7 @@ services:
     container_name: vbep-cms-backend
     restart: always
     environment:
+      WEB_URL: http://localhost:8888
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
     ports:
@@ -75,6 +76,7 @@ services:
     restart: always
     environment:
       APP_MODE: worker
+      WEB_URL: http://localhost:8888
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
     volumes:
@@ -88,11 +90,15 @@ services:
       - db_user
       - db_password
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f vbep-cms-backend || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "test -L /proc/1/exe && case \"$(readlink /proc/1/exe)\" in *vbep-cms-backend) exit 0;; *) exit 1;; esac",
+        ]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 30s
 
   frontend:
     image: vbep-cms/frontend:latest
