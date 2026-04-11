@@ -38,14 +38,14 @@ offset = 3
 
 [email]
 # driver: [smtp api mock]
-driver = "mock"
-from = "vbep-cms@xx.com"
+driver = "smtp"
+from = "vbep@muc.edu.cn" # 配置发件人邮箱
 
 [email.smtp]
-host = ""
-port = 114
-user = ""
-password = ""
+host = "smtp.qiye.163.com" # 配置发件所用的smtp服务器
+port = 465 # 465 使用 SSL 端口
+user = "vbep@muc.edu.cn" # 登录smtp服务器的账号
+password = "" # 登录smtp服务器的授权码（需在客户端设置中生成）
 
 [email.api]
 url = ""
