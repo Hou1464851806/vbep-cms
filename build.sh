@@ -3,88 +3,128 @@
 set -e
 
 # ==========================================
-# 1. 变量及平台配置
+# 1. 变量及默认配置
 # ==========================================
 IMAGE_DIR="./images"
-# 默认构建平台（如果运行脚本时不传参数，则使用当前机器架构）
-# 常用值: linux/amd64, linux/arm64, linux/amd64,linux/arm64
-TARGET_PLATFORM=${1:-"linux/arm64"}
+TARGET_PLATFORM="linux/arm64" # 默认平台
 
 FRONTEND_IMAGE="vbep-cms/frontend:latest"
 BACKEND_IMAGE="vbep-cms/backend:latest"
-
 POSTGRES_IMAGE="postgres:15-alpine"
 REDIS_IMAGE="redis:7-alpine"
 
 FRONTEND_DIR="."
 BACKEND_DIR="./server"
 
+# 构建开关控制（默认全部构建）
+BUILD_ALL=true
+BUILD_FRONTEND=false
+BUILD_BACKEND=false
+BUILD_DEPS=false
+
+# ==========================================
+# 2. 解析命令参数
+# ==========================================
+# 示例: ./build.sh -p linux/amd64 --backend
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -p|--platform) TARGET_PLATFORM="$2"; shift ;;
+        --frontend) BUILD_ALL=false; BUILD_FRONTEND=true ;;
+        --backend)  BUILD_ALL=false; BUILD_BACKEND=true  ;;
+        --deps)     BUILD_ALL=false; BUILD_DEPS=true     ;;
+        -h|--help)
+            echo "用法: $0 [选项]"
+            echo "选项:"
+            echo "  -p, --platform   指定构建平台 (默认: linux/arm64)"
+            echo "  --frontend       只构建前端镜像"
+            echo "  --backend        只构建后端镜像"
+            echo "  --deps           只拉取依赖镜像(postgres, redis)"
+            echo "  (不添加具体模块参数时，默认构建全部镜像)"
+            exit 0
+            ;;
+        *) echo "[!] 未知参数: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# 如果没有指定任何独立模块，则全局开启
+if [ "$BUILD_ALL" = true ]; then
+    BUILD_FRONTEND=true
+    BUILD_BACKEND=true
+    BUILD_DEPS=true
+fi
+
 echo "==========================================="
 echo "[*] 开始执行离线安装包构建流程..."
 echo "[*] 目标平台: $TARGET_PLATFORM"
+echo "[*] 正在检查输出目录: $IMAGE_DIR"
+if [ ! -d "$IMAGE_DIR" ]; then
+    mkdir -p "$IMAGE_DIR"
+fi
 echo "==========================================="
 
 # ==========================================
-# 2. 环境准备 (初始化 buildx)
+# 3. 环境准备 (初始化 buildx)
 # ==========================================
-if [ ! -d "$IMAGE_DIR" ]; then
-    mkdir -p "$IMAGE_DIR"
-else
-    rm -f "$IMAGE_DIR"/*.tar
-fi
-
-# 检查/创建 buildx 构建器 (若要跨平台构建，必须使用 docker-container 驱动)
-BUILDER_NAME="mybuilder"
-if ! docker buildx inspect $BUILDER_NAME > /dev/null 2>&1; then
-    echo "[*] 正在创建并启动 buildx 构建器..."
-    docker buildx create --name $BUILDER_NAME --use
-    docker buildx inspect --bootstrap
-else
-    docker buildx use $BUILDER_NAME
+# 只有在需要构建源码镜像时才需要 buildx
+if [ "$BUILD_FRONTEND" = true ] || [ "$BUILD_BACKEND" = true ]; then
+    BUILDER_NAME="mybuilder"
+    if ! docker buildx inspect $BUILDER_NAME > /dev/null 2>&1; then
+        echo "[*] 正在创建并启动 buildx 构建器..."
+        docker buildx create --name $BUILDER_NAME --use
+        docker buildx inspect --bootstrap
+    else
+        docker buildx use $BUILDER_NAME
+    fi
 fi
 
 # ==========================================
-# 3. 源码构建并导出
+# 4. 源码构建并导出
 # ==========================================
-# 注意：buildx 构建跨平台镜像并存到本地 .tar 文件，
-# 不能直接 build -t 然后 save，必须在 build 时通过 --output 指定导出
-# 且目前 buildx 导出 .tar 文件时一次只能为一个 platform 构建。
+if [ "$BUILD_FRONTEND" = true ]; then
+    echo "-------------------------------------------"
+    echo "[*] 正在构建前端镜像并导出: $FRONTEND_IMAGE"
+    rm -f "$IMAGE_DIR/frontend.tar" # 只删自己的包，防止使用旧的
+    docker buildx build --platform "$TARGET_PLATFORM" \
+        -t "$FRONTEND_IMAGE" \
+        --output type=docker,dest="$IMAGE_DIR/frontend.tar" \
+        "$FRONTEND_DIR"
+fi
 
+if [ "$BUILD_BACKEND" = true ]; then
+    echo "-------------------------------------------"
+    echo "[*] 正在构建后端镜像并导出: $BACKEND_IMAGE"
+    rm -f "$IMAGE_DIR/backend.tar" # 只删自己的包
+    docker buildx build --platform "$TARGET_PLATFORM" \
+        -t "$BACKEND_IMAGE" \
+        --output type=docker,dest="$IMAGE_DIR/backend.tar" \
+        "$BACKEND_DIR"
+fi
+
+# ==========================================
+# 5. 拉取/转换依赖镜像
+# ==========================================
+if [ "$BUILD_DEPS" = true ]; then
+    echo "-------------------------------------------"
+    echo "[*] 正在拉取依赖镜像 ($TARGET_PLATFORM)..."
+
+    echo "[+] 处理数据库: postgres.tar"
+    rm -f "$IMAGE_DIR/postgres.tar"
+    docker pull --platform "$TARGET_PLATFORM" "$POSTGRES_IMAGE"
+    docker save -o "$IMAGE_DIR/postgres.tar" "$POSTGRES_IMAGE"
+
+    echo "[+] 处理缓存: redis.tar"
+    rm -f "$IMAGE_DIR/redis.tar"
+    docker pull --platform "$TARGET_PLATFORM" "$REDIS_IMAGE"
+    docker save -o "$IMAGE_DIR/redis.tar" "$REDIS_IMAGE"
+fi
+
+# ==========================================
+# 6. 结果确认
+# ==========================================
 echo "-------------------------------------------"
-echo "[*] 正在构建前端镜像并导出: $FRONTEND_IMAGE"
-docker buildx build --platform "$TARGET_PLATFORM" \
-    -t "$FRONTEND_IMAGE" \
-    --output type=docker,dest="$IMAGE_DIR/frontend.tar" \
-    "$FRONTEND_DIR"
-
-echo "-------------------------------------------"
-echo "[*] 正在构建后端镜像并导出: $BACKEND_IMAGE"
-docker buildx build --platform "$TARGET_PLATFORM" \
-    -t "$BACKEND_IMAGE" \
-    --output type=docker,dest="$IMAGE_DIR/backend.tar" \
-    "$BACKEND_DIR"
-
-# ==========================================
-# 4. 拉取/转换依赖镜像
-# ==========================================
-# 依赖镜像（如 Postgres）需要拉取对应平台的版本并保存
-echo "-------------------------------------------"
-echo "[*] 正在拉取依赖镜像 ($TARGET_PLATFORM)..."
-
-echo "[+] 处理数据库: postgres.tar"
-docker pull --platform "$TARGET_PLATFORM" "$POSTGRES_IMAGE"
-docker save -o "$IMAGE_DIR/postgres.tar" "$POSTGRES_IMAGE"
-
-echo "[+] 处理缓存: redis.tar"
-docker pull --platform "$TARGET_PLATFORM" "$REDIS_IMAGE"
-docker save -o "$IMAGE_DIR/redis.tar" "$REDIS_IMAGE"
-
-# ==========================================
-# 5. 结果确认
-# ==========================================
-echo "-------------------------------------------"
-echo "[OK] 所有镜像针对平台 [$TARGET_PLATFORM] 打包完成！"
-ls -lh "$IMAGE_DIR" | awk '{print $5, $9}' | grep "\.tar"
+echo "[OK] 针对平台 [$TARGET_PLATFORM] 的选定镜像打包完成！"
+ls -lh "$IMAGE_DIR" | awk '{print $5, $9}' | grep "\.tar" || true
 
 echo "-------------------------------------------"
 echo "[提示] 如果在目标机器 load 后无法运行，请检查目标机器架构是否为 $TARGET_PLATFORM"
