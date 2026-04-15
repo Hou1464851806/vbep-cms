@@ -1,12 +1,14 @@
 #!/bin/bash
 
+# 严格错误模式
 set -e
 
 # ==========================================
-# 1. 变量及默认配置
+# 1. 变量及路径配置
 # ==========================================
-IMAGE_DIR="./images"
-TARGET_PLATFORM="linux/arm64" # 默认平台
+BUILD_DIR="./deploy"             # 最终生成的安装包目录
+IMAGE_DIR="$BUILD_DIR/images"  # 镜像存放子目录
+TARGET_PLATFORM="linux/arm64"  # 默认平台
 
 FRONTEND_IMAGE="vbep-cms/frontend:latest"
 BACKEND_IMAGE="vbep-cms/backend:latest"
@@ -25,7 +27,6 @@ BUILD_DEPS=false
 # ==========================================
 # 2. 解析命令参数
 # ==========================================
-# 示例: ./build.sh -p linux/amd64 --backend
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         -p|--platform) TARGET_PLATFORM="$2"; shift ;;
@@ -38,8 +39,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "  -p, --platform   指定构建平台 (默认: linux/arm64)"
             echo "  --frontend       只构建前端镜像"
             echo "  --backend        只构建后端镜像"
-            echo "  --deps           只拉取依赖镜像(postgres, redis)"
-            echo "  (不添加具体模块参数时，默认构建全部镜像)"
+            echo "  --deps           只打包依赖镜像"
             exit 0
             ;;
         *) echo "[!] 未知参数: $1"; exit 1 ;;
@@ -47,30 +47,27 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-# 如果没有指定任何独立模块，则全局开启
 if [ "$BUILD_ALL" = true ]; then
-    BUILD_FRONTEND=true
-    BUILD_BACKEND=true
-    BUILD_DEPS=true
+    BUILD_FRONTEND=true; BUILD_BACKEND=true; BUILD_DEPS=true
 fi
 
+# ==========================================
+# 3. 初始化目录结构
+# ==========================================
 echo "==========================================="
 echo "[*] 开始执行离线安装包构建流程..."
 echo "[*] 目标平台: $TARGET_PLATFORM"
-echo "[*] 正在检查输出目录: $IMAGE_DIR"
-if [ ! -d "$IMAGE_DIR" ]; then
-    mkdir -p "$IMAGE_DIR"
-fi
+echo "[*] 正在初始化构建目录: $BUILD_DIR"
+# 如果没有 build，创建它；如果已经有，保留它（避免每次全量删掉已有的其他 tar）
+mkdir -p "$IMAGE_DIR"
 echo "==========================================="
 
 # ==========================================
-# 3. 环境准备 (初始化 buildx)
+# 4. 环境准备 (Buildx)
 # ==========================================
-# 只有在需要构建源码镜像时才需要 buildx
 if [ "$BUILD_FRONTEND" = true ] || [ "$BUILD_BACKEND" = true ]; then
     BUILDER_NAME="mybuilder"
     if ! docker buildx inspect $BUILDER_NAME > /dev/null 2>&1; then
-        echo "[*] 正在创建并启动 buildx 构建器..."
         docker buildx create --name $BUILDER_NAME --use
         docker buildx inspect --bootstrap
     else
@@ -79,12 +76,11 @@ if [ "$BUILD_FRONTEND" = true ] || [ "$BUILD_BACKEND" = true ]; then
 fi
 
 # ==========================================
-# 4. 源码构建并导出
+# 5. 源码构建并导出到 build/images
 # ==========================================
 if [ "$BUILD_FRONTEND" = true ]; then
-    echo "-------------------------------------------"
-    echo "[*] 正在构建前端镜像并导出: $FRONTEND_IMAGE"
-    rm -f "$IMAGE_DIR/frontend.tar" # 只删自己的包，防止使用旧的
+    echo "[*] 正在构建前端镜像 -> $IMAGE_DIR/frontend.tar"
+    rm -f "$IMAGE_DIR/frontend.tar"
     docker buildx build --platform "$TARGET_PLATFORM" \
         -t "$FRONTEND_IMAGE" \
         --output type=docker,dest="$IMAGE_DIR/frontend.tar" \
@@ -92,9 +88,8 @@ if [ "$BUILD_FRONTEND" = true ]; then
 fi
 
 if [ "$BUILD_BACKEND" = true ]; then
-    echo "-------------------------------------------"
-    echo "[*] 正在构建后端镜像并导出: $BACKEND_IMAGE"
-    rm -f "$IMAGE_DIR/backend.tar" # 只删自己的包
+    echo "[*] 正在构建后端镜像 -> $IMAGE_DIR/backend.tar"
+    rm -f "$IMAGE_DIR/backend.tar"
     docker buildx build --platform "$TARGET_PLATFORM" \
         -t "$BACKEND_IMAGE" \
         --output type=docker,dest="$IMAGE_DIR/backend.tar" \
@@ -102,29 +97,48 @@ if [ "$BUILD_BACKEND" = true ]; then
 fi
 
 # ==========================================
-# 5. 拉取/转换依赖镜像
+# 6. 拉取依赖并导出到 build/images
 # ==========================================
 if [ "$BUILD_DEPS" = true ]; then
     echo "-------------------------------------------"
     echo "[*] 正在拉取依赖镜像 ($TARGET_PLATFORM)..."
 
     echo "[+] 处理数据库: postgres.tar"
-    rm -f "$IMAGE_DIR/postgres.tar"
+    rm -f "$IMAGE_DIR/$POSTGRES_IMAGE.tar"
     docker pull --platform "$TARGET_PLATFORM" "$POSTGRES_IMAGE"
-    docker save -o "$IMAGE_DIR/postgres.tar" "$POSTGRES_IMAGE"
+    docker save -o "$IMAGE_DIR/$POSTGRES_IMAGE.tar" "$POSTGRES_IMAGE"
 
     echo "[+] 处理缓存: redis.tar"
-    rm -f "$IMAGE_DIR/redis.tar"
+    rm -f "$IMAGE_DIR/$REDIS_IMAGE.tar"
     docker pull --platform "$TARGET_PLATFORM" "$REDIS_IMAGE"
-    docker save -o "$IMAGE_DIR/redis.tar" "$REDIS_IMAGE"
+    docker save -o "$IMAGE_DIR/$REDIS_IMAGE.tar" "$REDIS_IMAGE"
 fi
 
 # ==========================================
-# 6. 结果确认
+# 7. 拷贝部署脚本和配置文件到 build
 # ==========================================
 echo "-------------------------------------------"
-echo "[OK] 针对平台 [$TARGET_PLATFORM] 的选定镜像打包完成！"
-ls -lh "$IMAGE_DIR" | awk '{print $5, $9}' | grep "\.tar" || true
+echo "[*] 正在同步部署文件到 $BUILD_DIR ..."
 
+# 检查源文件是否存在
+for file in "deploy.sh" "compose.yaml"; do
+    if [ -f "$file" ]; then
+        cp "$file" "$BUILD_DIR/"
+        echo "[OK] 已拷贝 $file"
+    else
+        echo "[!] 警告: 未找到 $file，请确保它在当前目录下！"
+    fi
+done
+
+# 给出的 deploy.sh 增加执行权限
+chmod +x "$BUILD_DIR/deploy.sh"
+
+# ==========================================
+# 8. 归档确认
+# ==========================================
 echo "-------------------------------------------"
-echo "[提示] 如果在目标机器 load 后无法运行，请检查目标机器架构是否为 $TARGET_PLATFORM"
+echo "[完成] 安装包已准备就绪，存放在: $BUILD_DIR"
+echo "[查看结果]:"
+ls -R "$BUILD_DIR"
+echo "-------------------------------------------"
+echo "提示：您可以现在执行 'tar -czvf release.tar.gz $BUILD_DIR/' 进行打包发送。"
