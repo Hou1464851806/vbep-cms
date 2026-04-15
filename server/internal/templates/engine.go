@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"os"
 	"path/filepath"
 	"server/logger"
 	"sync"
@@ -15,7 +16,8 @@ type TemplateEngine struct {
 	templateDir string
 }
 
-func NewTemplateEngine(dir string) *TemplateEngine {
+func NewTemplateEngine() *TemplateEngine {
+	dir := resolveTemplateDir()
 	engine := &TemplateEngine{templateDir: dir}
 	err := engine.Reload()
 	if err != nil {
@@ -77,4 +79,22 @@ func (e *TemplateEngine) Render(templateName string, data Data) (string, error) 
 	}
 
 	return buf.String(), nil
+}
+
+func resolveTemplateDir() string {
+	// 开发环境兼容：以当前工作目录为基准
+	const fallback = "./html"
+
+	execPath, err := os.Executable()
+	if err != nil {
+		return fallback
+	}
+
+	execDir := filepath.Dir(execPath)
+	execTemplateDir := filepath.Join(execDir, "html")
+	if _, err := os.Stat(execTemplateDir); err == nil {
+		return execTemplateDir
+	}
+
+	return fallback
 }
