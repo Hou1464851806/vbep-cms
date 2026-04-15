@@ -64,7 +64,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 15s
     secrets:
       - db_user
       - db_password
@@ -90,15 +90,11 @@ services:
       - db_user
       - db_password
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "test -L /proc/1/exe && case \"$(readlink /proc/1/exe)\" in *vbep-cms-backend) exit 0;; *) exit 1;; esac",
-        ]
+      test: ["CMD", "pgrep", "-f", "vbep-cms-backend"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 15s
 
   frontend:
     image: vbep-cms/frontend:latest
