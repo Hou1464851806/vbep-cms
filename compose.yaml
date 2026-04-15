@@ -79,6 +79,7 @@ services:
       WEB_URL: http://localhost:8888
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
     volumes:
       - worker-log:/app/logs
     depends_on:
@@ -89,6 +90,7 @@ services:
     secrets:
       - db_user
       - db_password
+      - smtp_password
     healthcheck:
       test: ["CMD", "pgrep", "-f", "vbep-cms-backend"]
       interval: 30s
@@ -122,3 +124,5 @@ secrets:
     file: secrets/db_user.txt
   db_password:
     file: secrets/db_password.txt
+  smtp_password:
+    file: secrets/smtp_password.txt

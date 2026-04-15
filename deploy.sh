@@ -53,6 +53,37 @@ else
 fi
 
 # ==========================================
+# 2. 生成/输入 SMTP 配置
+# ==========================================
+echo "[*] 检查 SMTP 凭证..."
+
+# 检查 SMTP 密码文件是否存在
+if [ ! -f "secrets/smtp_password.txt" ]; then
+    echo "[+] 初次部署：需要配置 SMTP 服务。"
+
+    # 初始化变量
+    smtp_pass=""
+
+    # 使用 while 循环，防止用户输入空值
+    while [ -z "$smtp_pass" ]; do
+        # -s 参数隐藏输入内容，-p 参数显示提示文本
+        read -s -p "[-] 请输入 SMTP 客户端授权码 (输入时内容不可见，完成后按回车): " smtp_pass
+        echo "" # 补充一个换行符，因为 read -s 吃掉了回车
+
+        # 验证是否为空
+        if [ -z "$smtp_pass" ]; then
+            echo "[!] 错误：授权码不能为空，请重新输入！"
+        fi
+    done
+
+    # 将输入的授权码写入文件（-n 防止写入多余的换行符）
+    echo -n "$smtp_pass" > secrets/smtp_password.txt
+    echo "[+] SMTP 授权码已保存到 secrets/smtp_password.txt"
+else
+    echo "[OK] SMTP 凭证文件已存在，直接使用现有凭证。"
+fi
+
+# ==========================================
 # 2. 批量导入 Docker 镜像
 # ==========================================
 echo "[*] 准备加载本地 Docker 镜像..."

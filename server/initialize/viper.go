@@ -39,6 +39,7 @@ func NewViper() *viper.Viper {
 	// 用docker compose secrets覆盖数据库敏感配置
 	global.CFG.Database.User = getSecrets("/run/secrets/db_user", global.CFG.Database.User)
 	global.CFG.Database.Password = getSecrets("/run/secrets/db_password", global.CFG.Database.Password)
+	global.CFG.Email.Smtp.Password = getSecrets("/run/secrets/smtp_password", global.CFG.Email.Smtp.Password)
 	// debug
 	logger.Debugf("Config: %#v", global.CFG)
 	return v
