@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf 
 COPY --from=builder /${EXEC} .
 
 # 复制后端服务的配置文件
-COPY config.toml .
+COPY config.production.toml ./config.toml
 COPY html ./html
 
 EXPOSE 8080
