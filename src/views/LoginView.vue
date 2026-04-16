@@ -209,8 +209,8 @@ const submitLoginFrom = async () => {
 }
 /* Login Form Panel */
 .login-panel {
-  flex-grow: 1; /* 占据剩余空间 */
-  width: 300px; /* 估算宽度，flex-grow会使其适应 */
+  flex-grow: 0;
+  width: 260px;
   display: flex;
   flex-direction: column;
   padding-left: 30px; /* 补偿 qr-code-line */
