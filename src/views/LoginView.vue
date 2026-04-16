@@ -31,6 +31,8 @@ const loginForm = reactive({
   password: '',
 })
 const isLoading = ref(false)
+const showQrLogin = false
+const showOtherLoginMethods = false
 
 const loginRules = reactive({
   userInfo: [{ required: true, message: '请输入邮箱', trigger: 'submit' }],
@@ -103,13 +105,13 @@ const submitLoginFrom = async () => {
         <span class="heading">欢迎使用VBEP数据平台</span>
       </div>
       <div class="login-container">
-        <div class="login-left-QR-code">
+        <div v-if="showQrLogin" class="login-left-QR-code">
           <img :src="qrCodeSrc" alt="QR Code" class="qr-code-img" />
           <p class="qr-code-text">使用微信扫一扫登录</p>
           <p class="qr-code-subtext">“中央民族大学<br />中国兴边富民战略研究院”</p>
           <div class="qr-code-line"></div>
         </div>
-        <div class="login-panel">
+        <div class="login-panel" :class="{ 'no-qr': !showQrLogin }">
           <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
             <el-form-item class="login-group" prop="userInfo">
               <el-input
@@ -146,15 +148,17 @@ const submitLoginFrom = async () => {
           <div class="login-group footer-links">
             <RouterLink to="/reset" class="forgot-password">忘记密码？</RouterLink>
           </div>
-          <div class="login-group other-methods">
-            <span class="line"></span>
-            <span class="text">其他方式</span>
-            <span class="line"></span>
-          </div>
-          <div class="third-login">
-            <img :src="thirdPartyQrSrc" alt="Third Party QR" class="third-login-icon" />
-            <img :src="thirdPartyChatSrc" alt="Third Party Chat" class="third-login-icon" />
-          </div>
+          <template v-if="showOtherLoginMethods">
+            <div class="login-group other-methods">
+              <span class="line"></span>
+              <span class="text">其他方式</span>
+              <span class="line"></span>
+            </div>
+            <div class="third-login">
+              <img :src="thirdPartyQrSrc" alt="Third Party QR" class="third-login-icon" />
+              <img :src="thirdPartyChatSrc" alt="Third Party Chat" class="third-login-icon" />
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -210,6 +214,9 @@ const submitLoginFrom = async () => {
   display: flex;
   flex-direction: column;
   padding-left: 30px; /* 补偿 qr-code-line */
+}
+.login-panel.no-qr {
+  padding-left: 0;
 }
 
 /* 找回账号密码 */
