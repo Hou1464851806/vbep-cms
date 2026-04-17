@@ -264,4 +264,21 @@ const submitLoginFrom = async () => {
   height: 30px;
   cursor: pointer;
 }
+
+@media (max-width: 768px) {
+  .login-container {
+    gap: 0;
+  }
+  .login-left-QR-code {
+    display: none;
+  }
+  .login-panel {
+    width: 100%;
+    max-width: 360px;
+    padding-left: 0;
+  }
+  .footer-links {
+    margin-bottom: 20px;
+  }
+}
 </style>

@@ -141,7 +141,8 @@ const submitRecoverForm = async () => {
 <style scoped>
 /* 保持内容宽度限制 */
 .login-content {
-  width: 380px; /* 稍微增加一点宽度以容纳 label + input */
+  width: 380px; /* 桌面基准宽度 */
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -184,5 +185,21 @@ const submitRecoverForm = async () => {
 }
 .captcha-popover .tip {
   color: #606266;
+}
+
+@media (max-width: 768px) {
+  .login-content {
+    width: 100%;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 68px !important;
+    padding-right: 8px;
+  }
+
+  :deep(.el-form-item__content) {
+    margin-left: 68px !important;
+    min-width: 0;
+  }
 }
 </style>
