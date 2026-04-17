@@ -30,7 +30,7 @@
   /* width is defined in component-specific styles */
   font-weight: bold;
   color: #606266;
-  flex-shrink: 0; /* Prevent label from shrinking */
+  flex-shrink: 0;
 }
 
 .info-row .row-content {
@@ -39,7 +39,7 @@
   color: #303133;
   display: flex;
   align-items: center;
-  min-height: 32px; /* Use min-height to prevent layout shift */
+  min-height: 32px;
 }
 
 .info-row .row-action {
@@ -79,16 +79,84 @@
 .file-name-cell {
   display: flex;
   align-items: center;
+  overflow: hidden;
 }
+
 .file-name-cell .file-icon {
   margin-right: 8px;
   font-size: 16px;
-  color: #909399;
+  flex-shrink: 0;
 }
+
+/* .file-name-text is always used inside .file-name-cell */
 .file-name-cell .file-name-text {
-  font-weight: 500;
-  color: #303133;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Reset filter button (shown in card header when any filter is active) */
+.reset-filter-btn {
+  font-size: 12px;
+}
+
+/* ── Table Cell Utilities ────────────────────────────────── */
+
+/* Standard name / title column: medium-weight, primary text color */
+.table-name-text {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Standard time column: secondary text, no wrap */
+.table-time-text {
+  color: #606266;
+  white-space: nowrap;
+}
+
+/* Clickable ID link (used in "来源申请" etc.) */
+.table-id-link {
+  font-family: monospace;
+  color: var(--el-color-primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* File type icon color tokens */
+.file-icon-pdf {
+  color: #e74c3c !important;
+}
+
+.file-icon-word {
+  color: #2980b9 !important;
+}
+
+.file-icon-excel {
+  color: #27ae60 !important;
+}
+
+.file-icon-ppt {
+  color: #e67e22 !important;
+}
+
+.file-icon-image {
+  color: #8e44ad !important;
+}
+
+.file-icon-video {
+  color: #c0392b !important;
+}
+
+.file-icon-audio {
+  color: #16a085 !important;
+}
+
+.file-icon-zip {
+  color: #7f8c8d !important;
+}
+
+.file-icon-default {
+  color: #909399 !important;
 }

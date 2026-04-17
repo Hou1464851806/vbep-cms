@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, inject } from 'vue'
+import {ref, onMounted, inject} from 'vue'
 import {
   Document,
   Upload,
@@ -10,6 +10,9 @@ import {
   VideoPlay,
   Headset,
   Box,
+  Memo,
+  DataAnalysis,
+  Tickets,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -17,11 +20,14 @@ import apiClient from '@/request/axios.js'
 import '@/assets/styles/universal.css'
 import { formatDateTime, formatFileSize } from '@/utils/format.js'
 import {DOWNLOAD_FILE_LIMIT_MB} from "@/utils/constrains.js";
+import ListPagination from "@/components/ListPagination.vue";
+import { useTableFilter } from "@/hooks/useTable.js"
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue"
 
 const DOWNLOAD_FILE_LIMIT_BYTES = DOWNLOAD_FILE_LIMIT_MB * 1024 * 1024
 
 // --- API 函数 ---
-const fetchPublicFilesAPI = () => apiClient.get('/api/v1/files/public')
+const fetchPublicFilesAPI = (page, size) => apiClient.get('/api/v1/files/public', { params: { page, size } })
 
 const uploadPublicFileAPI = (file) => {
   const formData = new FormData()
@@ -38,45 +44,63 @@ const downloadPublicFileAPI = (fileID) =>
 
 // --- 状态定义 ---
 const isAdmin = inject('isAdmin')
-const fileList = ref([])
-const isLoading = ref(false)
 const isUploading = ref(false)
 
 // --- 辅助函数 ---
-const getFileIcon = (fileName) => {
-  if (!fileName) return Document
+const FILE_TYPE_MAP = [
+  { exts: ['pdf'],                                           icon: Document,     cls: 'file-icon-pdf'     },
+  { exts: ['doc', 'docx', 'wps', 'odt', 'rtf'],             icon: Memo,         cls: 'file-icon-word'    },
+  { exts: ['xls', 'xlsx', 'et', 'ods', 'csv'],              icon: DataAnalysis, cls: 'file-icon-excel'   },
+  { exts: ['ppt', 'pptx', 'dps', 'odp'],                    icon: Tickets,      cls: 'file-icon-ppt'     },
+  { exts: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp'], icon: Picture,  cls: 'file-icon-image'   },
+  { exts: ['mp4', 'avi', 'mov', 'mkv', 'webm'],             icon: VideoPlay,    cls: 'file-icon-video'   },
+  { exts: ['mp3', 'wav', 'ogg', 'flac'],                    icon: Headset,      cls: 'file-icon-audio'   },
+  { exts: ['zip', 'rar', '7z', 'tar', 'gz', 'tgz'],        icon: Box,          cls: 'file-icon-zip'     },
+]
+
+const getFileType = (fileName) => {
+  if (!fileName) return { icon: Document, cls: 'file-icon-default' }
   const ext = fileName.split('.').pop().toLowerCase()
-
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp']
-  const videoExts = ['mp4', 'avi', 'mov', 'mkv', 'webm']
-  const audioExts = ['mp3', 'wav', 'ogg', 'flac']
-  const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz']
-
-  if (imageExts.includes(ext)) return Picture
-  if (videoExts.includes(ext)) return VideoPlay
-  if (audioExts.includes(ext)) return Headset
-  if (archiveExts.includes(ext)) return Box
-
-  return Document
+  return FILE_TYPE_MAP.find(t => t.exts.includes(ext)) || { icon: Document, cls: 'file-icon-default' }
 }
+
+const getFileIcon = (fileName) => getFileType(fileName).icon
+const getFileIconClass = (fileName) => getFileType(fileName).cls
+
+const normalizeFile = (item) => ({
+  fileID: item.fileID || item.id,
+  name: item.name || '未命名文件',
+  size: Number(item.size ?? 0),
+  createdAt: formatDateTime(item.createdAt),
+})
+
+
+
+const {
+  loading: isLoading,
+  data: fileList,
+  pagination,
+  filterForm,
+  sortState,
+  isFilterActive,
+  loadData: loadFiles,
+  handleSortChange,
+  handleFilterChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/files/public', { params }),
+  {
+    normalize: normalizeFile,
+    dataKey: 'files',
+    defaultSort: { prop: 'createdAt', order: 'descending' },
+    filterSchema: { name: '', date: [] },
+    pageSize: 10,
+    syncUrl: true,
+  }
+)
 
 // --- 方法 ---
-const loadFiles = async () => {
-  isLoading.value = true
-  try {
-    const res = await fetchPublicFilesAPI()
-    if (res.status === 200) {
-      fileList.value = res.data.files || []
-    } else {
-      ElMessage.error(res.data?.message || '加载文件列表失败')
-    }
-  } catch (error) {
-    console.error(error)
-    ElMessage.error('加载文件列表失败')
-  } finally {
-    isLoading.value = false
-  }
-}
 
 const handleUpload = async (options) => {
   const { file } = options
@@ -156,9 +180,15 @@ onMounted(() => {
   <el-card shadow="never">
     <template #header>
       <div class="card-header">
-        <span v-if="isAdmin()">下载中心（上传文件大小不能超过 {{ formatFileSize(DOWNLOAD_FILE_LIMIT_BYTES) }}）</span>
-        <span v-else>下载中心</span>
+        <span>下载中心</span>
         <div class="header-actions">
+          <el-button
+            v-if="isFilterActive"
+            class="reset-filter-btn"
+            plain
+            size="small"
+            @click="resetFilter"
+          >重置筛选</el-button>
           <el-button :icon="Refresh" circle @click="loadFiles" :loading="isLoading" title="刷新列表" />
           <el-upload
             v-if="isAdmin()"
@@ -174,52 +204,89 @@ onMounted(() => {
       </div>
     </template>
 
-    <el-table :data="fileList" style="width: 100%" v-loading="isLoading">
-      <el-table-column label="文件名" min-width="300">
-        <template #default="{ row }">
-          <div class="file-name-cell">
-            <el-icon class="file-icon">
-              <component :is="getFileIcon(row.name)" />
-            </el-icon>
-            <span class="file-name-text" :title="row.name">{{ row.name }}</span>
-          </div>
-        </template>
-      </el-table-column>
+    <div v-loading="isLoading">
+      <el-table
+        :data="fileList"
+        style="width: 100%"
+      >
+        <el-table-column label="文件名" min-width="300" prop="name">
+          <template #header>
+            <table-header-filter
+              label="文件名"
+              type="input"
+              v-model="filterForm.name"
+              @change="handleFilterChange"
+              sort-prop="name"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
+          <template #default="{ row }">
+            <div class="file-name-cell">
+              <el-icon class="file-icon" :class="getFileIconClass(row.name)"><component :is="getFileIcon(row.name)" /></el-icon>
+              <span class="file-name-text table-name-text" :title="row.name">{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
 
-      <el-table-column label="大小" width="120">
-        <template #default="{ row }">
-          {{ formatFileSize(row.size) }}
-        </template>
-      </el-table-column>
+        <el-table-column label="大小" width="120">
+          <template #header>
+            <table-header-filter
+              label="大小"
+              sort-prop="size"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
+          <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
+        </el-table-column>
 
-      <el-table-column label="上传时间" width="180">
-        <template #default="{ row }">
-          {{ formatDateTime(row.createdAt) }}
-        </template>
-      </el-table-column>
+        <el-table-column label="上传时间" width="180">
+          <template #header>
+            <table-header-filter
+              label="上传时间"
+              type="daterange"
+              v-model="filterForm.date"
+              @change="handleFilterChange"
+              sort-prop="createdAt"
+              :sort-state="sortState"
+              @sort="handleSortChange"
+            />
+          </template>
+          <template #default="{ row }">
+            <span class="table-time-text">{{ formatDateTime(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
 
-      <el-table-column label="操作" width="180" align="center" fixed="right">
-        <template #default="{ row }">
-          <el-button
-            type="primary"
-            link
-            :icon="Download"
-            @click="handleDownload(row)"
-          >
-            下载
-          </el-button>
-          <el-button
-            v-if="isAdmin()"
-            type="danger"
-            link
-            :icon="Delete"
-            @click="handleDelete(row)"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+        <el-table-column label="操作" width="180" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              type="primary"
+              link
+              :icon="Download"
+              @click="handleDownload(row)"
+            >
+              下载
+            </el-button>
+            <el-button
+              v-if="isAdmin()"
+              type="danger"
+              link
+              :icon="Delete"
+              @click="handleDelete(row)"
+            >
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <list-pagination
+        v-model="pagination.currentPage"
+        v-model:page-size="pagination.pageSize"
+        :total="pagination.total"
+        @change="handlePageChange"
+      />
+    </div>
   </el-card>
 </template>
 

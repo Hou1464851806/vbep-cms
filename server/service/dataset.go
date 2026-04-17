@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"server/global"
+	"server/logger"
 	"server/model"
+	"server/pkg/utils"
+	"time"
 
 	"gorm.io/gorm"
 )
@@ -27,14 +30,83 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	return nil
 }
 
-func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]model.DatasetListItem, error) {
+// DatasetListQuery 前端表格的筛选/排序/分页参数
+type DatasetListQuery struct {
+	UserID    string
+	Role      model.UserRole
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "name", "createdAt", "creator"
+	Order     string // "asc" 或 "desc"
+	IDPrefix  string // ID 前缀（8位）或完整 UUID（36位）精确匹配
+	Name      string // 模糊搜索数据集标题
+	Creator   string // 模糊搜索创建者昵称
+	DateStart string
+	DateEnd   string
+}
+
+// datasetSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var datasetSortWhitelist = map[string]string{
+	"name":      "datasets.title",
+	"createdAt": "datasets.created_at",
+	"creator":   "users.nick_name",
+	"fileCount": "file_count",
+}
+
+func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetListItem, int64, error) {
 	ctx := context.Background()
 	// var results []model.DatasetListItem
 	results := make([]model.DatasetListItem, 0)
+	var total int64
 
-	db := global.DB.WithContext(ctx).
+	baseQuery := global.DB.WithContext(ctx).
 		Model(&model.Dataset{}).
 		Joins("LEFT JOIN users ON users.id = datasets.creator_id")
+
+	// ── ID 前缀 / 精确匹配 ──
+	if q.IDPrefix != "" {
+		if len(q.IDPrefix) == 36 {
+			baseQuery = baseQuery.Where("datasets.id = ?", q.IDPrefix)
+		} else {
+			baseQuery = baseQuery.Where("datasets.id LIKE ?", q.IDPrefix+"%")
+		}
+	}
+	// ── 数据集名称搜索 ──
+	if q.Name != "" {
+		if len(q.Name) == 36 || (len(q.Name) >= 8 && utils.IsHex(q.Name)) {
+			baseQuery = baseQuery.Where("datasets.title LIKE ? OR datasets.id LIKE ?", "%"+q.Name+"%", q.Name+"%")
+		} else {
+			baseQuery = baseQuery.Where("datasets.title LIKE ?", "%"+q.Name+"%")
+		}
+	}
+	// ── 创建者昵称搜索 ──
+	if q.Creator != "" {
+		if len(q.Creator) == 36 || (len(q.Creator) >= 8 && utils.IsHex(q.Creator)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Creator+"%", q.Creator+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Creator+"%")
+		}
+	}
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("datasets.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("datasets.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count records: %w", err)
+	}
 
 	selectQuery := `
 		datasets.id, 
@@ -44,23 +116,40 @@ func (s *DatasetService) GetAllDatasets(userID string, role model.UserRole) ([]m
 		(SELECT COUNT(*) FROM files WHERE files.owner_id = datasets.id AND files.owner_type = 'datasets' AND files.deleted_at IS NULL) as file_count
 	`
 
-	if role > model.Common {
-		// 管理员：默认拥有所有权限
+	if q.Role > model.Common {
 		selectQuery += ", 1 as has_access"
 	} else {
-		// 普通用户：检查是否存在已通过的申请
 		selectQuery += fmt.Sprintf(`, 
-			(SELECT COUNT(*) FROM applications 
-			 WHERE applications.dataset_id = datasets.id 
-			 AND applications.applicant_id = '%s' 
-			 AND applications.status = %d) > 0 as has_access`, userID, model.APPROVED)
+			(SELECT COUNT(*) FROM licenses 
+			 WHERE licenses.dataset_id = datasets.id 
+			 AND licenses.applicant_id = '%s' 
+			 AND licenses.status = %d
+			 AND licenses.deleted_at IS NULL
+			 AND (licenses.expire_at IS NULL OR licenses.expire_at > '%s')) > 0 as has_access`,
+			q.UserID, model.LicenseNormal, time.Now().Format("2006-01-02 15:04:05"))
+	}
+	// ── 排序（白名单校验）──
+	orderClause := "datasets.created_at DESC"
+	if col, ok := datasetSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	err := baseQuery.
+		Select(selectQuery).
+		Order(orderClause).
+		Offset(offset).
+		Limit(q.PageSize).
+		Scan(&results).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get dataset list: %w", err)
 	}
 
-	err := db.Select(selectQuery).Scan(&results).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get dataset list: %w", err)
-	}
-	return results, nil
+	return results, total, nil
 }
 
 func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.UserRole) (*model.Dataset, bool, error) {
@@ -87,11 +176,12 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 		return &dataset, true, nil
 	}
 
-	// 3. 普通用户查申请记录
+	// 3. 普通用户查许可记录
 	var count int64
 	err = global.DB.WithContext(ctx).
-		Model(&model.Application{}).
-		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.APPROVED).
+		Model(&model.License{}).
+		Where("dataset_id = ? AND applicant_id = ? AND status = ?", id, userID, model.LicenseNormal).
+		Where("expire_at IS NULL OR expire_at > ?", time.Now()).
 		Count(&count).Error
 
 	if err != nil {
@@ -135,20 +225,33 @@ func (s *DatasetService) UpdateDataset(id string, title, description string) (*m
 func (s *DatasetService) DeleteDataset(id string) error {
 	ctx := context.Background()
 
-	if err := NewFileService().DeleteFilesByDataset(id); err != nil {
-		return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
-	}
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := NewFileService().DeleteFilesByDataset(id); err != nil {
+			return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
+		}
 
-	res := global.DB.WithContext(ctx).Where("id = ?", id).Delete(&model.Dataset{})
-	if res.Error != nil {
-		return fmt.Errorf("failed to delete dataset: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return fmt.Errorf("dataset not found")
-	} else if res.RowsAffected > 1 {
-		return fmt.Errorf("more than 1 dataset affected")
-	}
-	return nil
+		if err := tx.Model(&model.License{}).
+			Where("dataset_id = ? AND status = ?", id, model.LicenseNormal).
+			Updates(map[string]interface{}{
+				"status":        model.LicenseRevoked,
+				"revoke_reason": "对应数据集已被移除",
+			}).Error; err != nil {
+			return fmt.Errorf("failed to revoke licenses: %w", err)
+		}
+
+		res := tx.Where("id = ?", id).Delete(&model.Dataset{})
+		if res.Error != nil {
+			return fmt.Errorf("failed to delete dataset: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("dataset not found")
+		} else if res.RowsAffected > 1 {
+			return fmt.Errorf("more than 1 dataset affected")
+		}
+		return nil
+	})
+
+	return err
 }
 
 func (s *DatasetService) GetDatasetStatistics(datasetID string) (*model.DatasetStatistics, error) {

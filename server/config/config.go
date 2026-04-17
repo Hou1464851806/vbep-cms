@@ -16,10 +16,15 @@ type CronConfig struct {
 	Offset   int `mapstructure:"offset"`   // Hours
 }
 
+type WebConfig struct {
+	Url string `mapstructure:"url"`
+}
+
 type Config struct {
 	AppName  string         `mapstructure:"app_name"`
 	AppMode  string         `mapstructure:"app_mode"` // 由环境变量控制 [api worker]
 	Server   ServerConfig   `mapstructure:"server"`
+	Web      WebConfig      `mapstructure:"web"`
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	File     FileConfig     `mapstructure:"file"`

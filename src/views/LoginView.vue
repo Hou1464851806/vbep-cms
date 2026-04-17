@@ -7,12 +7,13 @@ import qrCodeSrc from '@/assets/img/QRcode.jpg'
 
 import thirdPartyQrSrc from '@/assets/img/qr-code.svg'
 import thirdPartyChatSrc from '@/assets/img/wechat.png'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import apiClient, { setAuthToken } from '@/request/axios.js'
 import '@/assets/styles/login.css'
 import sha256 from "crypto-js/sha256.js"
 
+const route = useRoute()
 const router = useRouter()
 
 const saveUserId = (userId) => {
@@ -30,6 +31,8 @@ const loginForm = reactive({
   password: '',
 })
 const isLoading = ref(false)
+const showQrLogin = false
+const showOtherLoginMethods = false
 
 const loginRules = reactive({
   userInfo: [{ required: true, message: '请输入邮箱', trigger: 'submit' }],
@@ -60,9 +63,11 @@ const submitLoginFrom = async () => {
     }
     saveUserId(response.data?.userID)
     ElMessage({ message: '登录成功！', type: 'success', duration: 1000 })
+
+    const redirectPath = route.query.redirect || '/home'
     // 跳转到主页或用户仪表盘
     setTimeout(() => {
-      router.push({ name: 'home' })
+      router.replace(redirectPath)
     }, 1000)
   } catch (error) {
     // 步骤 D: 统一错误处理
@@ -100,13 +105,13 @@ const submitLoginFrom = async () => {
         <span class="heading">欢迎使用VBEP数据平台</span>
       </div>
       <div class="login-container">
-        <div class="login-left-QR-code">
+        <div v-if="showQrLogin" class="login-left-QR-code">
           <img :src="qrCodeSrc" alt="QR Code" class="qr-code-img" />
           <p class="qr-code-text">使用微信扫一扫登录</p>
           <p class="qr-code-subtext">“中央民族大学<br />中国兴边富民战略研究院”</p>
           <div class="qr-code-line"></div>
         </div>
-        <div class="login-panel">
+        <div class="login-panel" :class="{ 'no-qr': !showQrLogin }">
           <el-form ref="loginFormRef" :model="loginForm" :rules="loginRules" class="login-form">
             <el-form-item class="login-group" prop="userInfo">
               <el-input
@@ -143,15 +148,17 @@ const submitLoginFrom = async () => {
           <div class="login-group footer-links">
             <RouterLink to="/reset" class="forgot-password">忘记密码？</RouterLink>
           </div>
-          <div class="login-group other-methods">
-            <span class="line"></span>
-            <span class="text">其他方式</span>
-            <span class="line"></span>
-          </div>
-          <div class="third-login">
-            <img :src="thirdPartyQrSrc" alt="Third Party QR" class="third-login-icon" />
-            <img :src="thirdPartyChatSrc" alt="Third Party Chat" class="third-login-icon" />
-          </div>
+          <template v-if="showOtherLoginMethods">
+            <div class="login-group other-methods">
+              <span class="line"></span>
+              <span class="text">其他方式</span>
+              <span class="line"></span>
+            </div>
+            <div class="third-login">
+              <img :src="thirdPartyQrSrc" alt="Third Party QR" class="third-login-icon" />
+              <img :src="thirdPartyChatSrc" alt="Third Party Chat" class="third-login-icon" />
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -202,11 +209,14 @@ const submitLoginFrom = async () => {
 }
 /* Login Form Panel */
 .login-panel {
-  flex-grow: 1; /* 占据剩余空间 */
-  width: 300px; /* 估算宽度，flex-grow会使其适应 */
+  flex-grow: 0;
+  width: 260px;
   display: flex;
   flex-direction: column;
   padding-left: 30px; /* 补偿 qr-code-line */
+}
+.login-panel.no-qr {
+  padding-left: 0;
 }
 
 /* 找回账号密码 */
@@ -253,5 +263,22 @@ const submitLoginFrom = async () => {
   width: 30px; /* 图标大小 */
   height: 30px;
   cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .login-container {
+    gap: 0;
+  }
+  .login-left-QR-code {
+    display: none;
+  }
+  .login-panel {
+    width: 100%;
+    max-width: 360px;
+    padding-left: 0;
+  }
+  .footer-links {
+    margin-bottom: 20px;
+  }
 }
 </style>

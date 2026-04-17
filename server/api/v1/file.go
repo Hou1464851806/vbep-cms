@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,7 @@ type applicationFileResponse struct {
 	Name          string    `json:"name"`
 	Size          uint      `json:"size"`
 	ApplicationID string    `json:"applicationID"`
+	Type          string    `json:"type"`
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
@@ -260,7 +262,9 @@ func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 		return
 	}
 
-	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileHeader)
+	fileType := ctx.PostForm("type")
+
+	file, err := a.service.CreateApplicationFile(applicationID, user.ID, fileType, fileHeader)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
@@ -362,7 +366,25 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		return
 	}
 
-	files, err := a.service.GetPublicFiles()
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	query := service.PublicFileListQuery{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		Name:      ctx.Query("name"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
+	files, total, err := a.service.GetPublicFilesPaginated(query)
 	if err != nil {
 		logger.Errorf("failed to list public files: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
@@ -379,7 +401,10 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 		})
 	}
 
-	ctx.JSON(http.StatusOK, gin.H{"files": resp})
+	ctx.JSON(http.StatusOK, gin.H{
+		"files": resp,
+		"total": total,
+	})
 }
 
 func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
@@ -539,6 +564,7 @@ func (a *FileApi) checkDatasetDownloadPermission(datasetID string, userID string
 	var count int64
 	err := global.DB.Model(&model.Application{}).
 		Where("dataset_id = ? AND applicant_id = ? AND status = ?", datasetID, userID, model.APPROVED).
+		Where("expire_at IS NULL OR expire_at > ?", time.Now()).
 		Count(&count).Error
 
 	if err != nil {
@@ -566,7 +592,7 @@ func canUploadApplicationFiles(user *model.User, application *model.ApplicationD
 	if application.Applicant.ID != user.ID {
 		return false
 	}
-	return application.Status == "pending" || application.Status == "returned"
+	return application.Status == "draft" || application.Status == "returned"
 }
 
 func canDeleteApplicationFiles(user *model.User, application *model.ApplicationDetail) bool {
@@ -579,7 +605,7 @@ func canDeleteApplicationFiles(user *model.User, application *model.ApplicationD
 	if application.Applicant.ID != user.ID {
 		return false
 	}
-	return application.Status == "pending" || application.Status == "returned"
+	return application.Status == "draft" || application.Status == "returned"
 }
 
 func buildApplicationFileResponse(file model.File) applicationFileResponse {
@@ -588,6 +614,23 @@ func buildApplicationFileResponse(file model.File) applicationFileResponse {
 		Name:          file.Name,
 		Size:          file.Size,
 		ApplicationID: file.OwnerID,
+		Type:          file.Type,
 		CreatedAt:     file.CreatedAt,
 	}
+}
+
+// DownloadGeneric 管理员根据文件主键直接下载任何类型的文件
+func (f *FileApi) DownloadGeneric(ctx *gin.Context) {
+	fileID := ctx.Param("fileID")
+
+	// 1. 查询数据库获取文件记录
+	var file model.File
+	if err := global.DB.First(&file, "id = ?", fileID).Error; err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
+		return
+	}
+
+	// 2. 本地磁盘读取
+	filePath := file.GetPath()
+	ctx.FileAttachment(filePath, file.Name)
 }

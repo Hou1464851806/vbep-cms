@@ -1,7 +1,7 @@
 package model
 
 import (
-	"server/pkg/uuid"
+	"server/pkg/utils"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,7 +17,7 @@ type Base struct {
 
 func (b *Base) BeforeCreate(tx *gorm.DB) (err error) {
 	if b.ID == "" {
-		b.ID = uuid.NewV4()
+		b.ID = utils.NewV4()
 	}
 	return
 }

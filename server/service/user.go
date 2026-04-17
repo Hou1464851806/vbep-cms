@@ -9,9 +9,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 	"server/global"
+	"server/internal/tasks"
+	"server/internal/templates"
 	"server/logger"
 	"server/model"
 	"server/pkg/utils"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,12 +22,13 @@ import (
 )
 
 type UserService struct {
-	otpService   OTPService
+	otpService   *OTPService
 	emailService *MailService
 }
 
-func NewUserServiceWithEmailService(emailService *MailService) *UserService {
+func NewUserServiceWithEmailService(emailService *MailService, otpService *OTPService) *UserService {
 	return &UserService{
+		otpService:   otpService,
 		emailService: emailService,
 	}
 }
@@ -83,13 +87,105 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 	return &user, nil
 }
 
-func (s *UserService) GetAllUsers() ([]*model.User, error) {
+// UserListQuery 前端表格的筛选/排序/分页参数
+type UserListQuery struct {
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "nickname", "email", "createdAt", "role"
+	Order     string // "asc" 或 "desc"
+	Role      string // "" 表示不筛选，"0"/"1"/"2" 筛选具体角色
+	Keyword   string // 模糊搜索（姓名 / 邮箱）
+	IdPrefix  string // ID前缀匹配
+	Nickname  string // 姓名精确/模糊匹配
+	Email     string // 邮箱精确/模糊匹配
+	DateStart string // "YYYY-MM-DD"
+	DateEnd   string // "YYYY-MM-DD"
+}
+
+// userSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var userSortWhitelist = map[string]string{
+	"nickname":  "users.nick_name",
+	"email":     "users.email",
+	"createdAt": "users.created_at",
+	"role":      "users.role",
+}
+
+func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error) {
 	ctx := context.Background()
-	users, err := gorm.G[*model.User](global.DB).Find(ctx)
-	if err != nil {
-		return nil, err
+	var users []*model.User
+	var total int64
+
+	baseQuery := global.DB.WithContext(ctx).Model(&model.User{}).Unscoped()
+	// ── 角色筛选 ──
+	if q.Role != "" {
+		if r, err := strconv.Atoi(q.Role); err == nil {
+			baseQuery = baseQuery.Where("users.role = ?", r)
+		}
 	}
-	return users, nil
+	// ── 关键词搜索（姓名 / 邮箱 回退兼容）──
+	if q.Keyword != "" {
+		kw := "%" + q.Keyword + "%"
+		baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.email LIKE ?", kw, kw)
+	}
+	// ── 独立字段搜索 ──
+	if q.IdPrefix != "" {
+		idkw := q.IdPrefix + "%"
+		baseQuery = baseQuery.Where("users.id LIKE ?", idkw)
+	}
+	if q.Nickname != "" {
+		if len(q.Nickname) == 36 || (len(q.Nickname) >= 8 && utils.IsHex(q.Nickname)) {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ? OR users.id LIKE ?", "%"+q.Nickname+"%", q.Nickname+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.nick_name LIKE ?", "%"+q.Nickname+"%")
+		}
+	}
+	if q.Email != "" {
+		if len(q.Email) == 36 || (len(q.Email) >= 8 && utils.IsHex(q.Email)) {
+			baseQuery = baseQuery.Where("users.email LIKE ? OR users.id LIKE ?", "%"+q.Email+"%", q.Email+"%")
+		} else {
+			baseQuery = baseQuery.Where("users.email LIKE ?", "%"+q.Email+"%")
+		}
+	}
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("users.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("users.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	// ── 排序（白名单校验）──
+	orderClause := "users.created_at DESC"
+	if col, ok := userSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	if err := baseQuery.
+		Order(orderClause).
+		Offset(offset).
+		Limit(q.PageSize).
+		Find(&users).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to query users: %w", err)
+	}
+
+	return users, total, nil
 }
 
 func (s *UserService) DeleteUser(id string) error {
@@ -203,27 +299,21 @@ func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) er
 	}
 
 	redisKey := fmt.Sprintf("pwd_reset:%s", token)
-	err = global.REDIS.Set(ctx, redisKey, userEmail, 15*time.Minute).Err()
+	expireMinute := 15
+	err = global.REDIS.Set(ctx, redisKey, userEmail, time.Duration(expireMinute)*time.Minute).Err()
 	if err != nil {
 		return fmt.Errorf("failed to save token to redis: %v", err)
 	}
 
 	resetUrl := fmt.Sprintf("%s?token=%s", frontendUrl, token)
+
 	// 向用户邮箱发送密码重置邮件
 	subject := "重置您的密码"
-	content := fmt.Sprintf(`
-		<h1>密码重置请求</h1>
-		<p>您收到这封邮件是因为您请求重置密码。</p>
-		<p>请点击下面的链接设置新密码（链接 15 分钟内有效）：</p>
-		<a href="%s">%s</a>
-		<p>如果您没有请求重置密码，请忽略此邮件。</p>`, resetUrl, resetUrl)
-	logger.Debugf("Sending email: %s", resetUrl)
-	err = s.emailService.SendResetPassword(userEmail, subject, content)
-	if err != nil {
-		return fmt.Errorf("failed to send reset password email to user: %v", err)
+	content := templates.ResetPasswordContent{
+		Link:       resetUrl,
+		ExpireTime: expireMinute,
 	}
-
-	return nil
+	return s.emailService.SendNewMail(userEmail, subject, templates.ResetPasswordHtml, content, tasks.QueueCritical, 3)
 }
 
 func (s *UserService) ConfirmResetPassword(token string, newPassword string) error {
@@ -256,4 +346,29 @@ func (s *UserService) ConfirmResetPassword(token string, newPassword string) err
 	}
 
 	return nil
+}
+
+func (s *UserService) GetUserFiles(userID string, page int, pageSize int) ([]model.File, int64, error) {
+	var files []model.File
+	var total int64
+	ctx := context.Background()
+	// 1. 构建基础查询，条件是 creator_id 匹配
+	db := global.DB.WithContext(ctx).Model(&model.File{}).Where("creator_id = ?", userID)
+	// 2. 先执行 Count 操作获取总数，用于分页
+	if err := db.Count(&total).Error; err != nil {
+		logger.Errorf("Failed to count files for user %s: %w", userID, err)
+		return nil, 0, fmt.Errorf("database error while counting files")
+	}
+	// 如果总数为0，没必要继续查询，直接返回
+	if total == 0 {
+		return []model.File{}, 0, nil
+	}
+	// 3. 再执行 Find 操作，带上分页和排序
+	offset := (page - 1) * pageSize
+	if err := db.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&files).Error; err != nil {
+		logger.Errorf("Failed to find files for user %s: %w", userID, err)
+		return nil, 0, fmt.Errorf("database error while finding files")
+	}
+	// 4. 返回查询到的文件列表、总数和nil错误
+	return files, total, nil
 }

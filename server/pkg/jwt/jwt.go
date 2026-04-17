@@ -9,8 +9,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const TokenExpiredDuration = time.Hour * 24
-
 // 密钥
 var secret = []byte("uzcqzTjZ7iRnEowCKA88WIOy7f52I5ezScbYgEv2BXU=")
 
@@ -19,11 +17,19 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+func GetTokenExpiredDuration() time.Duration {
+	duration := global.CFG.Server.TokenExpiredDuration
+	if duration <= 0 {
+		duration = 30 // 默认30分钟
+	}
+	return time.Duration(duration) * time.Minute
+}
+
 func GenerateToken(userID string) (string, error) {
 	claims := Claims{
 		userID,
 		jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExpiredDuration)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(GetTokenExpiredDuration())),
 			Issuer:    "vbep-cms",
 		}}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -1,6 +1,7 @@
 <!-- src/views/dataset/DatasetList.vue -->
 <script setup>
 import { ref, onMounted, inject, reactive, watch, nextTick, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Plus,
   Delete,
@@ -13,6 +14,7 @@ import {
   DataAnalysis,
   QuestionFilled,
   Setting,
+  Sort,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -23,11 +25,15 @@ import {
   formatShortId,
   formatFileSize,
 } from '@/utils/format.js'
-import {APPLICATION_FILE_LIMIT_MB, DATASET_FILE_LIMIT_MB} from '@/utils/constrains.js'
+import { DATASET_FILE_LIMIT_MB } from '@/utils/constrains.js'
 import MarkdownRenderer from "@/components/MarkdownRenderer.vue";
+import ListPagination from "@/components/ListPagination.vue";
+import { useTableFilter } from "@/hooks/useTable.js";
+import TableHeaderFilter from "@/components/TableHeaderFilter.vue";
+import IdCell from "@/components/IdCell.vue";
 
 // --- API 函数 ---
-const fetchDatasetListAPI = () => apiClient.get('/api/v1/datasets/')
+const fetchDatasetListAPI = (params) => apiClient.get('/api/v1/datasets/', { params })
 const fetchDatasetDetailAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}`)
 const fetchDatasetStatisticsAPI = (uuid) => apiClient.get(`/api/v1/datasets/${uuid}/statistics`)
 const createDatasetAPI = (data) => apiClient.post('/api/v1/datasets/', data)
@@ -53,87 +59,21 @@ const downloadPublicFileAPI = (fileId) =>
 
 const submitApplicationAPI = (applicationData) =>
   apiClient.post('/api/v1/applications', applicationData)
-const deleteApplicationAPI = (id) => apiClient.delete(`/api/v1/applications/${id}`)
-const confirmApplicationAPI = (id) => apiClient.post(`/api/v1/applications/${id}/submit`)
-const uploadApplicationFileAPI = (applicationId, file, config = {}) => {
-  const formData = new FormData()
-  formData.append('file', file)
-  return apiClient.post(`/api/v1/applications/${applicationId}/files`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    ...config,
-  })
-}
 
 const DATASET_FILE_LIMIT_BYTES = DATASET_FILE_LIMIT_MB * 1024 * 1024
 
-// const APPLICATION_FILE_LIMIT_MB = 20
-const APPLICATION_FILE_LIMIT_BYTES = APPLICATION_FILE_LIMIT_MB * 1024 * 1024
-
-const ALLOWED_EXTENSIONS = [
-  // Documents
-  '.pdf',
-  '.txt',
-  '.md',
-  '.rtf',
-  '.tex',
-  '.doc',
-  '.docx',
-  '.wps',
-  '.odt',
-  '.ppt',
-  '.pptx',
-  '.dps',
-  '.ods',
-  '.xls',
-  '.xlsx',
-  '.et',
-  '.odp',
-  // Images
-  '.jpg',
-  '.jpeg',
-  '.png',
-  '.gif',
-  '.svg',
-  '.bmp',
-  '.tiff',
-  // Compressed Files
-  '.zip',
-  '.rar',
-  '.7z',
-  '.tar',
-  '.gz',
-  '.tgz',
-]
-
-const DENIED_EXTENSIONS = [
-  '.exe',
-  '.msi',
-  '.bat',
-  '.cmd',
-  '.sh',
-  '.ps1',
-  '.js',
-  '.vbs',
-  '.jar',
-  '.dll',
-  '.sys',
-  '.app',
-  '.dmg',
-  '.pkg',
-  '.scr',
-  '.com',
-  '.cpl',
-  '.inf',
-  '.lnk',
-  '.reg',
-  '.hta',
-  '.msc',
-]
-
 // --- 状态定义 ---
+const router = useRouter()
 const isAdmin = inject('isAdmin')
-const datasetList = ref([])
-const isDataLoading = ref(true)
+// const datasetList = ref([])
+// const isDataLoading = ref(true)
+
+// // 分页相关
+// const pagination = reactive({
+//   currentPage: 1,
+//   pageSize: 10,
+//   total: 0
+// })
 
 // 获取全局 echarts 实例
 const { proxy } = getCurrentInstance()
@@ -171,15 +111,6 @@ const applicationDialog = reactive({
   template: {
     description: '',
     files: [],
-  },
-  mandatory: {
-    file: null,
-  },
-  optional: {
-    files: [],
-    uploadTasks: [],
-    isUploading: false,
-    createdApplicationId: '',
   },
 })
 
@@ -259,21 +190,31 @@ const removeUploadTask = (uid, delay = 0) => {
   }
 }
 
-const fetchDatasets = async () => {
-  isDataLoading.value = true
-  try {
-    const res = await fetchDatasetListAPI()
-    if (res && res.status === 200) {
-      datasetList.value = normalizeDatasets(res.data.datasets)
-      return
-    }
-    ElMessage.error(res?.data?.message || '数据集加载失败')
-  } catch {
-    ElMessage.error('数据集加载失败')
-  } finally {
-    isDataLoading.value = false
+const {
+  loading: isDataLoading,
+  data: datasetList,
+  pagination,
+  filterForm,
+  sortState,
+  isFilterActive,
+  loadData: fetchDatasets,
+  handleSortChange,
+  handleFilterChange,
+  handleFilterInputChange,
+  resetFilter,
+  handlePageChange,
+} = useTableFilter(
+  (params) => apiClient.get('/api/v1/datasets/', { params }),
+  {
+    normalize: normalizeOneDataset,
+    dataKey: 'datasets',
+    defaultSort: { prop: 'createdAt', order: 'descending' },
+    filterSchema: { id_prefix: '', name: '', creator: '', date: [] },
+    pageSize: 10,
+    syncUrl: true,
   }
-}
+)
+
 // --- 生命周期钩子 ---
 onMounted(() => {
   fetchDatasets()
@@ -334,11 +275,27 @@ const handleSaveDataset = async () => {
   }
 }
 const handleDelete = (row) => {
-  ElMessageBox.confirm(`确定要删除数据集 "${row.name}" 吗？`, '警告', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
+  ElMessageBox.confirm(
+    `
+    <p>您确定要删除数据集 <strong>"${row.name}"</strong> 吗？</p>
+    <p style="font-size: 13px; color: #606266; margin-top: 10px; line-height: 1.6;">
+      此操作会产生以下后果：<br/>
+      1. 所有已发放的针对此数据集的<b>授权许可</b>将被<b>立即撤销</b>；<br/>
+      2. 该数据集对应的所有历史<b>申请记录</b>所关联的数据集将被标记为<b>已删除</b>；<br/>
+      3. 用户将无法再申请或下载此数据集的文件。
+    </p>
+    <div style="margin-top: 10px; color: #f56c6c;">此操作不可逆，请谨慎操作。</div>
+    `,
+    `危险操作确认`,
+    {
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+      confirmButtonClass: 'el-button--danger',
+      type: 'error',
+      dangerouslyUseHTMLString: true,
+      distinguishCancelAndClose: true,
+    }
+  )
     .then(async () => {
       try {
         const res = await deleteDatasetAPI(row.id)
@@ -390,15 +347,6 @@ const handleViewDetail = async (row) => {
   } finally {
     detailDialog.loading = false
   }
-}
-const handleApplyFromDetail = () => {
-  if (!detailDialog.data) return
-
-  // 1. 关闭详情弹窗
-  detailDialog.visible = false
-
-  // 2. 打开申请弹窗（复用已有的逻辑）
-  handleApply(normalizeOneDataset(detailDialog.data))
 }
 
 const handleViewStatistics = async (row) => {
@@ -624,10 +572,6 @@ const handleDeleteFile = (file) => {
 const handleApply = async (row) => {
   applicationDialog.dataset = row
   applicationDialog.currentStep = 1
-  applicationDialog.mandatory.file = null
-  applicationDialog.optional.files = []
-  applicationDialog.optional.uploadTasks = []
-  applicationDialog.optional.createdApplicationId = ''
   applicationDialog.template.description = '加载中...'
   applicationDialog.template.files = []
 
@@ -641,7 +585,7 @@ const handleApply = async (row) => {
     } else {
       ElMessage.error('获取申请模板信息失败')
     }
-  } catch (e) {
+  } catch (error) {
     ElMessage.error('获取申请模板信息失败')
   }
 }
@@ -665,113 +609,37 @@ const handleDownloadTemplateFile = async (file) => {
   }
 }
 
-const handleNextStep = async () => {
-  if (applicationDialog.currentStep === 1) {
-    // 从第一步进入第二步时，创建草稿申请
-    applicationDialog.isSubmitting = true
-    try {
-      const res = await submitApplicationAPI({
-        datasetID: applicationDialog.dataset.id,
-      })
-      if (res.status === 200 && res.data.applicationID) {
-        applicationDialog.optional.createdApplicationId = res.data.applicationID
-        applicationDialog.currentStep = 2
-      } else {
-        ElMessage.error(res.data?.message || '创建申请失败')
-      }
-    } catch (error) {
-      console.error('Failed to create draft application:', error)
-      ElMessage.error('创建申请失败')
-    } finally {
-      applicationDialog.isSubmitting = false
-    }
-  } else {
-    applicationDialog.currentStep++
-  }
-}
-
-const handleMandatoryFileChange = (file) => {
-  const rawFile = file.raw
-  if (rawFile.type !== 'application/pdf') {
-    ElMessage.error('仅支持上传 PDF 文件')
-    // 清除文件列表
-    applicationDialog.mandatory.file = null
-    return
-  }
-  if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-    ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-    applicationDialog.mandatory.file = null
-    return
-  }
-  applicationDialog.mandatory.file = rawFile
-}
-
-const handleOptionalFileChange = (file, fileList) => {
-  const idx = fileList.indexOf(file)
-
-  // 仅在文件存在于列表中时（新增时）进行校验
-  if (idx !== -1) {
-    const rawFile = file.raw
-    const fileName = rawFile.name.toLowerCase()
-
-    if (rawFile.size > APPLICATION_FILE_LIMIT_BYTES) {
-      ElMessage.error(`文件 "${rawFile.name}" 超过 ${formatFileSize(APPLICATION_FILE_LIMIT_BYTES)} 限制，无法上传`)
-      fileList.splice(idx, 1)
-      return
-    }
-
-    const isDenied = DENIED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
-    if (isDenied) {
-      ElMessage.error(`文件格式被拒绝："${rawFile.name}"`)
-      fileList.splice(idx, 1)
-      return
-    }
-
-    const isAllowed = ALLOWED_EXTENSIONS.some((ext) => fileName.endsWith(ext))
-    if (!isAllowed) {
-      ElMessage.error(`文件格式不受支持："${rawFile.name}"`)
-      fileList.splice(idx, 1)
-      return
-    }
-  }
-  // 更新列表
-  applicationDialog.optional.files = fileList.map((f) => f.raw)
-}
-
-const handleSubmitApplication = async () => {
-  if (!applicationDialog.mandatory.file) {
-    ElMessage.warning('请上传必填的申请文件')
-    return
-  }
-
+const handleCreateDraft = async () => {
   applicationDialog.isSubmitting = true
   try {
-    const applicationId = applicationDialog.optional.createdApplicationId
-    // 上传必填文件
-    try {
-      await uploadApplicationFileAPI(applicationId, applicationDialog.mandatory.file)
-    } catch (e) {
-      ElMessage.error('必填文件上传失败')
-      applicationDialog.isSubmitting = false
-      return
+    const res = await submitApplicationAPI({
+      datasetID: applicationDialog.dataset.id,
+    })
+    if (res.status === 200 && res.data.applicationID) {
+      applicationDialog.visible = false
+      await fetchDatasets() // Refresh list to update button status
+
+      ElMessageBox.confirm(
+        '您已成功创建申请表草稿。请前往“我的申请”页面完善资料并提交。',
+        '草稿创建成功',
+        {
+          confirmButtonText: '立即前往',
+          cancelButtonText: '稍后处理',
+          type: 'success',
+        },
+      )
+        .then(() => {
+          router.push('/home/applications')
+        })
+        .catch(() => {
+          // Stay on current page
+        })
+    } else {
+      ElMessage.error(res.data?.message || '创建申请失败')
     }
-
-    // 上传可选文件
-    for (const file of applicationDialog.optional.files) {
-      try {
-        await uploadApplicationFileAPI(applicationId, file)
-      } catch (e) {
-        console.warn('Optional file upload failed', file.name)
-      }
-    }
-
-    // 确认提交（将草稿转为正式申请）
-    await confirmApplicationAPI(applicationId)
-
-    applicationDialog.currentStep = 3
   } catch (error) {
-    console.error('Application submission failed:', error)
-    const msg = error.response?.data?.message || '提交申请时发生错误'
+    console.error('Failed to create draft application:', error)
+    const msg = error.response?.data?.message || '创建申请失败'
     ElMessage.error(msg)
   } finally {
     applicationDialog.isSubmitting = false
@@ -779,14 +647,6 @@ const handleSubmitApplication = async () => {
 }
 
 const handleCancelApplication = async () => {
-  // 如果已经创建了草稿（在第二步），取消时需要删除草稿
-  if (applicationDialog.optional.createdApplicationId) {
-    try {
-      await deleteApplicationAPI(applicationDialog.optional.createdApplicationId)
-    } catch (error) {
-      console.warn('Failed to delete draft application:', error)
-    }
-  }
   applicationDialog.visible = false
 }
 </script>
@@ -797,36 +657,104 @@ const handleCancelApplication = async () => {
     <el-card shadow="never">
       <template #header>
         <div class="card-header">
-          <span>数据集列表</span>
-          <div class="header-actions">
-            <el-button :icon="Refresh" circle @click="fetchDatasets" :loading="isDataLoading" title="刷新列表" />
-            <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd">新增数据集</el-button>
-          </div>
+        <span>数据集列表</span>
+        <div class="header-actions">
+          <el-button
+            v-if="isFilterActive"
+            class="reset-filter-btn"
+            plain
+            size="small"
+            @click="resetFilter"
+          >重置筛选</el-button>
+          <el-button :icon="Refresh" circle @click="fetchDatasets" :loading="isDataLoading" title="刷新列表" />
+          <el-button v-if="isAdmin()" type="primary" :icon="Plus" @click="handleAdd">新增数据集</el-button>
         </div>
+      </div>
       </template>
 
-      <el-skeleton :rows="6" animated :loading="isDataLoading">
-        <el-table :data="datasetList" style="width: 100%">
-          <el-table-column label="内部ID" width="100">
+      <div v-loading="isDataLoading">
+        <el-table
+          :data="datasetList"
+          style="width: 100%"
+        >
+          <el-table-column label="数据集ID" width="110">
+            <template #header>
+              <table-header-filter
+                label="数据集ID"
+                type="id-search"
+                v-model="filterForm.id_prefix"
+                @change="handleFilterChange"
+              />
+            </template>
             <template #default="{ row }">
-              <el-tooltip effect="dark" :content="row.id" placement="top" :show-after="500">
-                <span class="monospace-id">
-                  {{ formatShortId(row.id) }}
-                </span>
-              </el-tooltip>
+              <id-cell :id="row.id" />
             </template>
           </el-table-column>
 
-          <el-table-column prop="name" label="数据集名称" min-width="300">
+          <el-table-column label="数据集名称" min-width="300">
+            <template #header>
+              <table-header-filter
+                label="数据集名称"
+                type="input"
+                v-model="filterForm.name"
+                placeholder="搜索名称或 ID..."
+                @change="handleFilterChange"
+                sort-prop="name"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
             <template #default="{ row }">
-              <span style="font-weight: 500">{{ row.name }}</span>
+              <span class="table-name-text">{{ row.name }}</span>
             </template>
           </el-table-column>
 
-          <el-table-column prop="fileCount" label="文件数" width="90" align="center" />
-          <el-table-column prop="creator" label="创建者" width="120" />
-          <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column label="操作" width="260" fixed="right" align="center">
+          <el-table-column label="文件数" width="90" align="center">
+            <template #header>
+              <table-header-filter
+                label="文件数"
+                sort-prop="fileCount"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.fileCount }}</template>
+          </el-table-column>
+
+          <el-table-column label="创建者" width="140">
+            <template #header>
+              <table-header-filter
+                label="创建者"
+                type="input"
+                v-model="filterForm.creator"
+                placeholder="搜索姓名或 ID..."
+                @change="handleFilterChange"
+                sort-prop="creator"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">{{ row.creator }}</template>
+          </el-table-column>
+
+          <el-table-column label="创建时间" width="180">
+            <template #header>
+              <table-header-filter
+                label="创建时间"
+                type="daterange"
+                v-model="filterForm.date"
+                @change="handleFilterChange"
+                sort-prop="createdAt"
+                :sort-state="sortState"
+                @sort="handleSortChange"
+              />
+            </template>
+            <template #default="{ row }">
+              <span class="table-time-text">{{ row.createdAt }}</span>
+            </template>
+          </el-table-column>
+
+          <el-table-column label="操作" :width="isAdmin() ? 260 : 260" fixed="right" align="center">
             <template #default="scope">
               <template v-if="isAdmin()">
                 <el-button link type="primary" :icon="Setting" @click="handleManage(scope.row)">管理</el-button>
@@ -839,7 +767,6 @@ const handleCancelApplication = async () => {
                   >删除</el-button
                 >
               </template>
-
               <template v-else>
                 <el-button
                   v-if="scope.row.hasAccess"
@@ -848,25 +775,19 @@ const handleCancelApplication = async () => {
                   :icon="Download"
                   @click="handleViewDetail(scope.row)"
                 >
-                  下载文件
+                  下载
                 </el-button>
-
-                <template v-else>
-                  <el-button
-                    type="primary"
-                    link
-                    :icon="View"
-                    @click="handleViewDetail(scope.row)"
-                  >
-                    查看详情
-                  </el-button>
-
-                  <el-button
-                    type="primary"
-                    link
-                    :icon="Promotion"
-                    @click="handleApply(scope.row)"
-                  >
+                <el-button
+                  v-else
+                  type="primary"
+                  link
+                  :icon="View"
+                  @click="handleViewDetail(scope.row)"
+                >
+                  查看详情
+                </el-button>
+                <template v-if="!scope.row.hasAccess">
+                  <el-button type="primary" link :icon="Promotion" @click="handleApply(scope.row)">
                     申请使用
                   </el-button>
                 </template>
@@ -874,24 +795,43 @@ const handleCancelApplication = async () => {
             </template>
           </el-table-column>
         </el-table>
-      </el-skeleton>
+
+        <list-pagination
+          v-model="pagination.currentPage"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          @change="handlePageChange"
+        />
+      </div>
     </el-card>
 
     <!-- ======== 所有对话框 ======== -->
 
     <!-- 对话框1：新增/编辑数据集 (管理员) -->
-    <el-dialog v-model="datasetFormDialog.visible" :title="datasetFormDialog.title" width="50%">
+    <el-dialog v-model="datasetFormDialog.visible" :title="datasetFormDialog.title" width="80%" top="5vh">
       <el-form :model="datasetFormDialog.form" label-width="100px">
         <el-form-item label="数据集名称">
-          <el-input v-model="datasetFormDialog.form.name" placeholder="请输入数据集名称" />
+          <el-input v-model="datasetFormDialog.form.name" placeholder="请输入数据集名称" style="width: 90%" />
         </el-form-item>
         <el-form-item label="简介">
-          <el-input
-            v-model="datasetFormDialog.form.description"
-            type="textarea"
-            :rows="5"
-            placeholder="请输入详细的数据集简介信息..."
-          />
+          <div class="markdown-editor-container" style="height: 300px; width: 90%;">
+            <div class="editor-pane">
+              <el-input
+                v-model="datasetFormDialog.form.description"
+                type="textarea"
+                class="h-100-input"
+                placeholder="请输入详细的数据集简介信息..."
+              />
+            </div>
+            <div class="editor-divider">
+              <el-icon class="divider-icon"><Sort /></el-icon>
+            </div>
+            <div class="preview-pane">
+              <div class="preview-content">
+                <markdown-renderer :model-value="datasetFormDialog.form.description" />
+              </div>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -904,7 +844,7 @@ const handleCancelApplication = async () => {
     <el-dialog
       v-model="manageDialog.visible"
       title="管理数据集"
-      width="70%"
+      width="80%"
       top="5vh"
     >
       <!-- 上半部分：基本信息管理 -->
@@ -919,7 +859,24 @@ const handleCancelApplication = async () => {
               <el-input v-model="manageDialog.form.title" placeholder="数据集名称" style="width: 90%" />
             </el-form-item>
             <el-form-item label="描述">
-              <el-input v-model="manageDialog.form.description" type="textarea" :rows="2" placeholder="数据集描述" style="width: 90%" />
+              <div class="markdown-editor-container" style="height: 300px; width: 90%;">
+                <div class="editor-pane">
+                  <el-input
+                    v-model="manageDialog.form.description"
+                    type="textarea"
+                    class="h-100-input"
+                    placeholder="数据集描述"
+                  />
+                </div>
+                <div class="editor-divider">
+                  <el-icon class="divider-icon"><Sort /></el-icon>
+                </div>
+                <div class="preview-pane">
+                  <div class="preview-content">
+                    <markdown-renderer :model-value="manageDialog.form.description" />
+                  </div>
+                </div>
+              </div>
             </el-form-item>
           </el-form>
         </div>
@@ -962,7 +919,7 @@ const handleCancelApplication = async () => {
         </div>
         </div>
         <el-skeleton :rows="5" animated :loading="manageDialog.isFilesLoading">
-        <el-table :data="manageDialog.fileList" height="200px">
+        <el-table :data="manageDialog.fileList" max-height="250px">
           <el-table-column property="name" label="文件名">
             <template #default="scope">
               <div class="file-name-cell">
@@ -1003,9 +960,6 @@ const handleCancelApplication = async () => {
         </el-skeleton>
         </div>
       </div>
-      <template #footer>
-        <el-button @click="manageDialog.visible = false">关闭</el-button>
-      </template>
     </el-dialog>
 
     <!-- 对话框3：申请使用 (普通用户) -->
@@ -1015,21 +969,11 @@ const handleCancelApplication = async () => {
       width="720px"
       :close-on-click-modal="false"
     >
-      <div class="application-step-header">
-        <div class="application-step-progress">
-          <el-steps :active="applicationDialog.currentStep" align-center>
-            <el-step title="申请说明" />
-            <el-step title="资料上传" />
-            <el-step title="提交成功" />
-          </el-steps>
-        </div>
-      </div>
-
       <div v-if="applicationDialog.currentStep === 1" class="agreement-step">
         <div>
           <div class="upload-label">申请说明</div>
           <div class="template-description-box">
-            <div class="template-text">{{ applicationDialog.template.description }}</div>
+            <markdown-renderer :model-value="applicationDialog.template.description" />
           </div>
         </div>
         <div class="template-download-area" v-if="applicationDialog.template.files && applicationDialog.template.files.length">
@@ -1042,62 +986,10 @@ const handleCancelApplication = async () => {
         </div>
       </div>
 
-      <div v-else-if="applicationDialog.currentStep === 2" class="upload-step" v-loading="applicationDialog.isSubmitting">
-        <div class="upload-section">
-          <div class="upload-label required-label">1. 上传申请文件 (必填)</div>
-          <div class="upload-desc">请上传填写并签署后的申请模板文件，仅支持 PDF 格式，限传 1 个，文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
-          <el-upload
-            class="upload-demo"
-            action="#"
-            :auto-upload="false"
-            :limit="1"
-            accept=".pdf"
-            :on-change="handleMandatoryFileChange"
-            :on-remove="() => { applicationDialog.mandatory.file = null }"
-            :file-list="applicationDialog.mandatory.file ? [applicationDialog.mandatory.file] : []"
-          >
-            <el-button type="primary" :icon="Upload">选择 PDF 文件</el-button>
-          </el-upload>
-        </div>
-
-        <el-divider />
-
-        <div class="upload-section">
-          <div class="upload-label">2. 补充材料 (可选)</div>
-          <div class="upload-desc">如有其他证明材料，可在此上传，不限数量，单个文件大小不能超过 {{ formatFileSize(APPLICATION_FILE_LIMIT_BYTES) }}。</div>
-          <el-upload
-            class="upload-demo"
-            action="#"
-            :auto-upload="false"
-            multiple
-            :on-change="handleOptionalFileChange"
-            :on-remove="handleOptionalFileChange"
-          >
-            <el-button :icon="Upload">选择文件</el-button>
-          </el-upload>
-        </div>
-      </div>
-
-      <div v-else-if="applicationDialog.currentStep === 3" class="result-step">
-        <el-result icon="success" title="申请已提交" sub-title="请等待1至5个工作日查看结果">
-        </el-result>
-      </div>
-
       <template #footer>
         <template v-if="applicationDialog.currentStep === 1">
           <el-button @click="handleCancelApplication">取消</el-button>
-          <el-button type="primary" @click="handleNextStep" :loading="applicationDialog.isSubmitting">下一步</el-button>
-        </template>
-        <template v-else-if="applicationDialog.currentStep === 2">
-          <el-button @click="handleCancelApplication" :disabled="applicationDialog.isSubmitting">取消</el-button>
-          <el-button
-            type="primary"
-            @click="handleSubmitApplication"
-            :loading="applicationDialog.isSubmitting"
-          >提交申请</el-button>
-        </template>
-        <template v-else-if="applicationDialog.currentStep === 3">
-          <el-button type="primary" @click="applicationDialog.visible = false">确定</el-button>
+          <el-button type="primary" @click="handleCreateDraft" :loading="applicationDialog.isSubmitting">开始申请</el-button>
         </template>
       </template>
     </el-dialog>
@@ -1122,7 +1014,7 @@ const handleCancelApplication = async () => {
           <div style="margin-top: 20px; font-weight: bold; margin-bottom: 10px">文件列表</div>
 
           <div v-if="detailDialog.data.hasAccess">
-            <el-table :data="detailDialog.files" border height="300px">
+            <el-table :data="detailDialog.files" border max-height="300px">
               <el-table-column prop="name" label="文件名" />
               <el-table-column prop="size" label="大小" width="120">
                 <template #default="{ row }">{{ formatFileSize(row.size) }}</template>
@@ -1146,14 +1038,6 @@ const handleCancelApplication = async () => {
               <template #default>
                 <div class="no-access-actions">
                   <p class="no-access-tip">请提交申请，通过审批后即可访问所有文件。</p>
-                  <el-button
-                    type="primary"
-                    :icon="Promotion"
-                    size="large"
-                    @click="handleApplyFromDetail"
-                  >
-                    发起申请
-                  </el-button>
                 </div>
               </template>
             </el-empty>
@@ -1206,9 +1090,6 @@ const handleCancelApplication = async () => {
         </div>
         <el-empty v-else description="暂无数据" />
       </el-skeleton>
-      <template #footer>
-        <el-button @click="statisticsDialog.visible = false">关闭</el-button>
-      </template>
     </el-dialog>
   </div>
 </template>
@@ -1323,11 +1204,6 @@ const handleCancelApplication = async () => {
   min-height: 100px;
   margin-bottom: 16px;
 }
-.template-text {
-  white-space: pre-wrap;
-  line-height: 1.6;
-  color: #606266;
-}
 .upload-section {
   margin-bottom: 20px;
 }
@@ -1440,7 +1316,7 @@ const handleCancelApplication = async () => {
   border: 1px dashed #dcdfe6;
   border-radius: 4px;
   background-color: #fafafa;
-  height: 300px; /* 保持和有权限时的表格高度一致，避免弹窗抖动 */
+  height: 220px; /* 保持和有权限时的表格高度一致，避免弹窗抖动 */
   display: flex;
   justify-content: center;
   align-items: center;
@@ -1521,5 +1397,42 @@ const handleCancelApplication = async () => {
 }
 .file-name-text {
   font-weight: normal;
+}
+
+.markdown-editor-container {
+  display: flex;
+  gap: 10px;
+}
+.editor-pane, .preview-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.h-100-input {
+  height: 100%;
+}
+.h-100-input :deep(.el-textarea__inner) {
+  height: 100%;
+  resize: none;
+  font-family: monospace;
+}
+.preview-content {
+  flex: 1;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 10px;
+  overflow-y: auto;
+  background-color: #fafafa;
+}
+.editor-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+}
+.divider-icon {
+  transform: rotate(90deg);
+  font-size: 20px;
 }
 </style>

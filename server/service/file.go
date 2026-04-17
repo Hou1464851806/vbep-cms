@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -18,7 +19,7 @@ import (
 	"server/global"
 	"server/logger"
 	"server/model"
-	"server/pkg/uuid"
+	"server/pkg/utils"
 )
 
 const (
@@ -40,7 +41,7 @@ func NewFileService() *FileService {
 
 // --- Create ---
 
-func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, ownerType, creatorID string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
+func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, ownerType, creatorID, fileType string, fileHeader *multipart.FileHeader) (*model.File, string, error) {
 	if fileHeader == nil {
 		return nil, "", fmt.Errorf("file header cannot be empty")
 	}
@@ -76,7 +77,7 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 	}
 	defer src.Close()
 
-	fileUUID := uuid.NewV4()
+	fileUUID := utils.NewV4()
 	ownerDir := model.GetDir(ownerType, ownerID)
 	if err := os.MkdirAll(ownerDir, os.ModePerm); err != nil {
 		return nil, "", fmt.Errorf("failed to create upload directory: %w", err)
@@ -109,6 +110,7 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 		OwnerID:   ownerID,
 		OwnerType: ownerType,
 		CreatorID: creatorID,
+		Type:      fileType,
 	}
 
 	db := global.DB
@@ -130,20 +132,20 @@ func (s *FileService) CreateDatasetFile(datasetID string, creatorID string, file
 		return nil, err
 	}
 
-	newFile, _, err := s.UploadFile(ctx, nil, datasetID, datasetOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, datasetID, datasetOwnerType, creatorID, "", fileHeader)
 	if err != nil {
 		return nil, err
 	}
 	return newFile, nil
 }
 
-func (s *FileService) CreateApplicationFile(applicationID string, creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
+func (s *FileService) CreateApplicationFile(applicationID string, creatorID string, fileType string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	ctx := context.Background()
 	if err := s.ensureApplicationExists(ctx, applicationID); err != nil {
 		return nil, err
 	}
 
-	newFile, _, err := s.UploadFile(ctx, nil, applicationID, applicationOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, applicationID, applicationOwnerType, creatorID, fileType, fileHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +157,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 		Order("created_at DESC").
 		First(&latestAudit).Error; err == nil {
 
-		if latestAudit.Action == model.PENDING {
+		if latestAudit.Action == model.DRAFT {
 			if err := global.DB.WithContext(ctx).Model(&latestAudit).Association("Files").Append(newFile); err != nil {
 				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
 			}
@@ -167,7 +169,7 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 
 func (s *FileService) CreatePublicFile(creatorID string, fileHeader *multipart.FileHeader) (*model.File, error) {
 	ctx := context.Background()
-	newFile, _, err := s.UploadFile(ctx, nil, publicOwnerID, publicOwnerType, creatorID, fileHeader)
+	newFile, _, err := s.UploadFile(ctx, nil, publicOwnerID, publicOwnerType, creatorID, "", fileHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -184,6 +186,80 @@ func (s *FileService) ListFiles(ctx context.Context, ownerID, ownerType string) 
 		Order("created_at DESC").
 		Find(&files).Error
 	return files, err
+}
+
+// PublicFileListQuery 前端表格的筛选/排序/分页参数
+type PublicFileListQuery struct {
+	Page      int
+	PageSize  int
+	SortBy    string // 前端列 prop，如 "name", "size", "createdAt"
+	Order     string // "asc" 或 "desc"
+	Name      string // 模糊搜索文件名
+	DateStart string // "YYYY-MM-DD"
+	DateEnd   string // "YYYY-MM-DD"
+}
+
+// publicFileSortWhitelist 将前端 el-table prop 映射到安全的数据库列
+var publicFileSortWhitelist = map[string]string{
+	"name":      "files.name",
+	"size":      "files.size",
+	"createdAt": "files.created_at",
+}
+
+func (s *FileService) ListFilesPaginated(q PublicFileListQuery) ([]model.File, int64, error) {
+	ctx := context.Background()
+	var files []model.File
+	var total int64
+
+	baseQuery := global.DB.WithContext(ctx).
+		Model(&model.File{}).
+		Where("owner_id = ? AND owner_type = ?", publicOwnerID, publicOwnerType)
+	// ── 文件名搜索 ──
+	if q.Name != "" {
+		kw := "%" + q.Name + "%"
+		baseQuery = baseQuery.Where("files.name LIKE ?", kw)
+	}
+	// ── 日期范围（基于 created_at）──
+	loc := time.Local
+	if q.DateStart != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
+			baseQuery = baseQuery.Where("files.created_at >= ?", t)
+		} else {
+			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+		}
+	}
+	if q.DateEnd != "" {
+		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
+			baseQuery = baseQuery.Where("files.created_at < ?", t.AddDate(0, 0, 1))
+		} else {
+			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+		}
+	}
+	// ── 计数 ──
+	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count public files: %w", err)
+	}
+	// ── 排序（白名单校验）──
+	orderClause := "files.created_at DESC"
+	if col, ok := publicFileSortWhitelist[q.SortBy]; ok {
+		dir := "ASC"
+		if q.Order == "desc" {
+			dir = "DESC"
+		}
+		orderClause = col + " " + dir
+	}
+	// ── 分页查询 ──
+	offset := (q.Page - 1) * q.PageSize
+	err := baseQuery.
+		Order(orderClause).
+		Offset(offset).
+		Limit(q.PageSize).
+		Find(&files).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query public files: %w", err)
+	}
+
+	return files, total, err
 }
 
 func (s *FileService) GetFile(ctx context.Context, fileID, ownerID, ownerType string) (*model.File, error) {
@@ -240,6 +316,10 @@ func (s *FileService) GetApplicationFile(applicationID, fileID string) (*model.F
 func (s *FileService) GetPublicFiles() ([]model.File, error) {
 	ctx := context.Background()
 	return s.ListFiles(ctx, publicOwnerID, publicOwnerType)
+}
+
+func (s *FileService) GetPublicFilesPaginated(q PublicFileListQuery) ([]model.File, int64, error) {
+	return s.ListFilesPaginated(q)
 }
 
 func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
@@ -354,11 +434,60 @@ func (s *FileService) DeleteFilesByApplication(applicationID string) error {
 	return nil
 }
 
+func (s *FileService) DeleteFilesByAudit(auditID string) error {
+	ctx := context.Background()
+	var audit model.Audit
+	if err := global.DB.WithContext(ctx).Preload("Files").First(&audit, "id = ?", auditID).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil // Audit not found, nothing to do
+		}
+		return fmt.Errorf("failed to find audit %s: %w", auditID, err)
+	}
+
+	if len(audit.Files) == 0 {
+		return nil
+	}
+
+	filesToDelete := audit.Files
+	fileIDs := make([]string, len(filesToDelete))
+	for i, f := range filesToDelete {
+		fileIDs[i] = f.ID
+	}
+
+	// Use a transaction to ensure atomicity of DB operations
+	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. Clear associations in the join table
+		if err := tx.Model(&audit).Association("Files").Clear(); err != nil {
+			return fmt.Errorf("failed to clear file associations for audit %s: %w", auditID, err)
+		}
+
+		// 2. Delete the file records themselves
+		if len(fileIDs) > 0 {
+			if err := tx.Where("id IN ?", fileIDs).Delete(&model.File{}).Error; err != nil {
+				return fmt.Errorf("failed to delete file records for audit %s: %w", auditID, err)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err // DB operations failed
+	}
+
+	// 3. Delete physical files after DB transaction is successful
+	for _, f := range filesToDelete {
+		removePhysicalFile(f.GetPath())
+	}
+
+	return nil
+}
+
 // SyncApplicationFiles 同步申请的附件（用于重新提交）
 // 1. 检查保留的文件是否存在
 // 2. 上传新文件
 // 3. 返回最终的文件列表（用于关联到 Audit）
-func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader) ([]model.File, func(bool), error) {
+func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, applicationID, creatorID string, keptFileIDs []string, newFiles []*multipart.FileHeader, newFileTypes []string) ([]model.File, func(bool), error) {
 	cleanup := func(bool) {}
 	kept := make(map[string]struct{})
 	for _, id := range keptFileIDs {
@@ -385,11 +514,15 @@ func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, app
 	// 注意：不再物理删除未保留的文件，因为它们属于历史版本
 
 	var newFilePaths []string
-	for _, header := range newFiles {
+	for i, header := range newFiles {
 		if header == nil {
 			continue
 		}
-		fileRecord, storedPath, err := s.UploadFile(ctx, tx, applicationID, applicationOwnerType, creatorID, header)
+		fileType := ""
+		if i < len(newFileTypes) {
+			fileType = newFileTypes[i]
+		}
+		fileRecord, storedPath, err := s.UploadFile(ctx, tx, applicationID, applicationOwnerType, creatorID, fileType, header)
 		if err != nil {
 			return nil, cleanup, err
 		}

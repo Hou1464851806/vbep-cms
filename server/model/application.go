@@ -8,7 +8,8 @@ import (
 type ApplicationStatus uint
 
 const (
-	PENDING ApplicationStatus = iota
+	DRAFT ApplicationStatus = iota
+	PENDING
 	APPROVED
 	REJECTED
 	RETURNED
@@ -16,12 +17,14 @@ const (
 
 var (
 	statusToString = map[ApplicationStatus]string{
+		DRAFT:    "draft",
 		PENDING:  "pending",
 		APPROVED: "approved",
 		REJECTED: "rejected",
 		RETURNED: "returned",
 	}
 	stringToStatus = map[string]ApplicationStatus{
+		"draft":    DRAFT,
 		"pending":  PENDING,
 		"approved": APPROVED,
 		"rejected": REJECTED,
@@ -52,18 +55,24 @@ type Application struct {
 	Dataset     Dataset           `gorm:"foreignKey:DatasetID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT"`   // 目标数据集具体信息
 	Status      ApplicationStatus `gorm:"not null;default:0"`                                                                 // 申请的处理状态（当前时间线下的最后一个状态）
 	Version     int               `gorm:"not null;default:0"`                                                                 // 申请的版本号，每次重新提交+1
+	Affiliation string            `gorm:"type:varchar(255)"`                                                                  // 代表单位
+	Position    string            `gorm:"type:varchar(255)"`                                                                  // 职务
+	ExpireAt    *time.Time        `json:"expireAt"`                                                                           // 审批通过后的过期时间
 
 	Audits []Audit `gorm:"foreignKey:ApplicationID;references:ID"`
 }
 
 type ApplicationListItem struct {
-	ID        string       `json:"id"`
-	Status    string       `json:"status"`
-	Version   int          `json:"version"`
-	Applicant UserBrief    `json:"applicant"`
-	Dataset   DatasetBrief `json:"dataset"`
-	UpdatedAt time.Time    `json:"updatedAt"`
-	CreatedAt time.Time    `json:"createdAt"`
+	ID          string       `json:"id"`
+	Status      string       `json:"status"`
+	Version     int          `json:"version"`
+	Applicant   UserBrief    `json:"applicant"`
+	Dataset     DatasetBrief `json:"dataset"`
+	Affiliation string       `json:"affiliation"`
+	Position    string       `json:"position"`
+	UpdatedAt   time.Time    `json:"updatedAt"`
+	CreatedAt   time.Time    `json:"createdAt"`
+	ExpireAt    *time.Time   `json:"expireAt"`
 }
 
 type ApplicationDetail struct {
@@ -73,13 +82,16 @@ type ApplicationDetail struct {
 
 func (app Application) ToListItem() ApplicationListItem {
 	item := ApplicationListItem{
-		ID:        app.ID,
-		Status:    app.Status.String(),
-		Version:   app.Version,
-		Applicant: app.Applicant.ToBrief(),
-		Dataset:   app.Dataset.ToBrief(),
-		CreatedAt: app.CreatedAt,
-		UpdatedAt: app.UpdatedAt,
+		ID:          app.ID,
+		Status:      app.Status.String(),
+		Version:     app.Version,
+		Applicant:   app.Applicant.ToBrief(),
+		Dataset:     app.Dataset.ToBrief(),
+		Affiliation: app.Affiliation,
+		Position:    app.Position,
+		CreatedAt:   app.CreatedAt,
+		UpdatedAt:   app.UpdatedAt,
+		ExpireAt:    app.ExpireAt,
 	}
 	return item
 }
@@ -112,6 +124,7 @@ type Audit struct {
 	ApplicationID string      `gorm:"not null;type:char(36)"`                                                             // 审批属于的申请ID
 	Application   Application `gorm:"foreignKey:ApplicationID;reference:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"` // 审批历史属于申请，删除申请应该级联删除审批历史
 	Files         []File      `gorm:"many2many:audit_files;"`                                                             // 该次审批/提交关联的文件快照
+	ExpireAt      *time.Time  `json:"expireAt"`                                                                           // 该次审批决定的过期时间
 }
 
 type AuditListItem struct {
@@ -121,6 +134,7 @@ type AuditListItem struct {
 	Operator  *UserBrief `json:"operator"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
+	ExpireAt  *time.Time `json:"expireAt"`
 }
 
 type AuditDetail struct {
@@ -134,6 +148,7 @@ func (a Audit) ToListItem() AuditListItem {
 		Action:    a.Action.String(),
 		CreatedAt: a.CreatedAt,
 		UpdatedAt: a.UpdatedAt,
+		ExpireAt:  a.ExpireAt,
 	}
 
 	if a.Operator != nil {

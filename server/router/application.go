@@ -32,6 +32,7 @@ func (r *ApplicationRouter) InitApplicationRouter(router *gin.RouterGroup) {
 		applicationRouter.GET("/:id/audits/:auditID", middleware.AuthRole(model.Common), applicationApi.GetAuditDetail)
 		applicationRouter.POST("/:id/resubmit", middleware.AuthRole(model.Common), applicationApi.Resubmit)
 		applicationRouter.POST("/:id/submit", middleware.AuthRole(model.Common), applicationApi.SubmitDraft)
+		applicationRouter.PUT("/:id", middleware.AuthRole(model.Common), applicationApi.UpdateDraft)
 		applicationRouter.POST("/:id/audit", middleware.AuthRole(model.Admin), applicationApi.AuditApplication)
 	}
 }

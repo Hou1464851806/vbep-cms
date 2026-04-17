@@ -9,6 +9,7 @@ import (
 	"server/model"
 	"server/pkg/utils"
 	"server/service"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -229,22 +230,6 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		updates["is_email_verified"] = true
 	}
 
-	//if param.Phone != nil {
-	//	cleanPhone := strings.TrimSpace(*param.Phone)
-	//	if cleanPhone == "" {
-	//		updates["phone"] = nil
-	//		updates["is_phone_verified"] = false
-	//	} else {
-	//		// 验证 OTP
-	//		if param.OTP == nil || !u.service.VerifyOTP(cleanPhone, *param.OTP) {
-	//			ctx.JSON(http.StatusBadRequest, gin.H{"message": "绑定/修改手机号需要正确的验证码"})
-	//			return
-	//		}
-	//		updates["phone"] = cleanPhone
-	//		updates["is_phone_verified"] = true
-	//	}
-	//}
-
 	if param.Password != nil {
 		passwordHash, err := utils.PasswordToHash(*param.Password)
 		if err != nil {
@@ -312,8 +297,30 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 }
 
 func (u *UserApi) GetAllUsers(ctx *gin.Context) {
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
+	query := service.UserListQuery{
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		Role:      ctx.Query("role"),
+		Keyword:   ctx.Query("keyword"),
+		IdPrefix:  ctx.Query("id_prefix"),
+		Nickname:  ctx.Query("nickname"),
+		Email:     ctx.Query("email"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
 	// 1. 调用 Service 获取数据
-	users, err := u.service.GetAllUsers()
+	users, total, err := u.service.GetAllUsers(query)
 	if err != nil {
 		logger.Errorf("failed to query all users: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -333,12 +340,14 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 			//"phone":     user.Phone,
 			"role":      user.Role,
 			"createdAt": user.CreatedAt,
+			"isDeleted": user.DeletedAt.Valid,
 		})
 	}
 
 	// 3. 返回 JSON
 	ctx.JSON(http.StatusOK, gin.H{
-		"data": userList, // 这里直接放入数组
+		"data":  userList, // 这里直接放入数组
+		"total": total,
 	})
 }
 
@@ -369,6 +378,7 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	}
 
 	if err := u.service.SendOTP(param.Target); err != nil {
+		logger.Errorf("Failed to send otp: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "发送失败"})
 		return
 	}
@@ -376,9 +386,15 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, gin.H{"message": "发送成功"})
 }
 
+type Captcha struct {
+	Id     string `json:"id"`
+	Answer string `json:"answer"`
+}
+
 type ResetPassReq struct {
-	Email       string `json:"email" binding:"required"`
-	FrontendUrl string `json:"frontend_url" binding:"required"`
+	Email       string  `json:"email" binding:"required"`
+	FrontendUrl string  `json:"frontend_url" binding:"required"`
+	Captcha     Captcha `json:"captcha" binding:"required"`
 }
 
 func (u *UserApi) SendResetPassword(ctx *gin.Context) {
@@ -391,10 +407,18 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 		return
 	}
 
+	if !u.service.VerifyCaptcha(req.Captcha.Id, req.Captcha.Answer) {
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"message": "验证码错误",
+		})
+		return
+	}
+
 	if !u.isValidLink(req.FrontendUrl) {
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "非法的地址",
 		})
+		return
 	}
 
 	err := u.service.SendResetPassword(req.Email, req.FrontendUrl)
@@ -454,7 +478,40 @@ func (u *UserApi) isValidLink(link string) bool {
 	allowedHosts := map[string]bool{
 		"localhost:5173": true,
 		"127.0.0.1:8080": true,
+		"localhost:8888": true,
 	}
 
 	return allowedHosts[parsedUrl.Host]
+}
+
+func (u *UserApi) GetUserAllFiles(ctx *gin.Context) {
+	// 1. 从 URL 路径中获取用户ID
+	userID := ctx.Param("id")
+	if userID == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "用户ID不能为空"})
+		return
+	}
+	// 2. 从查询参数中获取分页信息
+	page, err := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	if err != nil || page < 1 {
+		page = 1
+	}
+	size, err := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if err != nil || size < 1 || size > 100 { // 增加一个最大size限制，防止滥用
+		size = 10
+	}
+	// 3. 调用 Service 层方法获取数据
+	files, total, err := u.service.GetUserFiles(userID, page, size)
+	if err != nil {
+		// Service层已经记录了详细错误，这里只返回一个通用的服务器错误
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "获取文件列表失败",
+		})
+		return
+	}
+	// 4. 成功响应，返回数据和总数
+	ctx.JSON(http.StatusOK, gin.H{
+		"data":  files,
+		"total": total,
+	})
 }

@@ -6,12 +6,18 @@ import logoSrc from '@/assets/img/logo.png'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import '@/assets/styles/login.css'
+import Captcha from "@/components/Captcha.vue";
 
 const router = useRouter()
 
+const captchaRef = ref()
 const resetFormRef = ref()
 const resetForm = reactive({
   email: '',
+  captcha: {
+    id: '',
+    answer: '',
+  },
 })
 
 const resetFormRules = reactive({
@@ -19,6 +25,9 @@ const resetFormRules = reactive({
     { required: true, message: '邮箱不能为空', trigger: 'submit' },
     { type: 'email', message: '请输入正确的邮箱格式', trigger: 'submit' },
   ],
+  'captcha.answer': [
+    { required:true, message: '验证码不能为空', trigger: 'submit' },
+  ]
 })
 
 const isLoading = ref(false)
@@ -37,10 +46,12 @@ const submitRecoverForm = async () => {
     const requestData = {
       email: resetForm.email,
       frontend_url: frontendUrl,
+      captcha: resetForm.captcha,
     }
-    await axios.post('/api/v1/users/reset/send', requestData)
+    const res = await axios.post('/api/v1/users/reset/send', requestData)
     isLoading.value = false
     resetFormRef.value.resetFields()
+    ElMessage.success(res.data.message)
     setTimeout(() => {
       router.replace({ name: 'login' })
     }, 2000)
@@ -55,6 +66,7 @@ const submitRecoverForm = async () => {
       console.log('表单验证失败:', e)
       ElMessage.error('请检查您填写的信息是否正确')
     }
+    captchaRef.value.refresh()
   } finally {
     isLoading.value = false
   }
@@ -101,6 +113,19 @@ const submitRecoverForm = async () => {
               </el-input>
             </el-form-item>
 
+            <el-form-item class="login-group" label="验证码" prop="captcha.answer">
+              <el-popover placement="right" trigger="focus" popper-class="captcha-popover">
+                <template #reference>
+                  <Captcha
+                    v-model="resetForm.captcha"
+                    size="large"
+                    ref="captchaRef" />
+                </template>
+                <span class="tip">请输入图片字符<br/>(不区分大小写)</span>
+              </el-popover>
+
+            </el-form-item>
+
             <el-form-item class="login-group login-button-item">
               <el-button class="login-btn" type="primary" @click="submitRecoverForm"
               >发送重置邮件</el-button
@@ -116,7 +141,8 @@ const submitRecoverForm = async () => {
 <style scoped>
 /* 保持内容宽度限制 */
 .login-content {
-  width: 380px; /* 稍微增加一点宽度以容纳 label + input */
+  width: 380px; /* 桌面基准宽度 */
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -155,6 +181,25 @@ const submitRecoverForm = async () => {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+.captcha-popover .tip {
+  color: #606266;
+}
+
+@media (max-width: 768px) {
+  .login-content {
+    width: 100%;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 68px !important;
+    padding-right: 8px;
+  }
+
+  :deep(.el-form-item__content) {
+    margin-left: 68px !important;
+    min-width: 0;
   }
 }
 </style>

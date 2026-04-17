@@ -95,9 +95,9 @@ defineExpose({
 .markdown-body {
   background-color: transparent !important; /* 移除默认背景色，适应父容器 */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.6;
-  padding: 10px 0;
+  padding: 2px 6px;
   box-sizing: border-box;
 }
 

@@ -7,6 +7,7 @@ import (
 	"server/logger"
 	"server/model"
 	"server/service"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -32,6 +33,15 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 		return
 	}
 
+	page, _ := strconv.Atoi(ctx.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(ctx.DefaultQuery("size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+
 	// 获取用户对象或角色，假设 JWTAuth 或 AuthRole 已经处理了
 	// 这里为了保险，简易起见，如果 ctx 中有 UserObj 则用，没有则默认 Role=0
 	// *重要*：你需要确保 Router 中 GetAll 使用了中间件来获取 Role，
@@ -46,7 +56,20 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 		// 此处简化处理：默认普通用户
 	}
 
-	datasets, err := a.service.GetAllDatasets(userID, role)
+	query := service.DatasetListQuery{
+		UserID:    userID,
+		Role:      role,
+		Page:      page,
+		PageSize:  pageSize,
+		SortBy:    ctx.Query("sort_by"),
+		Order:     ctx.Query("order"),
+		IDPrefix:  ctx.Query("id_prefix"),
+		Name:      ctx.Query("name"),
+		Creator:   ctx.Query("creator"),
+		DateStart: ctx.Query("date_start"),
+		DateEnd:   ctx.Query("date_end"),
+	}
+	datasets, total, err := a.service.GetAllDatasets(query)
 	if err != nil {
 		logger.Errorf("failed to get all datasets: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
@@ -57,6 +80,7 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"datasets": datasets,
+		"total":    total,
 	})
 }
 

@@ -390,6 +390,9 @@ const currentPageTitle = computed(() => {
   if (route.path.includes('/applications')) {
     return roleId > 0 ? '审批管理' : '我的申请'
   }
+  if (route.path.includes('/licenses')) {
+    return '许可管理'
+  }
   if (route.path.includes('/downloads')) {
     return roleId > 1 ? '公开下载管理' : '下载中心'
   }
@@ -429,6 +432,11 @@ const currentPageTitle = computed(() => {
             <el-menu-item index="/home/applications">
               <el-icon><Memo /></el-icon>
               <span>{{ userInfo.roleId > 0 ? '审批管理' : '我的申请' }}</span>
+            </el-menu-item>
+
+            <el-menu-item index="/home/licenses">
+              <el-icon><Key /></el-icon>
+              <span>许可管理</span>
             </el-menu-item>
 
             <el-menu-item index="/home/downloads">
