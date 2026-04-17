@@ -365,7 +365,8 @@ const confirmAgreement = () => {
 <style scoped>
 /* 保持内容宽度限制 */
 .login-content {
-  width: 380px; /* 稍微增加一点宽度以容纳 label + input */
+  width: 380px; /* 桌面基准宽度 */
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -416,6 +417,26 @@ const confirmAgreement = () => {
     transform: translateY(0);
   }
 }
+
+@media (max-width: 768px) {
+  .login-content {
+    width: 100%;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 68px !important;
+    padding-right: 8px;
+  }
+
+  :deep(.el-form-item__content) {
+    margin-left: 68px !important;
+    min-width: 0;
+  }
+
+  .password-hint {
+    padding-left: 68px;
+  }
+}
 </style>
 
 <style>
@@ -442,5 +463,16 @@ const confirmAgreement = () => {
 .register-password-popover .strength-sub-items span.active {
   color: #67c23a;
   font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  .register-password-popover {
+    max-width: calc(100vw - 32px);
+  }
+
+  .register-password-popover .strength-sub-items {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }
 </style>

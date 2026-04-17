@@ -255,6 +255,7 @@ const submitReset = async () => {
 <style scoped>
 .login-content {
   width: 380px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -294,6 +295,22 @@ const submitReset = async () => {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+@media (max-width: 768px) {
+  .login-content {
+    width: 100%;
+  }
+
+  :deep(.el-form-item__label) {
+    width: 68px !important;
+    padding-right: 8px;
+  }
+
+  :deep(.el-form-item__content) {
+    margin-left: 68px !important;
+    min-width: 0;
+  }
+}
 </style>
 
 <!-- 全局样式：用于 Popover -->
@@ -325,5 +342,16 @@ const submitReset = async () => {
 .password-popover .strength-sub-items span.active {
   color: #67c23a;
   font-weight: bold;
+}
+
+@media (max-width: 768px) {
+  .password-popover {
+    max-width: calc(100vw - 32px);
+  }
+
+  .password-popover .strength-sub-items {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }
 </style>
