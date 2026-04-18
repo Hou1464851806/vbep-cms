@@ -34,6 +34,7 @@ func StartAsynqWorkerServer() {
 				"critical": 6,
 				"default":  3,
 			},
+			Logger: logger.NewAsynqZapLogger(),
 		},
 	)
 	mux := asynq.NewServeMux()

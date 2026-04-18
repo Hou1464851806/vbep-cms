@@ -2,6 +2,36 @@ package logger
 
 import "server/global"
 
+// ====== asynq logger zap sugar ======
+
+type asynqZapLogger struct{}
+
+func NewAsynqZapLogger() *asynqZapLogger {
+	return &asynqZapLogger{}
+}
+
+func (l *asynqZapLogger) Debug(args ...interface{}) {
+	global.SLOG.Debug(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+func (l *asynqZapLogger) Info(args ...interface{}) {
+	global.SLOG.Info(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+func (l *asynqZapLogger) Warn(args ...interface{}) {
+	global.SLOG.Warn(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+func (l *asynqZapLogger) Error(args ...interface{}) {
+	global.SLOG.Error(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+func (l *asynqZapLogger) Fatal(args ...interface{}) {
+	global.SLOG.Fatal(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+// ====== Server logger zap sugar ======
+
 func Successf(template string, args ...interface{}) {
 	global.SLOG.Infof("[Success] "+template, args...)
 }
