@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"fmt"
 	"net/http"
 	"server/logger"
 	"server/pkg/jwt"
@@ -30,7 +29,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	var p LoginParam
 	if err := ctx.ShouldBind(&p); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -38,7 +37,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	user, err := a.service.FindAndCheckUser(p.UserInfo, p.PWDHash)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{
-			"message": err.Error(),
+			"message": "用户名或密码错误",
 		})
 		return
 	}
@@ -48,7 +47,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	if err != nil {
 		logger.Errorf("failed to generate token for user %s: %v", user.ID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": fmt.Sprintf("生成令牌失败: %v", err),
+			"message": "登录失败，请稍后重试",
 		})
 		return
 	}

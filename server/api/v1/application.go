@@ -52,10 +52,24 @@ type submitDraftParam struct {
 type resubmitApplicationParam struct {
 }
 
+func respondRequestBindError(ctx *gin.Context) {
+	ctx.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
+}
+
+func respondCurrentUserError(ctx *gin.Context, err error) {
+	status := http.StatusUnauthorized
+	message := "用户未登录"
+	if errors.Is(err, errInvalidUser) || errors.Is(err, errInvalidUserID) {
+		status = http.StatusInternalServerError
+		message = "用户信息异常"
+	}
+	ctx.JSON(status, gin.H{"message": message})
+}
+
 func (a *ApplicationApi) Create(ctx *gin.Context) {
 	var param createApplicationParam
 	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		respondRequestBindError(ctx)
 		return
 	}
 
@@ -66,7 +80,11 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 			status = http.StatusInternalServerError
 		}
 		logger.Errorf("failed to get user id from context while creating application: %v", err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		message := "用户未登录"
+		if status == http.StatusInternalServerError {
+			message = "用户信息异常"
+		}
+		ctx.JSON(status, gin.H{"message": message})
 		return
 	}
 
@@ -105,7 +123,7 @@ func (a *ApplicationApi) Delete(ctx *gin.Context) {
 	userIDStr, err := getUserIDFromContext(ctx)
 	if err != nil {
 		logger.Errorf("failed to get user id from context while deleting application %s: %v", id, err)
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		respondCurrentUserError(ctx, err)
 		return
 	}
 
@@ -136,7 +154,7 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 	userIDStr, err := getUserIDFromContext(ctx)
 	if err != nil {
 		logger.Errorf("failed to get user id from context while submitting application %s: %v", id, err)
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		respondCurrentUserError(ctx, err)
 		return
 	}
 
@@ -171,7 +189,8 @@ func (a *ApplicationApi) UpdateDraft(ctx *gin.Context) {
 
 	userIDStr, err := getUserIDFromContext(ctx)
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		logger.Errorf("failed to get user id from context while updating application %s: %v", id, err)
+		respondCurrentUserError(ctx, err)
 		return
 	}
 
@@ -209,7 +228,11 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 			status = http.StatusInternalServerError
 		}
 		logger.Errorf("failed to get current user while listing applications: %v", err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		message := "用户未登录"
+		if status == http.StatusInternalServerError {
+			message = "用户信息异常"
+		}
+		ctx.JSON(status, gin.H{"message": message})
 		return
 	}
 
@@ -277,7 +300,11 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 			status = http.StatusInternalServerError
 		}
 		logger.Errorf("failed to get current user while reading application %s: %v", id, err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		message := "用户未登录"
+		if status == http.StatusInternalServerError {
+			message = "用户信息异常"
+		}
+		ctx.JSON(status, gin.H{"message": message})
 		return
 	}
 
@@ -314,7 +341,8 @@ func (a *ApplicationApi) GetAuditDetail(ctx *gin.Context) {
 
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
+		logger.Errorf("failed to get current user while reading audit detail %s/%s: %v", id, auditID, err)
+		respondCurrentUserError(ctx, err)
 		return
 	}
 
@@ -362,7 +390,7 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 
 	var param auditApplicationParam
 	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		respondRequestBindError(ctx)
 		return
 	}
 
@@ -373,13 +401,17 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 			status = http.StatusInternalServerError
 		}
 		logger.Errorf("failed to get user id from context while auditing application %s: %v", id, err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		message := "用户未登录"
+		if status == http.StatusInternalServerError {
+			message = "用户信息异常"
+		}
+		ctx.JSON(status, gin.H{"message": message})
 		return
 	}
 
 	actionStatus, err := model.ParseApplicationStatus(param.Action)
 	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "审批操作类型无效"})
 		return
 	}
 
@@ -443,7 +475,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 	} else {
 		var param resubmitApplicationParam
 		if err := ctx.ShouldBindJSON(&param); err != nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			respondRequestBindError(ctx)
 			return
 		}
 	}
@@ -455,7 +487,11 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 			status = http.StatusInternalServerError
 		}
 		logger.Errorf("failed to get user id from context while resubmitting application %s: %v", id, err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		message := "用户未登录"
+		if status == http.StatusInternalServerError {
+			message = "用户信息异常"
+		}
+		ctx.JSON(status, gin.H{"message": message})
 		return
 	}
 

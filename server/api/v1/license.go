@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -25,12 +24,8 @@ func NewLicenseApi(licenseService *service.LicenseService) *LicenseApi {
 func (a *LicenseApi) GetAll(ctx *gin.Context) {
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		status := http.StatusUnauthorized
-		if errors.Is(err, errInvalidUser) {
-			status = http.StatusInternalServerError
-		}
 		logger.Errorf("failed to get current user while listing licenses: %v", err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		respondCurrentUserError(ctx, err)
 		return
 	}
 
@@ -98,12 +93,8 @@ func (a *LicenseApi) Revoke(ctx *gin.Context) {
 
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		status := http.StatusUnauthorized
-		if errors.Is(err, errInvalidUser) {
-			status = http.StatusInternalServerError
-		}
 		logger.Errorf("failed to get current user while revoking license %s: %v", id, err)
-		ctx.JSON(status, gin.H{"message": err.Error()})
+		respondCurrentUserError(ctx, err)
 		return
 	}
 

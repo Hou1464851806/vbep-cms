@@ -43,7 +43,7 @@ func (a *SettingApi) GetSetting(c *gin.Context) {
 func (a *SettingApi) SetSetting(c *gin.Context) {
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "参数错误: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
 		return
 	}
 

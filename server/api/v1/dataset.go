@@ -150,7 +150,7 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 	if err := ctx.ShouldBind(&p); err != nil {
 		logger.Errorf("failed to parse request param: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -176,7 +176,7 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 	if err != nil {
 		logger.Errorf("%v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": err.Error(),
+			"message": "创建数据集失败",
 		})
 		return
 	}
@@ -198,7 +198,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 	var p UpdateDatasetParam
 	if err := ctx.ShouldBind(&p); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
