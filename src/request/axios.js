@@ -61,24 +61,46 @@ apiClient.interceptors.request.use(
 
 let isAuthAlerting = false
 
+const resolveAuthRedirectTarget = () => {
+  const currentRoute = router.currentRoute.value
+  const currentPath = currentRoute?.path || ''
+  const queryRedirect = currentRoute?.query?.redirect
+
+  if (currentPath === '/login') {
+    return typeof queryRedirect === 'string' && queryRedirect ? queryRedirect : null
+  }
+
+  return currentRoute?.fullPath || '/home'
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
+    const skipAuthRedirect = error?.config?.skipAuthRedirect
+
     if (error?.response) {
+      if (skipAuthRedirect) {
+        return Promise.reject(error)
+      }
       if (error.response.status === 401) {
+        const redirectTarget = resolveAuthRedirectTarget()
         clearAuthToken()
         if (!isAuthAlerting) {
           isAuthAlerting = true
-          ElMessageBox.alert('登录状态已过期或认证失败，请重新登录', '提示', {
+          ElMessageBox.alert('登录状态已过期，请重新登录', '提示', {
             confirmButtonText: '重新登录',
             type: 'warning',
             showClose: false,
             callback: () => {
               isAuthAlerting = false
-              router.replace({
-                path: '/login',
-                query: { redirect: router.currentRoute.value.fullPath }
-              })
+              if (redirectTarget) {
+                router.replace({
+                  path: '/login',
+                  query: { redirect: redirectTarget }
+                })
+                return
+              }
+              router.replace({ path: '/login' })
             }
           })
         }
