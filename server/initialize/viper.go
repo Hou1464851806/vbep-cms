@@ -2,7 +2,6 @@ package initialize
 
 import (
 	"github.com/spf13/viper"
-	"log"
 	"os"
 	"server/global"
 	"server/logger"
@@ -12,7 +11,7 @@ import (
 func getSecrets(filePath string, fallback string) string {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		log.Printf("Read secrets file error: %v\n", err)
+		logger.Errorf("Read secrets file error: %v", err)
 		return fallback
 	}
 	return strings.TrimSpace(string(content))
@@ -24,10 +23,10 @@ func NewViper() *viper.Viper {
 	v.SetConfigType("toml")
 	v.AddConfigPath(".")
 	if err := v.ReadInConfig(); err != nil {
-		log.Panicf("Read config error: %v\n", err)
+		logger.Fatalf("Read config error: %v", err)
 	}
 	if err := v.Unmarshal(&global.CFG); err != nil {
-		log.Fatalf("Unmarshal config error: %v\n", err)
+		logger.Fatalf("Unmarshal config error: %v", err)
 	}
 	// 从环境变量获取部分配置
 	if appMode := os.Getenv("APP_MODE"); appMode != "" {
