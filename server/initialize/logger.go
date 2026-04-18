@@ -5,6 +5,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"os"
+	"server/config"
 )
 
 const (
@@ -28,13 +29,30 @@ func newFileZapCore() zapcore.Core {
 	if err != nil && !os.IsExist(err) {
 		panic(fmt.Sprintf("create log directory error: %v\n", err))
 	}
-	f, err := os.OpenFile("logs/server.log", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+
+	logPath := fmt.Sprintf("logs/%s", resolveLogFileName())
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
 	if err != nil {
 		panic(fmt.Sprintf("open log file error: %v\n", err))
 	}
 
 	c := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(f), zapcore.DebugLevel)
 	return c
+}
+
+func resolveLogFileName() string {
+	mode := config.AppModeApi
+	if m := os.Getenv("APP_MODE"); m != "" {
+		mode = m
+	}
+	var name string
+	switch mode {
+	case config.AppModeWorker:
+		name = "worker.log"
+	default:
+		name = "server.log"
+	}
+	return name
 }
 
 func newConsoleZapCore() zapcore.Core {
