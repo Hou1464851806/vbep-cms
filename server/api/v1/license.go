@@ -29,6 +29,7 @@ func (a *LicenseApi) GetAll(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUser) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get current user while listing licenses: %v", err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
@@ -101,6 +102,7 @@ func (a *LicenseApi) Revoke(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUser) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get current user while revoking license %s: %v", id, err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}

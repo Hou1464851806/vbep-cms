@@ -46,6 +46,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 	// 生成JWT
 	token, err := jwt.GenerateToken(user.ID)
 	if err != nil {
+		logger.Errorf("failed to generate token for user %s: %v", user.ID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": fmt.Sprintf("生成令牌失败: %v", err),
 		})

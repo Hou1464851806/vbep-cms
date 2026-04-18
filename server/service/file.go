@@ -53,6 +53,8 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 			if user.Role > model.Common {
 				limitMB = global.CFG.File.UploadLimitDataset
 			}
+		} else {
+			logger.Warnf("failed to query uploader role for user %s: %v", creatorID, err)
 		}
 	}
 
@@ -95,7 +97,9 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 	if err != nil {
 		// 清理可能残留的文件
 		tmpFile.Close()
-		os.Remove(targetPath)
+		if removeErr := os.Remove(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			logger.Warnf("failed to cleanup partial upload %s: %v", targetPath, removeErr)
+		}
 		return nil, "", fmt.Errorf("failed to write file to disk: %w", err)
 	}
 
@@ -119,7 +123,9 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 	}
 
 	if err := db.WithContext(ctx).Create(newFile).Error; err != nil {
-		_ = os.Remove(targetPath)
+		if removeErr := os.Remove(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			logger.Warnf("failed to cleanup file %s after db error: %v", targetPath, removeErr)
+		}
 		return nil, "", fmt.Errorf("failed to save file metadata: %w", err)
 	}
 
@@ -162,6 +168,8 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
 			}
 		}
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		logger.Warnf("failed to query latest audit for application %s: %v", applicationID, err)
 	}
 
 	return newFile, nil

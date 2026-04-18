@@ -100,6 +100,7 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
+		logger.Errorf("failed to get dataset detail %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "获取数据集详情失败"})
 		return
 	}

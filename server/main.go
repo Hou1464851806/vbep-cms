@@ -36,6 +36,7 @@ func initializeCron() {
 	// 使用 UTC+8 (北京时间)
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
+		logger.Warnf("failed to load timezone Asia/Shanghai, fallback to UTC+8: %v", err)
 		loc = time.FixedZone("UTC+8", 8*3600)
 	}
 	c := cron.New(cron.WithLocation(loc))
@@ -62,9 +63,9 @@ func initializeCron() {
 		}
 	})
 	if err != nil {
-		logger.Errorf("Failed to add cron job", err)
+		logger.Errorf("Failed to add cron job: %v", err)
 	} else {
-		logger.Successf("Statistics cron job created: [interval_hours: %v]", interval)
+		logger.Successf("Statistics cron job created: interval_hours=%d", interval)
 	}
 	c.Start()
 

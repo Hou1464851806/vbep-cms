@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"server/global"
+	"server/logger"
 	"server/model"
 
 	"github.com/gin-gonic/gin"
@@ -23,6 +24,7 @@ func AuthRole(minRole model.UserRole) gin.HandlerFunc {
 		var user model.User
 		// 注意：这里需要处理查不到用户的情况
 		if err := global.DB.First(&user, "id = ?", userID).Error; err != nil {
+			logger.Errorf("failed to load user %v in AuthRole middleware: %v", userID, err)
 			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Logged user not found"})
 			ctx.Abort()
 			return

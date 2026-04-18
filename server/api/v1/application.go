@@ -65,6 +65,7 @@ func (a *ApplicationApi) Create(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUserID) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get user id from context while creating application: %v", err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
@@ -103,6 +104,7 @@ func (a *ApplicationApi) Delete(ctx *gin.Context) {
 
 	userIDStr, err := getUserIDFromContext(ctx)
 	if err != nil {
+		logger.Errorf("failed to get user id from context while deleting application %s: %v", id, err)
 		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
@@ -116,6 +118,7 @@ func (a *ApplicationApi) Delete(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, gin.H{"message": "无法删除已提交的申请"})
 			return
 		}
+		logger.Errorf("failed to delete draft application %s: %v", id, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除申请失败"})
 		return
 	}
@@ -132,6 +135,7 @@ func (a *ApplicationApi) SubmitDraft(ctx *gin.Context) {
 
 	userIDStr, err := getUserIDFromContext(ctx)
 	if err != nil {
+		logger.Errorf("failed to get user id from context while submitting application %s: %v", id, err)
 		ctx.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
@@ -204,6 +208,7 @@ func (a *ApplicationApi) GetAll(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUser) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get current user while listing applications: %v", err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
@@ -271,6 +276,7 @@ func (a *ApplicationApi) GetOne(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUser) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get current user while reading application %s: %v", id, err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
@@ -366,6 +372,7 @@ func (a *ApplicationApi) AuditApplication(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUserID) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get user id from context while auditing application %s: %v", id, err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}
@@ -447,6 +454,7 @@ func (a *ApplicationApi) Resubmit(ctx *gin.Context) {
 		if errors.Is(err, errInvalidUserID) {
 			status = http.StatusInternalServerError
 		}
+		logger.Errorf("failed to get user id from context while resubmitting application %s: %v", id, err)
 		ctx.JSON(status, gin.H{"message": err.Error()})
 		return
 	}

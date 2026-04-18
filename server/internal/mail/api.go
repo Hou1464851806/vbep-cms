@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"server/logger"
 )
 
 type ApiSender struct {
@@ -13,12 +14,16 @@ type ApiSender struct {
 
 func (s *ApiSender) Send(msg Message) error {
 	// temp
-	payload, _ := json.Marshal(map[string]string{
+	payload, err := json.Marshal(map[string]string{
 		"to":      msg.To,
 		"title":   msg.Subject,
 		"content": msg.Body,
 		"key":     s.Key,
 	})
-	_, err := http.Post(s.Url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		logger.Errorf("failed to marshal api mail payload to=%s subject=%s: %v", msg.To, msg.Subject, err)
+		return err
+	}
+	_, err = http.Post(s.Url, "application/json", bytes.NewBuffer(payload))
 	return err
 }
