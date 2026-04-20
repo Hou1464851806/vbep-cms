@@ -1,6 +1,12 @@
 package logger
 
-import "server/global"
+import (
+	"io"
+	"server/global"
+	"strings"
+
+	"go.uber.org/zap/zapcore"
+)
 
 // ====== asynq logger zap sugar ======
 
@@ -28,6 +34,38 @@ func (l *asynqZapLogger) Error(args ...interface{}) {
 
 func (l *asynqZapLogger) Fatal(args ...interface{}) {
 	global.SLOG.Fatal(append([]interface{}{"[asynq] "}, args...)...)
+}
+
+// ====== gin logger zap writer ======
+
+type ginZapWriter struct {
+	level zapcore.Level
+}
+
+func NewGinZapWriter(level zapcore.Level) io.Writer {
+	return &ginZapWriter{level: level}
+}
+
+func (w *ginZapWriter) Write(p []byte) (n int, err error) {
+	msg := strings.TrimRight(string(p), "\r\n")
+	if msg == "" {
+		return len(p), nil
+	}
+
+	switch w.level {
+	case zapcore.DebugLevel:
+		global.SLOG.Debug(msg)
+	case zapcore.WarnLevel:
+		global.SLOG.Warn(msg)
+	case zapcore.ErrorLevel:
+		global.SLOG.Error(msg)
+	case zapcore.FatalLevel:
+		global.SLOG.Fatal(msg)
+	default:
+		global.SLOG.Info(msg)
+	}
+
+	return len(p), nil
 }
 
 // ====== Server logger zap sugar ======
