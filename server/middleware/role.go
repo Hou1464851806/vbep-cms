@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"server/global"
+	"server/logger"
 	"server/model"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,7 @@ func AuthRole(minRole model.UserRole) gin.HandlerFunc {
 		// 1. 从上下文获取 UserID (由 JWTAuth 设置)
 		userID, exists := ctx.Get(global.CTXUserID)
 		if !exists {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Logged user not authenticated"})
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "用户未登录"})
 			ctx.Abort()
 			return
 		}
@@ -23,7 +24,8 @@ func AuthRole(minRole model.UserRole) gin.HandlerFunc {
 		var user model.User
 		// 注意：这里需要处理查不到用户的情况
 		if err := global.DB.First(&user, "id = ?", userID).Error; err != nil {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "Logged user not found"})
+			logger.Errorf("failed to load user %v in AuthRole middleware: %v", userID, err)
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "当前用户不存在"})
 			ctx.Abort()
 			return
 		}
@@ -32,7 +34,7 @@ func AuthRole(minRole model.UserRole) gin.HandlerFunc {
 		// Common(0) < Admin(1) < SuperAdmin(2)
 		if user.Role < minRole {
 			ctx.JSON(http.StatusForbidden, gin.H{
-				"message": "Permission denied: insufficient privileges",
+				"message": "权限不足",
 			})
 			ctx.Abort()
 			return

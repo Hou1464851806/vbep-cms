@@ -8,10 +8,19 @@ import (
 	"server/internal/templates"
 	"server/router"
 	"server/service"
+
+	"go.uber.org/zap/zapcore"
+	"server/logger"
 )
 
 func NewRouter() *gin.Engine {
-	r := gin.Default()
+	gin.SetMode(gin.ReleaseMode)
+
+	gin.DefaultWriter = logger.NewGinZapWriter(zapcore.InfoLevel)
+	gin.DefaultErrorWriter = logger.NewGinZapWriter(zapcore.ErrorLevel)
+
+	r := gin.New()
+	r.Use(gin.Logger(), gin.Recovery())
 
 	v1 := r.Group("/api/v1")
 

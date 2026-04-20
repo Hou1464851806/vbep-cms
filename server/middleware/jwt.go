@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"server/global"
 	"server/pkg/jwt"
@@ -16,7 +15,7 @@ func JWTAuth() gin.HandlerFunc {
 		authHeader := ctx.Request.Header.Get("Authorization")
 		if authHeader == "" {
 			ctx.JSON(http.StatusUnauthorized, gin.H{
-				"message": "Authorization header is missing",
+				"message": "缺少登录凭证",
 			})
 			ctx.Abort()
 			return
@@ -27,7 +26,7 @@ func JWTAuth() gin.HandlerFunc {
 		parts := strings.SplitN(authHeader, " ", 2)
 		if !(len(parts) == 2 && parts[0] == "Bearer") {
 			ctx.JSON(http.StatusUnauthorized, gin.H{
-				"message": "Authorization header format must be Bearer {token}",
+				"message": "登录凭证格式错误",
 			})
 			ctx.Abort()
 			return
@@ -37,7 +36,7 @@ func JWTAuth() gin.HandlerFunc {
 		tokenString := parts[1]
 
 		if jwt.IsTokenInBlacklist(tokenString) {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "token invalidated"})
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
 			ctx.Abort()
 			return
 		}
@@ -45,7 +44,7 @@ func JWTAuth() gin.HandlerFunc {
 		claims, err := jwt.ParseToken(tokenString)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{
-				"message": fmt.Sprintf("failed to parse token: %v", err),
+				"message": "登录状态无效或已过期",
 			})
 			ctx.Abort()
 			return

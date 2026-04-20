@@ -6,11 +6,11 @@ import (
 	"server/core"
 	"server/global"
 	"server/initialize"
+	"server/logger"
 	"server/service"
 	"time"
 
 	"github.com/robfig/cron/v3"
-	"go.uber.org/zap"
 )
 
 func main() {
@@ -36,6 +36,7 @@ func initializeCron() {
 	// 使用 UTC+8 (北京时间)
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
+		logger.Warnf("failed to load timezone Asia/Shanghai, fallback to UTC+8: %v", err)
 		loc = time.FixedZone("UTC+8", 8*3600)
 	}
 	c := cron.New(cron.WithLocation(loc))
@@ -58,13 +59,13 @@ func initializeCron() {
 	// 添加定时任务
 	_, err = c.AddFunc(fmt.Sprintf("0 %d/%d * * *", startHour, interval), func() {
 		if err := statsService.GenerateStats(); err != nil {
-			global.LOG.Error("Failed to generate statistics", zap.Error(err))
+			logger.Errorf("Failed to generate statistics: %v", err)
 		}
 	})
 	if err != nil {
-		global.LOG.Error("Failed to add cron job", zap.Error(err))
+		logger.Errorf("Failed to add cron job: %v", err)
 	} else {
-		global.LOG.Info("Statistics cron job created successfully", zap.Int("interval_hours", interval))
+		logger.Successf("Statistics cron job created: interval_hours=%d", interval)
 	}
 	c.Start()
 

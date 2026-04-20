@@ -47,7 +47,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	if err := ctx.ShouldBind(&param); err != nil {
 		logger.Errorf("Failed to validate request: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -70,7 +70,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	passwordHash, err := utils.PasswordToHash(param.Password)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": err.Error(),
+			"message": "注册失败，请稍后再试",
 		})
 	}
 
@@ -95,7 +95,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	if err != nil {
 		logger.Errorf("Failed to create new user in db: %v", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
-			"message": err.Error(),
+			"message": "注册失败，请稍后再试",
 		})
 		return
 	}
@@ -175,7 +175,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 
 	var param UpdateUserParam
 	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "参数错误: " + err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
 		return
 	}
 
@@ -234,7 +234,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		passwordHash, err := utils.PasswordToHash(*param.Password)
 		if err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{
-				"message": err.Error(),
+				"message": "更新密码失败，请稍后再试",
 			})
 		}
 		updates["pwd_hash"] = passwordHash
@@ -251,12 +251,15 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 	if err != nil {
 		// 简单的错误分类
 		if strings.Contains(err.Error(), "user not found") {
-			ctx.JSON(http.StatusNotFound, gin.H{"message": err.Error()})
+			ctx.JSON(http.StatusNotFound, gin.H{"message": "用户不存在"})
+		} else if strings.Contains(err.Error(), "you cannot demote yourself") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "不能取消自己的超级管理员权限"})
+		} else if strings.Contains(err.Error(), "at least one SuperAdmin") {
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "系统至少需要保留一个超级管理员"})
 		} else if strings.Contains(err.Error(), "constraint") || strings.Contains(err.Error(), "operation failed") {
-			// 业务规则错误 (如二选一失败、最后一人原则失败)
-			ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+			ctx.JSON(http.StatusBadRequest, gin.H{"message": "更新用户失败"})
 		} else if strings.Contains(err.Error(), "occupied") {
-			ctx.JSON(http.StatusConflict, gin.H{"message": err.Error()})
+			ctx.JSON(http.StatusConflict, gin.H{"message": "邮箱已被占用"})
 		} else {
 			logger.Errorf("UpdateUser error: %v", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "服务器内部错误"})
@@ -368,7 +371,7 @@ type SendOTPParam struct {
 func (u *UserApi) SendOTP(ctx *gin.Context) {
 	var param SendOTPParam
 	if err := ctx.ShouldBindJSON(&param); err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请求参数错误"})
 		return
 	}
 
@@ -402,7 +405,7 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 	if err := ctx.ShouldBind(&req); err != nil {
 		logger.Errorf("Failed to validate request: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
@@ -445,7 +448,7 @@ func (u *UserApi) ConfirmResetPassword(ctx *gin.Context) {
 	if err := ctx.ShouldBind(&req); err != nil {
 		logger.Errorf("Failed to validate request: %v", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}

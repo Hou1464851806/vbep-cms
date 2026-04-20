@@ -27,7 +27,7 @@ func (a *MailApi) SendNotification(ctx *gin.Context) {
 	var req NotificationRequest
 	if err := ctx.ShouldBind(&req); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": err.Error(),
+			"message": "请求参数错误",
 		})
 		return
 	}
