@@ -52,6 +52,31 @@ else
     echo "[OK] 凭证文件已存在，直接使用现有凭证。"
 fi
 
+echo "[*] 检查 root 超级管理员初始化配置..."
+if [ ! -f "secrets/root_email.txt" ]; then
+    echo "[+] 初次部署：需要配置默认 root 超级管理员邮箱。"
+
+    root_email=""
+    while [ -z "$root_email" ]; do
+        read -p "[-] 请输入 root 超级管理员邮箱: " root_email
+        if [ -z "$root_email" ]; then
+            echo "[!] 错误：邮箱不能为空，请重新输入！"
+        fi
+    done
+
+    echo -n "$root_email" > secrets/root_email.txt
+    echo "[+] root 超级管理员邮箱已保存到 secrets/root_email.txt"
+else
+    echo "[OK] root 超级管理员邮箱已存在，直接使用现有配置。"
+fi
+
+if [ ! -f "secrets/root_initial_password.txt" ]; then
+    : > secrets/root_initial_password.txt
+    echo "[+] 已创建 root 初始密码输出文件: secrets/root_initial_password.txt"
+else
+    echo "[OK] root 初始密码输出文件已存在。"
+fi
+
 # ==========================================
 # 2. 生成/输入 SMTP 配置
 # ==========================================
@@ -125,5 +150,12 @@ if [ -n "$FRONTEND_PORT" ]; then
     echo ">>> 系统的访问入口为：http://${HOST_IP}:${FRONTEND_PORT}"
 else
     echo ">>> 系统已启动！(提示：请在 compose.yaml 中确认前端对外暴露的端口进行访问)"
+fi
+if [ -s "secrets/root_initial_password.txt" ]; then
+    echo ">>> 默认 root 账号邮箱: $(cat secrets/root_email.txt)"
+    echo ">>> 默认 root 初始密码文件: $(pwd)/secrets/root_initial_password.txt"
+    echo ">>> 请尽快登录并修改该密码。"
+else
+    echo ">>> 未生成新的 root 初始密码；如果系统已存在 SuperAdmin，这是正常现象。"
 fi
 echo "----------------------------------------------------"

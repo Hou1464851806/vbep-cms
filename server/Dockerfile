@@ -28,6 +28,7 @@ WORKDIR /app
 
 # 安装 curl 用于健康检查
 RUN apt-get update && apt-get install -y --no-install-recommends curl procps ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /app/secrets
 
 # 复制第一阶段得到的可执行文件
 COPY --from=builder /${EXEC} .

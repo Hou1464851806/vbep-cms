@@ -48,11 +48,14 @@ services:
       WEB_URL: http://localhost:8888
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
+      ROOT_EMAIL_FILE: /run/secrets/root_email
+      ROOT_INITIAL_PASSWORD_FILE: /app/secrets/root_initial_password.txt
     ports:
       - "8080:8080"
     volumes:
       - server-log:/app/logs
       - backend-uploads:/app/uploads
+      - ./secrets/root_initial_password.txt:/app/secrets/root_initial_password.txt
 #      - ./config.toml:/app/config.toml # 用宿主机上的配置覆盖容器内的，方便修改配置
     depends_on:
       postgres:
@@ -68,6 +71,7 @@ services:
     secrets:
       - db_user
       - db_password
+      - root_email
 
   worker:
     image: vbep-cms/backend:latest
@@ -126,3 +130,5 @@ secrets:
     file: secrets/db_password.txt
   smtp_password:
     file: secrets/smtp_password.txt
+  root_email:
+    file: secrets/root_email.txt
