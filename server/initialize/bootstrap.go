@@ -43,7 +43,8 @@ func EnsureBootstrapSuperAdmin() error {
 	}
 
 	passwordPath := getEnvOrDefault(bootstrapRootPasswordPathEnv, defaultRootPasswordFilePath)
-	if err := validateBootstrapPasswordOutputPath(passwordPath); err != nil {
+	passwordFileHadContent, err := prepareBootstrapPasswordOutputPath(passwordPath)
+	if err != nil {
 		return err
 	}
 
@@ -78,6 +79,9 @@ func EnsureBootstrapSuperAdmin() error {
 		return fmt.Errorf("failed to persist bootstrap super admin password file %q: %w", passwordPath, err)
 	}
 
+	if passwordFileHadContent {
+		logger.Warnf("Bootstrap password file %s contained stale content and was overwritten because no SuperAdmin existed in database", passwordPath)
+	}
 	logger.Warnf("Bootstrap super admin created: email=%s initial_password_file=%s", email, passwordPath)
 	return nil
 }
@@ -96,32 +100,31 @@ func readBootstrapRootEmail() (string, error) {
 	return email, nil
 }
 
-func validateBootstrapPasswordOutputPath(passwordPath string) error {
+func prepareBootstrapPasswordOutputPath(passwordPath string) (bool, error) {
 	info, err := os.Stat(passwordPath)
+	hadContent := false
 	if err == nil {
 		if info.IsDir() {
-			return fmt.Errorf("bootstrap password path %q must be a file, not a directory", passwordPath)
+			return false, fmt.Errorf("bootstrap password path %q must be a file, not a directory", passwordPath)
 		}
 
 		content, readErr := os.ReadFile(passwordPath)
 		if readErr != nil {
-			return fmt.Errorf("failed to read bootstrap password file %q: %w", passwordPath, readErr)
+			return false, fmt.Errorf("failed to read bootstrap password file %q: %w", passwordPath, readErr)
 		}
-		if strings.TrimSpace(string(content)) != "" {
-			return fmt.Errorf("bootstrap password file %q already contains data; refusing to overwrite", passwordPath)
-		}
+		hadContent = strings.TrimSpace(string(content)) != ""
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("failed to inspect bootstrap password file %q: %w", passwordPath, err)
+		return false, fmt.Errorf("failed to inspect bootstrap password file %q: %w", passwordPath, err)
 	}
 
 	dir := filepath.Dir(passwordPath)
 	if stat, statErr := os.Stat(dir); statErr != nil {
-		return fmt.Errorf("bootstrap password directory %q is unavailable: %w", dir, statErr)
+		return false, fmt.Errorf("bootstrap password directory %q is unavailable: %w", dir, statErr)
 	} else if !stat.IsDir() {
-		return fmt.Errorf("bootstrap password directory %q is not a directory", dir)
+		return false, fmt.Errorf("bootstrap password directory %q is not a directory", dir)
 	}
 
-	return nil
+	return hadContent, nil
 }
 
 func generateBootstrapPassword(length int) (string, error) {
