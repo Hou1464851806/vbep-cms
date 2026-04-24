@@ -43,6 +43,7 @@ func (u *UserRouter) InitUserRouter(router *gin.RouterGroup) {
 
 		// auth
 		userRouter.POST("/login", authApi.Login)
+		userRouter.POST("/refresh", authApi.Refresh)
 		userRouter.GET("/logout", middleware.JWTAuth(), middleware.AuthRole(model.Common), authApi.Logout)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"server/internal/templates"
 	"server/logger"
 	"server/model"
+	"server/pkg/jwt"
 	"server/pkg/utils"
 	"strconv"
 	"strings"
@@ -201,6 +202,9 @@ func (s *UserService) DeleteUser(id string) error {
 	} else if result.RowsAffected > 1 {
 		return fmt.Errorf("more than 1 user affected")
 	}
+	if err := jwt.DeleteAllRefreshSessionsForUser(id); err != nil {
+		logger.Errorf("failed to revoke refresh sessions for deleted user %s: %v", id, err)
+	}
 
 	return nil
 }
@@ -255,6 +259,11 @@ func (s *UserService) UpdateUser(operator *model.User, targetUserID string, upda
 		return fmt.Errorf("user not found")
 	} else if result.RowsAffected > 1 {
 		return fmt.Errorf("more than 1 user affected")
+	}
+	if _, ok := updates["pwd_hash"]; ok {
+		if err := jwt.DeleteAllRefreshSessionsForUser(targetUserID); err != nil {
+			logger.Errorf("failed to revoke refresh sessions after password change for user %s: %v", targetUserID, err)
+		}
 	}
 
 	return nil
@@ -343,6 +352,9 @@ func (s *UserService) ConfirmResetPassword(token string, newPassword string) err
 
 	if err := global.REDIS.Del(ctx, redisKey).Err(); err != nil {
 		logger.Errorf("failed to delete token redis key %s: %v", redisKey, err)
+	}
+	if err := jwt.DeleteAllRefreshSessionsForUser(user.ID); err != nil {
+		logger.Errorf("failed to revoke refresh sessions after password reset for user %s: %v", user.ID, err)
 	}
 
 	return nil

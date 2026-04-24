@@ -54,6 +54,7 @@ const submitLoginFrom = async () => {
     }
     const response = await apiClient.post('/api/v1/users/login', requestData, {
       skipAuthRedirect: true,
+      skipAuthRefresh: true,
     })
     // 步骤 C: 登录成功处理
     console.log('登录成功，Token已写入本地存储', response.data)
