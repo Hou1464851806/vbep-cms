@@ -8,6 +8,7 @@ import (
 	"server/internal/templates"
 	"server/router"
 	"server/service"
+	"strings"
 
 	"go.uber.org/zap/zapcore"
 	"server/logger"
@@ -21,6 +22,7 @@ func NewRouter() *gin.Engine {
 
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(corsMiddleware())
 
 	v1 := r.Group("/api/v1")
 
@@ -77,4 +79,23 @@ func NewRouter() *gin.Engine {
 	//mailRouter.InitMailRouter(v1)
 
 	return r
+}
+
+func corsMiddleware() gin.HandlerFunc {
+	allowedOrigin := strings.TrimSpace(global.CFG.Web.Url)
+	return func(ctx *gin.Context) {
+		origin := ctx.GetHeader("Origin")
+		if allowedOrigin != "" && origin == allowedOrigin {
+			ctx.Header("Access-Control-Allow-Origin", origin)
+			ctx.Header("Access-Control-Allow-Credentials", "true")
+			ctx.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
+			ctx.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			ctx.Header("Vary", "Origin")
+		}
+		if ctx.Request.Method == http.MethodOptions {
+			ctx.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		ctx.Next()
+	}
 }

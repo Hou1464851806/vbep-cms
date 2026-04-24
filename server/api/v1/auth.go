@@ -1,8 +1,12 @@
 package v1
 
 import (
+	"errors"
 	"net/http"
+	"net/url"
+	"server/global"
 	"server/logger"
+	"server/model"
 	"server/pkg/jwt"
 	"server/service"
 	"strings"
@@ -25,7 +29,6 @@ type LoginParam struct {
 }
 
 func (a *AuthApi) Login(ctx *gin.Context) {
-	// 校验参数
 	var p LoginParam
 	if err := ctx.ShouldBind(&p); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -33,7 +36,7 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 		})
 		return
 	}
-	// 验证用户信息
+
 	user, err := a.service.FindAndCheckUser(p.UserInfo, p.PWDHash)
 	if err != nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{
@@ -41,53 +44,143 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 		})
 		return
 	}
-	logger.Successf("Valid user: %+v", user)
-	// 生成JWT
-	token, err := jwt.GenerateToken(user.ID)
+
+	accessToken, refreshToken, refreshJTI, err := jwt.GenerateTokenPair(user.ID)
 	if err != nil {
-		logger.Errorf("failed to generate token for user %s: %v", user.ID, err)
+		logger.Errorf("failed to generate token pair for user %s: %v", user.ID, err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "登录失败，请稍后重试",
 		})
 		return
 	}
-	// 返回
+	if err := jwt.SaveRefreshSession(refreshJTI, user.ID, refreshToken, jwt.GetRefreshTokenExpiredDuration()); err != nil {
+		logger.Errorf("failed to persist refresh session for user %s: %v", user.ID, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{
+			"message": "登录失败，请稍后重试",
+		})
+		return
+	}
+
+	setRefreshTokenCookie(ctx, refreshToken)
 	ctx.JSON(http.StatusOK, gin.H{
-		"token":  token,
-		"userID": user.ID,
+		"token":     accessToken,
+		"userID":    user.ID,
+		"expiresIn": int(jwt.GetAccessTokenExpiredDuration().Seconds()),
+	})
+}
+
+func (a *AuthApi) Refresh(ctx *gin.Context) {
+	refreshToken, err := ctx.Cookie(jwt.GetRefreshTokenCookieName())
+	if err != nil || strings.TrimSpace(refreshToken) == "" {
+		clearRefreshTokenCookie(ctx)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
+		return
+	}
+
+	claims, err := jwt.ParseRefreshToken(refreshToken)
+	if err != nil {
+		clearRefreshTokenCookie(ctx)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
+		return
+	}
+	if err := jwt.ValidateRefreshSession(claims, refreshToken); err != nil {
+		logger.Warnf("invalid refresh session for user %s: %v", claims.UserID, err)
+		_ = jwt.DeleteRefreshSession(claims.ID)
+		clearRefreshTokenCookie(ctx)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
+		return
+	}
+	if err := ensureUserExists(claims.UserID); err != nil {
+		_ = jwt.DeleteRefreshSession(claims.ID)
+		clearRefreshTokenCookie(ctx)
+		ctx.JSON(http.StatusUnauthorized, gin.H{"message": "当前用户不存在"})
+		return
+	}
+
+	newAccessToken, newRefreshToken, newRefreshJTI, err := jwt.GenerateTokenPair(claims.UserID)
+	if err != nil {
+		logger.Errorf("failed to rotate token pair for user %s: %v", claims.UserID, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "刷新登录状态失败"})
+		return
+	}
+	if err := jwt.RotateRefreshSession(claims.ID, newRefreshJTI, claims.UserID, newRefreshToken, jwt.GetRefreshTokenExpiredDuration()); err != nil {
+		logger.Errorf("failed to rotate refresh session for user %s: %v", claims.UserID, err)
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "刷新登录状态失败"})
+		return
+	}
+
+	setRefreshTokenCookie(ctx, newRefreshToken)
+	ctx.JSON(http.StatusOK, gin.H{
+		"token":     newAccessToken,
+		"expiresIn": int(jwt.GetAccessTokenExpiredDuration().Seconds()),
 	})
 }
 
 func (a *AuthApi) Logout(ctx *gin.Context) {
-	// 1. 改为从 Header 获取 Token
-	authHeader := ctx.GetHeader("Authorization")
-	if authHeader == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "请求头中缺少令牌"})
-		return
-	}
-	parts := strings.SplitN(authHeader, " ", 2)
-	tokenString := ""
-	if len(parts) == 2 && parts[0] == "Bearer" {
-		tokenString = parts[1]
-	}
-
-	// 2. 解析 Token 获取过期时间
-	claims, err := jwt.ParseToken(tokenString)
-	if err != nil {
-		// 即使 Token 只有效性有问题，也告诉前端“注销成功”，让它删掉本地存储
-		ctx.JSON(http.StatusOK, gin.H{"message": "注销成功"})
-		return
-	}
-
-	// 3. 计算剩余时间并写入 Redis (调用你新加的 pkg/jwt 方法)
-	duration := time.Until(claims.ExpiresAt.Time)
-	if duration > 0 {
-		if err := jwt.SetTokenBlacklist(tokenString, duration); err != nil {
-			logger.Errorf("redis error: %v", err)
-			// 记录日志但不要阻拦用户注销
+	tokenString := extractBearerToken(ctx.GetHeader("Authorization"))
+	if tokenString != "" {
+		claims, err := jwt.ParseAccessToken(tokenString)
+		if err == nil {
+			duration := time.Until(claims.ExpiresAt.Time)
+			if duration > 0 {
+				if err := jwt.SetTokenBlacklist(tokenString, duration); err != nil {
+					logger.Errorf("redis error when blacklisting access token: %v", err)
+				}
+			}
 		}
 	}
 
-	// 4. 不需要 SetCookie("", -1) 了，直接返回
-	ctx.JSON(http.StatusOK, gin.H{})
+	refreshToken, err := ctx.Cookie(jwt.GetRefreshTokenCookieName())
+	if err == nil && strings.TrimSpace(refreshToken) != "" {
+		if claims, parseErr := jwt.ParseRefreshToken(refreshToken); parseErr == nil {
+			if delErr := jwt.DeleteRefreshSession(claims.ID); delErr != nil {
+				logger.Errorf("redis error when deleting refresh session: %v", delErr)
+			}
+		}
+	}
+	clearRefreshTokenCookie(ctx)
+	ctx.JSON(http.StatusOK, gin.H{"message": "注销成功"})
+}
+
+func extractBearerToken(authHeader string) string {
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) == 2 && parts[0] == "Bearer" {
+		return parts[1]
+	}
+	return ""
+}
+
+func ensureUserExists(userID string) error {
+	var user model.User
+	if err := global.DB.First(&user, "id = ?", userID).Error; err != nil {
+		return err
+	}
+	if user.ID == "" {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+func setRefreshTokenCookie(ctx *gin.Context, refreshToken string) {
+	cookieName := jwt.GetRefreshTokenCookieName()
+	maxAge := int(jwt.GetRefreshTokenExpiredDuration().Seconds())
+	ctx.SetSameSite(http.SameSiteLaxMode)
+	ctx.SetCookie(cookieName, refreshToken, maxAge, "/api/v1/users", "", isCookieSecure(), true)
+}
+
+func clearRefreshTokenCookie(ctx *gin.Context) {
+	ctx.SetSameSite(http.SameSiteLaxMode)
+	ctx.SetCookie(jwt.GetRefreshTokenCookieName(), "", -1, "/api/v1/users", "", isCookieSecure(), true)
+}
+
+func isCookieSecure() bool {
+	webURL := strings.TrimSpace(global.CFG.Web.Url)
+	if webURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(webURL)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https"
 }

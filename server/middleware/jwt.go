@@ -41,7 +41,7 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
-		claims, err := jwt.ParseToken(tokenString)
+		claims, err := jwt.ParseAccessToken(tokenString)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{
 				"message": "登录状态无效或已过期",
