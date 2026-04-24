@@ -3,7 +3,41 @@ import router from '@/router'
 import { ElMessageBox } from 'element-plus'
 
 const AUTH_TOKEN_STORAGE_KEY = 'auth_token'
+const ACCESS_TOKEN_REFRESH_LEAD_MS = 60 * 1000
 const isBrowser = typeof window !== 'undefined'
+
+const decodeJwtPayload = (token) => {
+  if (!token) return null
+  const parts = token.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const normalized = payload.padEnd(payload.length + ((4 - (payload.length % 4)) % 4), '=')
+    return JSON.parse(window.atob(normalized))
+  } catch (error) {
+    console.error('Failed to decode auth token payload', error)
+    return null
+  }
+}
+
+const getTokenRemainingMs = (token) => {
+  if (!isBrowser || !token) return 0
+  const payload = decodeJwtPayload(token)
+  const exp = Number(payload?.exp)
+  if (!Number.isFinite(exp)) return 0
+  return exp * 1000 - Date.now()
+}
+
+const getTokenRefreshLeadMs = (token) => {
+  const payload = decodeJwtPayload(token)
+  const exp = Number(payload?.exp)
+  const iat = Number(payload?.iat)
+  if (!Number.isFinite(exp) || !Number.isFinite(iat) || exp <= iat) {
+    return ACCESS_TOKEN_REFRESH_LEAD_MS
+  }
+  const lifetimeMs = (exp - iat) * 1000
+  return Math.min(ACCESS_TOKEN_REFRESH_LEAD_MS, Math.max(5000, Math.floor(lifetimeMs / 3)))
+}
 
 export const readAuthToken = () => {
   if (!isBrowser) return null
@@ -46,18 +80,6 @@ const apiClient = axios.create({
   timeout: 15000,
   withCredentials: true,
 })
-
-apiClient.interceptors.request.use(
-  (config) => {
-    const token = readAuthToken()
-    if (token) {
-      config.headers = config.headers || {}
-      config.headers.Authorization = `Bearer ${token}`
-    }
-    return config
-  },
-  (error) => Promise.reject(error),
-)
 
 let isAuthAlerting = false
 let refreshTokenPromise = null
@@ -125,6 +147,57 @@ const requestAccessTokenRefresh = async () => {
   return refreshTokenPromise
 }
 
+const handleRefreshFailure = (error, options = {}) => {
+  const { allowRetry = false } = options
+  const status = error?.response?.status
+  if (status === 429 && allowRetry) {
+    return false
+  }
+  if (status === 401) {
+    redirectToLogin()
+  }
+  return true
+}
+
+const ensureFreshAccessToken = async (currentToken) => {
+  if (!currentToken) return currentToken
+  const remainingMs = getTokenRemainingMs(currentToken)
+  if (remainingMs > getTokenRefreshLeadMs(currentToken)) {
+    return currentToken
+  }
+  try {
+    return await requestAccessTokenRefresh()
+  } catch (error) {
+    if (error?.response?.status === 429 && remainingMs > 0) {
+      return currentToken
+    }
+    handleRefreshFailure(error)
+    throw error
+  }
+}
+
+apiClient.interceptors.request.use(
+  async (config) => {
+    let token = readAuthToken()
+    if (token && !config.skipAuthRefresh) {
+      try {
+        token = await ensureFreshAccessToken(token)
+      } catch (error) {
+        if (!config.skipAuthRedirect) {
+          handleRefreshFailure(error)
+        }
+        return Promise.reject(error)
+      }
+    }
+    if (token) {
+      config.headers = config.headers || {}
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+  },
+  (error) => Promise.reject(error),
+)
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -142,7 +215,7 @@ apiClient.interceptors.response.use(
           return apiClient(originalRequest)
         } catch (refreshError) {
           if (!skipAuthRedirect) {
-            redirectToLogin()
+            handleRefreshFailure(refreshError)
           }
           return Promise.reject(refreshError)
         }

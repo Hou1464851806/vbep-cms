@@ -35,17 +35,16 @@ func JWTAuth() gin.HandlerFunc {
 		// 3. 拿到真正的 Token 字符串
 		tokenString := parts[1]
 
-		if jwt.IsTokenInBlacklist(tokenString) {
-			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
-			ctx.Abort()
-			return
-		}
-
 		claims, err := jwt.ParseAccessToken(tokenString)
 		if err != nil {
 			ctx.JSON(http.StatusUnauthorized, gin.H{
 				"message": "登录状态无效或已过期",
 			})
+			ctx.Abort()
+			return
+		}
+		if jwt.IsAccessTokenBlacklisted(claims.ID) {
+			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "登录状态已失效"})
 			ctx.Abort()
 			return
 		}

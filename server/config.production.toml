@@ -5,7 +5,9 @@ app_mode = "api"
 ip = "0.0.0.0"
 port = 8080
 access_token_expired_duration = 15
-refresh_token_expired_duration = 10080
+refresh_token_idle_timeout = 10080 # 7天
+refresh_token_absolute_lifetime = 43200 # 30天
+refresh_min_interval_seconds = 30
 refresh_token_cookie_name = "vbep_refresh_token"
 
 [web]
