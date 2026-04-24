@@ -60,6 +60,7 @@ apiClient.interceptors.request.use(
 )
 
 let isAuthAlerting = false
+let refreshTokenPromise = null
 
 const resolveAuthRedirectTarget = () => {
   const currentRoute = router.currentRoute.value
@@ -73,37 +74,82 @@ const resolveAuthRedirectTarget = () => {
   return currentRoute?.fullPath || '/home'
 }
 
+const redirectToLogin = () => {
+  const redirectTarget = resolveAuthRedirectTarget()
+  clearAuthToken()
+  if (isAuthAlerting) {
+    return
+  }
+  isAuthAlerting = true
+  ElMessageBox.alert('登录状态已过期，请重新登录', '提示', {
+    confirmButtonText: '重新登录',
+    type: 'warning',
+    showClose: false,
+    callback: () => {
+      isAuthAlerting = false
+      if (redirectTarget) {
+        router.replace({
+          path: '/login',
+          query: { redirect: redirectTarget },
+        })
+        return
+      }
+      router.replace({ path: '/login' })
+    },
+  })
+}
+
+const requestAccessTokenRefresh = async () => {
+  if (!refreshTokenPromise) {
+    refreshTokenPromise = apiClient
+      .post(
+        '/api/v1/users/refresh',
+        {},
+        {
+          skipAuthRedirect: true,
+          skipAuthRefresh: true,
+        },
+      )
+      .then((response) => {
+        const token = response.data?.token
+        if (!token) {
+          throw new Error('Refresh response missing access token')
+        }
+        setAuthToken(token)
+        return token
+      })
+      .finally(() => {
+        refreshTokenPromise = null
+      })
+  }
+  return refreshTokenPromise
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const skipAuthRedirect = error?.config?.skipAuthRedirect
+    const skipAuthRefresh = error?.config?.skipAuthRefresh
+    const originalRequest = error?.config
 
     if (error?.response) {
-      if (skipAuthRedirect) {
-        return Promise.reject(error)
-      }
-      if (error.response.status === 401) {
-        const redirectTarget = resolveAuthRedirectTarget()
-        clearAuthToken()
-        if (!isAuthAlerting) {
-          isAuthAlerting = true
-          ElMessageBox.alert('登录状态已过期，请重新登录', '提示', {
-            confirmButtonText: '重新登录',
-            type: 'warning',
-            showClose: false,
-            callback: () => {
-              isAuthAlerting = false
-              if (redirectTarget) {
-                router.replace({
-                  path: '/login',
-                  query: { redirect: redirectTarget }
-                })
-                return
-              }
-              router.replace({ path: '/login' })
-            }
-          })
+      if (error.response.status === 401 && !skipAuthRefresh && originalRequest && !originalRequest._retry) {
+        originalRequest._retry = true
+        try {
+          const token = await requestAccessTokenRefresh()
+          originalRequest.headers = originalRequest.headers || {}
+          originalRequest.headers.Authorization = `Bearer ${token}`
+          return apiClient(originalRequest)
+        } catch (refreshError) {
+          if (!skipAuthRedirect) {
+            redirectToLogin()
+          }
+          return Promise.reject(refreshError)
         }
+      }
+
+      if (!skipAuthRedirect && error.response.status === 401) {
+        redirectToLogin()
       }
       console.error('API request failed:', error.response.status, error.response.data)
     }
