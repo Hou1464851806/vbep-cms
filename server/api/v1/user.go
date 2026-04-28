@@ -45,7 +45,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 	// 1. 绑定参数
 	var param CreateUserParam
 	if err := ctx.ShouldBind(&param); err != nil {
-		logger.Errorf("Failed to validate request: %v", err)
+		logger.Errorw("Failed to validate request", "error", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "请求参数错误",
 		})
@@ -93,7 +93,7 @@ func (u *UserApi) CreateUser(ctx *gin.Context) {
 
 	err = u.service.CreateUser(newUser)
 	if err != nil {
-		logger.Errorf("Failed to create new user in db: %v", err)
+		logger.Errorw("Failed to create new user in db", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "注册失败，请稍后再试",
 		})
@@ -153,7 +153,7 @@ func (u *UserApi) DeleteUser(ctx *gin.Context) {
 			return
 		}
 
-		logger.Errorf("Failed to delete user: %v", err)
+		logger.Errorw("Failed to delete user", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "服务器内部错误",
 		})
@@ -261,7 +261,7 @@ func (u *UserApi) UpdateUser(ctx *gin.Context) {
 		} else if strings.Contains(err.Error(), "occupied") {
 			ctx.JSON(http.StatusConflict, gin.H{"message": "邮箱已被占用"})
 		} else {
-			logger.Errorf("UpdateUser error: %v", err)
+			logger.Errorw("UpdateUser error", "error", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{"message": "服务器内部错误"})
 		}
 		return
@@ -281,7 +281,7 @@ func (u *UserApi) GetUser(ctx *gin.Context) {
 			})
 			return
 		}
-		logger.Errorf("failed to query user: %v", err)
+		logger.Errorw("failed to query user", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "获取用户信息失败",
 		})
@@ -325,7 +325,7 @@ func (u *UserApi) GetAllUsers(ctx *gin.Context) {
 	// 1. 调用 Service 获取数据
 	users, total, err := u.service.GetAllUsers(query)
 	if err != nil {
-		logger.Errorf("failed to query all users: %v", err)
+		logger.Errorw("failed to query all users", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "获取用户列表失败",
 		})
@@ -381,7 +381,7 @@ func (u *UserApi) SendOTP(ctx *gin.Context) {
 	}
 
 	if err := u.service.SendOTP(param.Target); err != nil {
-		logger.Errorf("Failed to send otp: %v", err)
+		logger.Errorw("Failed to send otp", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "发送失败"})
 		return
 	}
@@ -403,7 +403,7 @@ type ResetPassReq struct {
 func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 	var req ResetPassReq
 	if err := ctx.ShouldBind(&req); err != nil {
-		logger.Errorf("Failed to validate request: %v", err)
+		logger.Errorw("Failed to validate request", "error", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "请求参数错误",
 		})
@@ -426,7 +426,7 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 
 	err := u.service.SendResetPassword(req.Email, req.FrontendUrl)
 	if err != nil {
-		logger.Errorf("Failed to send reset password email: %v", err)
+		logger.Errorw("Failed to send reset password email", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "密码重置失败，请稍后再试",
 		})
@@ -446,7 +446,7 @@ type ConfirmResetPassReq struct {
 func (u *UserApi) ConfirmResetPassword(ctx *gin.Context) {
 	var req ConfirmResetPassReq
 	if err := ctx.ShouldBind(&req); err != nil {
-		logger.Errorf("Failed to validate request: %v", err)
+		logger.Errorw("Failed to validate request", "error", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "请求参数错误",
 		})
@@ -460,7 +460,7 @@ func (u *UserApi) ConfirmResetPassword(ctx *gin.Context) {
 				"message": "重置链接失效或已过期，请重新申请重置密码",
 			})
 		} else {
-			logger.Errorf("Failed to confirm new password: %v", err)
+			logger.Errorw("Failed to confirm new password", "error", err)
 			ctx.JSON(http.StatusInternalServerError, gin.H{
 				"message": "重置密码失败，请稍后再试",
 			})
@@ -474,7 +474,7 @@ func (u *UserApi) ConfirmResetPassword(ctx *gin.Context) {
 func (u *UserApi) isValidLink(link string) bool {
 	parsedUrl, err := url.Parse(link)
 	if err != nil {
-		logger.Errorf("failed to parse url: %v", err)
+		logger.Errorw("failed to parse url", "error", err)
 		return false
 	}
 

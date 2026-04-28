@@ -1,6 +1,8 @@
 package service
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -38,7 +40,7 @@ func (s *UserService) CreateUser(user *model.User) error {
 	result := gorm.WithResult()
 	err := gorm.G[model.User](global.DB, result).Create(ctx, user)
 	if err != nil {
-		return fmt.Errorf("failed to create user: %w", err)
+		return apperr.New(err, "failed to create user")
 	}
 	return nil
 }
@@ -50,7 +52,7 @@ func (s *UserService) FindAndCheckUser(info string, password string) (*model.Use
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("failed to find user (info = %s)", info)
 		} else {
-			return nil, fmt.Errorf("failed to find user: %w", err)
+			return nil, apperr.New(err, "failed to find user")
 		}
 	}
 	//if password != user.PWDHash {
@@ -68,7 +70,7 @@ func (s *UserService) GetUserByID(id string) (*model.User, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, gorm.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("failed to query user by id %s: %w", id, err)
+		return nil, apperr.New(err, "failed to query user by id", "user_id", id)
 	}
 
 	return &user, nil
@@ -81,7 +83,7 @@ func (s *UserService) GetUserByEmail(email string) (*model.User, error) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, gorm.ErrRecordNotFound
 		}
-		return nil, fmt.Errorf("failed to query user by email %s: %w", email, err)
+		return nil, apperr.New(err, "failed to query user by email", "email", email)
 	}
 
 	return &user, nil
@@ -152,19 +154,19 @@ func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error)
 		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
 			baseQuery = baseQuery.Where("users.created_at >= ?", t)
 		} else {
-			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+			logger.Errorw("Failed to parse DateStart. Value: ', Error", "datestart", q.DateStart, "error", err)
 		}
 	}
 	if q.DateEnd != "" {
 		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
 			baseQuery = baseQuery.Where("users.created_at < ?", t.AddDate(0, 0, 1))
 		} else {
-			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+			logger.Errorw("Failed to parse DateEnd. Value: ', Error", "dateend", q.DateEnd, "error", err)
 		}
 	}
 	// ── 计数 ──
 	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+		return nil, 0, apperr.New(err, "failed to count users")
 	}
 	// ── 排序（白名单校验）──
 	orderClause := "users.created_at DESC"
@@ -182,7 +184,7 @@ func (s *UserService) GetAllUsers(q UserListQuery) ([]*model.User, int64, error)
 		Offset(offset).
 		Limit(q.PageSize).
 		Find(&users).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to query users: %w", err)
+		return nil, 0, apperr.New(err, "failed to query users")
 	}
 
 	return users, total, nil
@@ -194,7 +196,7 @@ func (s *UserService) DeleteUser(id string) error {
 	result := global.DB.WithContext(ctx).Where("id = ?", id).Delete(&model.User{})
 
 	if result.Error != nil {
-		return fmt.Errorf("failed to delete user: %w", result.Error)
+		return apperr.New(result.Error, "failed to delete user")
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("user not found")
@@ -289,7 +291,7 @@ func (s *UserService) SendResetPassword(userEmail string, frontendUrl string) er
 	// 验证邮箱，不存在也不报错，防止邮箱枚举攻击
 	_, err := s.GetUserByEmail(userEmail)
 	if err != nil {
-		logger.Warnf("failed to verify email: %v", err)
+		logger.Warnw("failed to verify email", "error", err)
 		return nil
 	}
 	// 生成token用于重置密码url
@@ -342,7 +344,7 @@ func (s *UserService) ConfirmResetPassword(token string, newPassword string) err
 	}
 
 	if err := global.REDIS.Del(ctx, redisKey).Err(); err != nil {
-		logger.Errorf("failed to delete token redis key %s: %v", redisKey, err)
+		logger.Errorw("failed to delete token redis key", "rediskey", redisKey, "error", err)
 	}
 
 	return nil
@@ -356,7 +358,7 @@ func (s *UserService) GetUserFiles(userID string, page int, pageSize int) ([]mod
 	db := global.DB.WithContext(ctx).Model(&model.File{}).Where("creator_id = ?", userID)
 	// 2. 先执行 Count 操作获取总数，用于分页
 	if err := db.Count(&total).Error; err != nil {
-		logger.Errorf("Failed to count files for user %s: %w", userID, err)
+		logger.Errorw("Failed to count files for user", "user_id", userID, "error", err)
 		return nil, 0, fmt.Errorf("database error while counting files")
 	}
 	// 如果总数为0，没必要继续查询，直接返回
@@ -366,7 +368,7 @@ func (s *UserService) GetUserFiles(userID string, page int, pageSize int) ([]mod
 	// 3. 再执行 Find 操作，带上分页和排序
 	offset := (page - 1) * pageSize
 	if err := db.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&files).Error; err != nil {
-		logger.Errorf("Failed to find files for user %s: %w", userID, err)
+		logger.Errorw("Failed to find files for user", "user_id", userID, "error", err)
 		return nil, 0, fmt.Errorf("database error while finding files")
 	}
 	// 4. 返回查询到的文件列表、总数和nil错误

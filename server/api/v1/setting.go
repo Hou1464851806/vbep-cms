@@ -20,7 +20,7 @@ func NewSettingApi() *SettingApi {
 func (a *SettingApi) GetSetting(c *gin.Context) {
 	setting, err := a.service.GetSetting()
 	if err != nil {
-		logger.Errorf("failed to get setting: %v", err)
+		logger.Errorw("failed to get setting", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "获取设置失败",
 		})
@@ -74,7 +74,7 @@ func (a *SettingApi) SetSetting(c *gin.Context) {
 	}
 
 	if err := a.service.SetSetting(dbReq); err != nil {
-		logger.Errorf("failed to set setting: %v", err)
+		logger.Errorw("failed to set setting", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"message": "保存设置失败",
 		})
@@ -87,7 +87,7 @@ func (a *SettingApi) SetSetting(c *gin.Context) {
 func (a *SettingApi) GetUserAgreement(c *gin.Context) {
 	setting, err := a.service.GetSetting()
 	if err != nil {
-		logger.Errorf("failed to get setting: %v", err)
+		logger.Errorw("failed to get setting", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "获取协议失败"})
 		return
 	}

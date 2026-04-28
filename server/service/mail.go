@@ -24,7 +24,7 @@ func NewMailService(client *asynq.Client, engine *templates.TemplateEngine) *Mai
 func (s *MailService) pushNewMail(msg mail.Message, queueName string, maxRetry int) error {
 	task, err := tasks.NewEmailDeliveryTask(msg)
 	if err != nil {
-		logger.Errorf("failed to create mail task to=%s subject=%s: %v", msg.To, msg.Subject, err)
+		logger.Errorw("failed to create mail task", "to", msg.To, "subject", msg.Subject, "error", err)
 		return err
 	}
 	opts := []asynq.Option{asynq.Queue(queueName)}
@@ -33,10 +33,10 @@ func (s *MailService) pushNewMail(msg mail.Message, queueName string, maxRetry i
 	}
 	t, err := s.client.Enqueue(task, opts...)
 	if err != nil {
-		logger.Errorf("failed to enqueue mail task to=%s subject=%s queue=%s: %v", msg.To, msg.Subject, queueName, err)
+		logger.Errorw("failed to enqueue mail task", "to", msg.To, "subject", msg.Subject, "queue", queueName, "error", err)
 		return err
 	}
-	logger.Debugf("Task info: queue=%s max_retry=%d", t.Queue, t.MaxRetry)
+	logger.Debugw("Task info", "queue", t.Queue, "max_retry", t.MaxRetry)
 	return err
 }
 

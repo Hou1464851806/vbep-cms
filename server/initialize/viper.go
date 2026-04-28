@@ -11,7 +11,7 @@ import (
 func getSecrets(filePath string, fallback string) string {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		logger.Errorf("Read secrets file error: %v", err)
+		logger.Errorw("Read secrets file error", "error", err)
 		return fallback
 	}
 	return strings.TrimSpace(string(content))
@@ -23,10 +23,10 @@ func NewViper() *viper.Viper {
 	v.SetConfigType("toml")
 	v.AddConfigPath(".")
 	if err := v.ReadInConfig(); err != nil {
-		logger.Fatalf("Read config error: %v", err)
+		logger.Fatalw("Read config error", "error", err)
 	}
 	if err := v.Unmarshal(&global.CFG); err != nil {
-		logger.Fatalf("Unmarshal config error: %v", err)
+		logger.Fatalw("Unmarshal config error", "error", err)
 	}
 	// 从环境变量获取部分配置
 	if appMode := os.Getenv("APP_MODE"); appMode != "" {
@@ -40,6 +40,6 @@ func NewViper() *viper.Viper {
 	global.CFG.Database.Password = getSecrets("/run/secrets/db_password", global.CFG.Database.Password)
 	global.CFG.Email.Smtp.Password = getSecrets("/run/secrets/smtp_password", global.CFG.Email.Smtp.Password)
 	// debug
-	logger.Debugf("Config: %#v", global.CFG)
+	logger.Debugw("Configv", "config", global.CFG)
 	return v
 }

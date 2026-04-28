@@ -27,7 +27,7 @@ func NewDB() *gorm.DB {
 			dbPath = "database.db"
 		}
 		dialector = sqlite.Open(dbPath)
-		logMsg = fmt.Sprintf("Connect to Postgres %s on %s", dbCfg.DBName, dbCfg.DBPath)
+		logMsg = fmt.Sprintf("Connect to SQLite %s on %s", dbCfg.DBName, dbCfg.DBPath)
 
 	case "postgres", "pgsql":
 		fallthrough
@@ -40,19 +40,19 @@ func NewDB() *gorm.DB {
 	// 3. 统一建立连接
 	db, err := gorm.Open(dialector, &gorm.Config{})
 	if err != nil {
-		logger.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalw("Failed to connect to database", "error", err)
 	}
 
-	logger.Successf(logMsg)
+	logger.Infow("[Success] " + logMsg)
 
 	// 4. 自动迁移
 	err = autoMigrate(db)
 	if err != nil {
-		//logger.Errorf("Failed to migrate schema: %v", err)
-		logger.Fatalf("Failed to migrate schema: %v", err)
+		//logger.Errorw("Failed to migrate schema", "error", err)
+		logger.Fatalw("Failed to migrate schema", "error", err)
 	}
 
-	logger.Successf("Auto migrate schema")
+	logger.Infow("[Success] Auto migrate schema")
 
 	return db
 }

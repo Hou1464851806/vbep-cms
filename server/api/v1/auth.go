@@ -41,11 +41,11 @@ func (a *AuthApi) Login(ctx *gin.Context) {
 		})
 		return
 	}
-	logger.Successf("Valid user: %+v", user)
+	logger.Infow("[Success] Valid user: %+v", "user", user)
 	// 生成JWT
 	token, err := jwt.GenerateToken(user.ID)
 	if err != nil {
-		logger.Errorf("failed to generate token for user %s: %v", user.ID, err)
+		logger.Errorw("failed to generate token for user", "user_id", user.ID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "登录失败，请稍后重试",
 		})
@@ -83,7 +83,7 @@ func (a *AuthApi) Logout(ctx *gin.Context) {
 	duration := time.Until(claims.ExpiresAt.Time)
 	if duration > 0 {
 		if err := jwt.SetTokenBlacklist(tokenString, duration); err != nil {
-			logger.Errorf("redis error: %v", err)
+			logger.Errorw("redis error", "error", err)
 			// 记录日志但不要阻拦用户注销
 		}
 	}

@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap/zapcore"
 	"server/logger"
+	"server/middleware"
 )
 
 func NewRouter() *gin.Engine {
@@ -20,7 +21,7 @@ func NewRouter() *gin.Engine {
 	gin.DefaultErrorWriter = logger.NewGinZapWriter(zapcore.ErrorLevel)
 
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery())
+	r.Use(middleware.GinLogger(), gin.Recovery())
 
 	v1 := r.Group("/api/v1")
 

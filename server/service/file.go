@@ -1,6 +1,8 @@
 package service
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -54,7 +56,7 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 				limitMB = global.CFG.File.UploadLimitDataset
 			}
 		} else {
-			logger.Warnf("failed to query uploader role for user %s: %v", creatorID, err)
+			logger.Warnw("failed to query uploader role for user", "user_id", creatorID, "error", err)
 		}
 	}
 
@@ -75,20 +77,20 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 
 	src, err := fileHeader.Open()
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to open upload file: %w", err)
+		return nil, "", apperr.New(err, "failed to open upload file")
 	}
 	defer src.Close()
 
 	fileUUID := utils.NewV4()
 	ownerDir := model.GetDir(ownerType, ownerID)
 	if err := os.MkdirAll(ownerDir, os.ModePerm); err != nil {
-		return nil, "", fmt.Errorf("failed to create upload directory: %w", err)
+		return nil, "", apperr.New(err, "failed to create upload directory")
 	}
 
 	targetPath := filepath.Clean(filepath.Join(ownerDir, fileUUID))
 	tmpFile, err := os.Create(targetPath)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create destination file: %w", err)
+		return nil, "", apperr.New(err, "failed to create destination file")
 	}
 	defer tmpFile.Close()
 
@@ -98,9 +100,9 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 		// 清理可能残留的文件
 		tmpFile.Close()
 		if removeErr := os.Remove(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			logger.Warnf("failed to cleanup partial upload %s: %v", targetPath, removeErr)
+			logger.Warnw("failed to cleanup partial upload", "path", targetPath, "error", removeErr)
 		}
-		return nil, "", fmt.Errorf("failed to write file to disk: %w", err)
+		return nil, "", apperr.New(err, "failed to write file to disk")
 	}
 
 	size := uint(written)
@@ -124,9 +126,9 @@ func (s *FileService) UploadFile(ctx context.Context, tx *gorm.DB, ownerID, owne
 
 	if err := db.WithContext(ctx).Create(newFile).Error; err != nil {
 		if removeErr := os.Remove(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			logger.Warnf("failed to cleanup file %s after db error: %v", targetPath, removeErr)
+			logger.Warnw("failed to cleanup file after db error", "path", targetPath, "error", removeErr)
 		}
-		return nil, "", fmt.Errorf("failed to save file metadata: %w", err)
+		return nil, "", apperr.New(err, "failed to save file metadata")
 	}
 
 	return newFile, targetPath, nil
@@ -165,11 +167,11 @@ func (s *FileService) CreateApplicationFile(applicationID string, creatorID stri
 
 		if latestAudit.Action == model.DRAFT {
 			if err := global.DB.WithContext(ctx).Model(&latestAudit).Association("Files").Append(newFile); err != nil {
-				logger.Errorf("failed to associate file %s with audit %s: %v", newFile.ID, latestAudit.ID, err)
+				logger.Errorw("failed to associate file with audit", "file_id", newFile.ID, "file_id", latestAudit.ID, "error", err)
 			}
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		logger.Warnf("failed to query latest audit for application %s: %v", applicationID, err)
+		logger.Warnw("failed to query latest audit for application", "application_id", applicationID, "error", err)
 	}
 
 	return newFile, nil
@@ -233,19 +235,19 @@ func (s *FileService) ListFilesPaginated(q PublicFileListQuery) ([]model.File, i
 		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
 			baseQuery = baseQuery.Where("files.created_at >= ?", t)
 		} else {
-			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+			logger.Errorw("Failed to parse DateStart. Value: ', Error", "datestart", q.DateStart, "error", err)
 		}
 	}
 	if q.DateEnd != "" {
 		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
 			baseQuery = baseQuery.Where("files.created_at < ?", t.AddDate(0, 0, 1))
 		} else {
-			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+			logger.Errorw("Failed to parse DateEnd. Value: ', Error", "dateend", q.DateEnd, "error", err)
 		}
 	}
 	// ── 计数 ──
 	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count public files: %w", err)
+		return nil, 0, apperr.New(err, "failed to count public files")
 	}
 	// ── 排序（白名单校验）──
 	orderClause := "files.created_at DESC"
@@ -264,7 +266,7 @@ func (s *FileService) ListFilesPaginated(q PublicFileListQuery) ([]model.File, i
 		Limit(q.PageSize).
 		Find(&files).Error
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query public files: %w", err)
+		return nil, 0, apperr.New(err, "failed to query public files")
 	}
 
 	return files, total, err
@@ -296,7 +298,7 @@ func (s *FileService) GetDatasetFile(datasetID, fileID string) (*model.File, err
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to query dataset file: %w", err)
+		return nil, apperr.New(err, "failed to query dataset file")
 	}
 	return file, nil
 }
@@ -316,7 +318,7 @@ func (s *FileService) GetApplicationFile(applicationID, fileID string) (*model.F
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to query application file: %w", err)
+		return nil, apperr.New(err, "failed to query application file")
 	}
 	return file, nil
 }
@@ -337,7 +339,7 @@ func (s *FileService) GetPublicFile(fileID string) (*model.File, error) {
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to query public file: %w", err)
+		return nil, apperr.New(err, "failed to query public file")
 	}
 	return file, nil
 }
@@ -379,7 +381,7 @@ func (s *FileService) DeleteFile(ctx context.Context, fileID, ownerID, ownerType
 		Where("id = ? AND owner_id = ? AND owner_type = ?", fileID, ownerID, ownerType).
 		Delete(&model.File{})
 	if res.Error != nil {
-		return fmt.Errorf("failed to delete file record: %w", res.Error)
+		return apperr.New(res.Error, "failed to delete file record")
 	}
 	if res.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
@@ -398,7 +400,7 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 	ctx := context.Background()
 	files, err := s.ListFiles(ctx, datasetID, datasetOwnerType)
 	if err != nil {
-		return fmt.Errorf("failed to query files for dataset %s: %w", datasetID, err)
+		return apperr.New(err, "failed to query files for dataset", "dataset_id", datasetID)
 	}
 
 	for _, file := range files {
@@ -409,11 +411,11 @@ func (s *FileService) DeleteFilesByDataset(datasetID string) error {
 		Where("owner_id = ? AND owner_type = ?", datasetID, datasetOwnerType).
 		Delete(&model.File{})
 	if res.Error != nil {
-		return fmt.Errorf("failed to delete files for dataset %s: %w", datasetID, res.Error)
+		return apperr.New(res.Error, "failed to delete files for dataset", "dataset_id", datasetID)
 	}
 
 	if err := os.RemoveAll(model.GetDir(datasetOwnerType, datasetID)); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove dataset directory %s: %v", datasetID, err)
+		logger.Warnw("failed to remove dataset directory", "dataset_id", datasetID, "error", err)
 	}
 	return nil
 }
@@ -422,7 +424,7 @@ func (s *FileService) DeleteFilesByApplication(applicationID string) error {
 	ctx := context.Background()
 	files, err := s.ListFiles(ctx, applicationID, applicationOwnerType)
 	if err != nil {
-		return fmt.Errorf("failed to query files for application %s: %w", applicationID, err)
+		return apperr.New(err, "failed to query files for application", "application_id", applicationID)
 	}
 
 	for _, file := range files {
@@ -433,11 +435,11 @@ func (s *FileService) DeleteFilesByApplication(applicationID string) error {
 		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
 		Delete(&model.File{})
 	if res.Error != nil {
-		return fmt.Errorf("failed to delete files for application %s: %w", applicationID, res.Error)
+		return apperr.New(res.Error, "failed to delete files for application", "application_id", applicationID)
 	}
 
 	if err := os.RemoveAll(model.GetDir(applicationOwnerType, applicationID)); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove application directory %s: %v", applicationID, err)
+		logger.Warnw("failed to remove application directory", "application_id", applicationID, "error", err)
 	}
 	return nil
 }
@@ -449,7 +451,7 @@ func (s *FileService) DeleteFilesByAudit(auditID string) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil // Audit not found, nothing to do
 		}
-		return fmt.Errorf("failed to find audit %s: %w", auditID, err)
+		return apperr.New(err, "failed to find audit", "audit_id", auditID)
 	}
 
 	if len(audit.Files) == 0 {
@@ -466,13 +468,13 @@ func (s *FileService) DeleteFilesByAudit(auditID string) error {
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// 1. Clear associations in the join table
 		if err := tx.Model(&audit).Association("Files").Clear(); err != nil {
-			return fmt.Errorf("failed to clear file associations for audit %s: %w", auditID, err)
+			return apperr.New(err, "failed to clear file associations for audit", "file_id", auditID)
 		}
 
 		// 2. Delete the file records themselves
 		if len(fileIDs) > 0 {
 			if err := tx.Where("id IN ?", fileIDs).Delete(&model.File{}).Error; err != nil {
-				return fmt.Errorf("failed to delete file records for audit %s: %w", auditID, err)
+				return apperr.New(err, "failed to delete file records for audit", "file_id", auditID)
 			}
 		}
 
@@ -509,7 +511,7 @@ func (s *FileService) SyncApplicationFiles(ctx context.Context, tx *gorm.DB, app
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("owner_id = ? AND owner_type = ?", applicationID, applicationOwnerType).
 		Find(&existingFiles).Error; err != nil {
-		return nil, cleanup, fmt.Errorf("failed to query attachments for application %s: %w", applicationID, err)
+		return nil, cleanup, apperr.New(err, "failed to query attachments for application", "application_id", applicationID)
 	}
 
 	// 收集被保留的文件对象
@@ -576,7 +578,7 @@ func (s *FileService) GetLatestApplicationFiles(applicationID string) ([]model.F
 			}
 			return fallbackFiles, nil
 		}
-		return nil, fmt.Errorf("failed to query latest audit: %w", err)
+		return nil, apperr.New(err, "failed to query latest audit")
 	}
 
 	// 2. 如果 Audit 关联了文件，直接返回
@@ -615,7 +617,7 @@ func (s *FileService) ensureDatasetExists(ctx context.Context, datasetID string)
 		if err == gorm.ErrRecordNotFound {
 			return err
 		}
-		return fmt.Errorf("failed to query dataset %s: %w", datasetID, err)
+		return apperr.New(err, "failed to query dataset", "dataset_id", datasetID)
 	}
 	return nil
 }
@@ -629,7 +631,7 @@ func (s *FileService) ensureApplicationExists(ctx context.Context, applicationID
 		if err == gorm.ErrRecordNotFound {
 			return err
 		}
-		return fmt.Errorf("failed to query application %s: %w", applicationID, err)
+		return apperr.New(err, "failed to query application", "application_id", applicationID)
 	}
 	return nil
 }
@@ -642,7 +644,7 @@ func removePhysicalFile(filePath string) {
 		}
 	}
 	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
-		logger.Warnf("failed to remove file %s: %v", targetPath, err)
+		logger.Warnw("failed to remove file", "path", targetPath, "error", err)
 	}
 }
 
@@ -651,13 +653,13 @@ func cleanupOwnerDirectory(ownerType, ownerID string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			logger.Warnf("failed to inspect directory %s: %v", dir, err)
+			logger.Warnw("failed to inspect directory", "directory", dir, "error", err)
 		}
 		return
 	}
 	if len(entries) == 0 {
 		if err := os.Remove(dir); err != nil && !os.IsNotExist(err) {
-			logger.Warnf("failed to remove directory %s: %v", dir, err)
+			logger.Warnw("failed to remove directory", "directory", dir, "error", err)
 		}
 	}
 }

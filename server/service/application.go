@@ -1,6 +1,8 @@
 package service
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"errors"
 	"fmt"
@@ -49,7 +51,7 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
 		Where("applicant_id = ? AND dataset_id = ? AND status IN ?", app.ApplicantID, app.DatasetID, []model.ApplicationStatus{model.DRAFT, model.PENDING, model.RETURNED}).
 		Count(&count).Error; err != nil {
-		return fmt.Errorf("failed to check pending applications: %w", err)
+		return apperr.New(err, "failed to check pending applications")
 	}
 	if count > 0 {
 		return ErrPendingApplicationExists
@@ -62,7 +64,7 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 	app.Version = 0 // 初始创建为草稿状态
 	if err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Omit(clause.Associations).Create(app).Error; err != nil {
-			return fmt.Errorf("failed to create application: %w", err)
+			return apperr.New(err, "failed to create application")
 		}
 
 		audit := &model.Audit{
@@ -71,7 +73,7 @@ func (s *ApplicationService) CreateApplication(app *model.Application) error {
 		}
 
 		if err := tx.Create(audit).Error; err != nil {
-			return fmt.Errorf("failed to create application audit: %w", err)
+			return apperr.New(err, "failed to create application audit")
 		}
 
 		return nil
@@ -93,7 +95,7 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		return fmt.Errorf("failed to query application: %w", err)
+		return apperr.New(err, "failed to query application")
 	}
 
 	if app.ApplicantID != applicantID {
@@ -107,29 +109,29 @@ func (s *ApplicationService) DeleteDraftApplication(id, applicantID string) erro
 	// 查找关联的 Audits
 	var audits []model.Audit
 	if err := global.DB.WithContext(ctx).Where("application_id = ?", id).Find(&audits).Error; err != nil {
-		return fmt.Errorf("failed to find audits: %w", err)
+		return apperr.New(err, "failed to find audits")
 	}
 
 	fileService := NewFileService()
 	for _, audit := range audits {
 		if err := fileService.DeleteFilesByAudit(audit.ID); err != nil {
-			return fmt.Errorf("failed to delete files for audit %s: %w", audit.ID, err)
+			return apperr.New(err, "failed to delete files for audit", "file_id", audit.ID)
 		}
 	}
 
 	// 再次调用以清理可能存在的孤儿文件（未关联到 Audit 的文件）以及移除申请文件夹
 	// 这是为了确保文件系统的整洁，利用 FileService 封装好的目录清理逻辑
 	if err := fileService.DeleteFilesByApplication(id); err != nil {
-		return fmt.Errorf("failed to cleanup application files: %w", err)
+		return apperr.New(err, "failed to cleanup application files")
 	}
 
 	if err := global.DB.WithContext(ctx).Where("application_id = ?", id).Delete(&model.Audit{}).Error; err != nil {
-		return fmt.Errorf("failed to delete audits: %w", err)
+		return apperr.New(err, "failed to delete audits")
 	}
 
 	// 删除 Application (级联删除 Audit)
 	if err := global.DB.WithContext(ctx).Delete(&app).Error; err != nil {
-		return fmt.Errorf("failed to delete application: %w", err)
+		return apperr.New(err, "failed to delete application")
 	}
 
 	return nil
@@ -214,7 +216,7 @@ func (s *ApplicationService) UpdateDraftApplication(id, applicantID, affiliation
 		"affiliation": affiliation,
 		"position":    position,
 	}).Error; err != nil {
-		return fmt.Errorf("failed to update application draft: %w", err)
+		return apperr.New(err, "failed to update application draft")
 	}
 
 	return nil
@@ -303,7 +305,7 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
 			baseQuery = baseQuery.Where("applications.updated_at >= ?", t)
 		} else {
-			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+			logger.Errorw("Failed to parse DateStart. Value: ', Error", "datestart", q.DateStart, "error", err)
 		}
 	}
 	if q.DateEnd != "" {
@@ -311,12 +313,12 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 			// 包含当天整天：上界取次日零点
 			baseQuery = baseQuery.Where("applications.updated_at < ?", t.AddDate(0, 0, 1))
 		} else {
-			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+			logger.Errorw("Failed to parse DateEnd. Value: ', Error", "dateend", q.DateEnd, "error", err)
 		}
 	}
 	// ── 计数 ──
 	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count applications: %w", err)
+		return nil, 0, apperr.New(err, "failed to count applications")
 	}
 	// ── 排序（白名单校验）──
 	orderClause := "applications.updated_at DESC" // 默认
@@ -342,7 +344,7 @@ func (s *ApplicationService) ListApplications(q ApplicationListQuery) ([]model.A
 		}).
 		Find(&apps).Error
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query applications: %w", err)
+		return nil, 0, apperr.New(err, "failed to query applications")
 	}
 
 	// 模型转换 (Model -> DTO)
@@ -378,7 +380,7 @@ func (s *ApplicationService) GetApplicationByID(id string) (*model.ApplicationDe
 		if err == gorm.ErrRecordNotFound {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to query application %s: %w", id, err)
+		return nil, apperr.New(err, "failed to query application", "application_id", id)
 	}
 
 	item := app.ToDetail()
@@ -394,7 +396,7 @@ func (s *ApplicationService) ensureDatasetExists(ctx context.Context, datasetID 
 		if err == gorm.ErrRecordNotFound {
 			return err
 		}
-		return fmt.Errorf("failed to query dataset %s: %w", datasetID, err)
+		return apperr.New(err, "failed to query dataset", "dataset_id", datasetID)
 	}
 	return nil
 }
@@ -414,7 +416,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			return fmt.Errorf("failed to query application %s: %w", id, err)
+			return apperr.New(err, "failed to query application", "application_id", id)
 		}
 		if existing.Status != model.PENDING {
 			return ErrApplicationAlreadyProcessed
@@ -431,13 +433,13 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 		if err := tx.Model(&model.Application{}).
 			Where("id = ?", id).
 			Updates(appUpdates).Error; err != nil {
-			return fmt.Errorf("failed to update application %s: %w", id, err)
+			return apperr.New(err, "failed to update application", "application_id", id)
 		}
 
 		// 修改逻辑：不再创建新 Audit，而是更新最近的一条 Audit (代表当前的提交轮次)
 		var lastAudit model.Audit
 		if err := tx.Where("application_id = ?", id).Order("created_at DESC").First(&lastAudit).Error; err != nil {
-			return fmt.Errorf("failed to find pending audit for application %s: %w", id, err)
+			return apperr.New(err, "failed to find pending audit for application", "application_id", id)
 		}
 
 		updates := map[string]interface{}{
@@ -448,7 +450,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 		}
 
 		if err := tx.Model(&lastAudit).Updates(updates).Error; err != nil {
-			return fmt.Errorf("failed to update audit for application %s: %w", id, err)
+			return apperr.New(err, "failed to update audit for application", "application_id", id)
 		}
 
 		if status == model.APPROVED {
@@ -463,10 +465,10 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 						ExpireAt:      expireAt,
 					}
 					if err := tx.Create(&newLicense).Error; err != nil {
-						return fmt.Errorf("failed to create license: %w", err)
+						return apperr.New(err, "failed to create license")
 					}
 				} else {
-					return fmt.Errorf("failed to query license: %w", err)
+					return apperr.New(err, "failed to query license")
 				}
 			} else {
 				if err := tx.Model(&license).Updates(map[string]interface{}{
@@ -474,7 +476,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 					"expire_at":     expireAt,
 					"revoke_reason": "",
 				}).Error; err != nil {
-					return fmt.Errorf("failed to update license: %w", err)
+					return apperr.New(err, "failed to update license")
 				}
 			}
 		}
@@ -492,7 +494,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 
 	userEmail := appDetail.Applicant.Email
 	if userEmail == "" {
-		logger.Warnf("user email is empty")
+		logger.Warnw("user email is empty")
 		return appDetail, nil
 	}
 
@@ -518,7 +520,7 @@ func (s *ApplicationService) ProcessApplicationAudit(id, operatorID, result stri
 	}
 	err = s.mailService.SendNewMail(userEmail, subject, templates.AppChangeNotificationHtml, content, tasks.QueueDefault, 0)
 	if err != nil {
-		logger.Errorf("failed to send app change notification to user email %s: %v", userEmail, err)
+		logger.Errorw("failed to send app change notification to user email", "email", userEmail, "error", err)
 	}
 
 	return appDetail, nil
@@ -563,7 +565,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-			return fmt.Errorf("failed to query application %s: %w", id, err)
+			return apperr.New(err, "failed to query application", "application_id", id)
 		}
 
 		if application.ApplicantID != applicantID {
@@ -587,7 +589,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 				"affiliation": affiliation,
 				"position":    position,
 			}).Error; err != nil {
-			return fmt.Errorf("failed to resubmit application %s: %w", id, err)
+			return apperr.New(err, "failed to resubmit application", "application_id", id)
 		}
 
 		audit := &model.Audit{
@@ -596,7 +598,7 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 			Files:         newAuditFiles,
 		}
 		if err := tx.Create(audit).Error; err != nil {
-			return fmt.Errorf("failed to create resubmit audit for application %s: %w", id, err)
+			return apperr.New(err, "failed to create resubmit audit for application", "application_id", id)
 		}
 
 		datasetTitle = application.Dataset.Title
@@ -620,12 +622,12 @@ func (s *ApplicationService) ResubmitApplication(id, applicantID, affiliation, p
 func (s *ApplicationService) sendNewAppNotificationEmail(subject string, datasetTitle string, url string) {
 	setting, err := s.settingService.GetSetting()
 	if err != nil {
-		logger.Errorf("failed to get setting: %v", err)
+		logger.Errorw("failed to get setting", "error", err)
 		return
 	}
 	publicEmail := setting.PublicEmail
 	if publicEmail == "" {
-		logger.Warnf("public email is empty")
+		logger.Warnw("public email is empty")
 		return
 	}
 	content := templates.NewAppNotificationContent{
@@ -634,7 +636,7 @@ func (s *ApplicationService) sendNewAppNotificationEmail(subject string, dataset
 	}
 	err = s.mailService.SendNewMail(publicEmail, subject, templates.NewAppNotificationHtml, content, tasks.QueueDefault, 0)
 	if err != nil {
-		logger.Errorf("failed to send new application notification to public mail: %v", err)
+		logger.Errorw("failed to send new application notification to public mail", "error", err)
 		return
 	}
 }

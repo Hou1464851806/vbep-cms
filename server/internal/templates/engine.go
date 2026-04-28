@@ -21,7 +21,7 @@ func NewTemplateEngine() *TemplateEngine {
 	engine := &TemplateEngine{templateDir: dir}
 	err := engine.Reload()
 	if err != nil {
-		logger.Errorf("Failed to reload templates: %v", err)
+		logger.Errorw("Failed to reload templates", "error", err)
 	}
 	return engine
 }
@@ -51,7 +51,7 @@ func (e *TemplateEngine) Reload() error {
 		newTemplates[templateName] = tmpl
 	}
 
-	logger.Debugf("All templates: %v", newTemplates)
+	logger.Debugw("All templates", "newtemplates", newTemplates)
 
 	// 重载模板时加写锁，是为了保证模板加载的操作唯一性
 	e.mu.Lock()

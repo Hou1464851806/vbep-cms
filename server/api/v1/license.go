@@ -24,7 +24,7 @@ func NewLicenseApi(licenseService *service.LicenseService) *LicenseApi {
 func (a *LicenseApi) GetAll(ctx *gin.Context) {
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		logger.Errorf("failed to get current user while listing licenses: %v", err)
+		logger.Errorw("failed to get current user while listing licenses", "error", err)
 		respondCurrentUserError(ctx, err)
 		return
 	}
@@ -63,7 +63,7 @@ func (a *LicenseApi) GetAll(ctx *gin.Context) {
 
 	licenses, total, err := a.licenseService.ListLicenses(query)
 	if err != nil {
-		logger.Errorf("failed to list licenses: %v", err)
+		logger.Errorw("failed to list licenses", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载许可列表失败"})
 		return
 	}
@@ -93,7 +93,7 @@ func (a *LicenseApi) Revoke(ctx *gin.Context) {
 
 	currentUser, err := getCurrentUser(ctx)
 	if err != nil {
-		logger.Errorf("failed to get current user while revoking license %s: %v", id, err)
+		logger.Errorw("failed to get current user while revoking license", "user_id", id, "error", err)
 		respondCurrentUserError(ctx, err)
 		return
 	}
@@ -105,7 +105,7 @@ func (a *LicenseApi) Revoke(ctx *gin.Context) {
 
 	err = a.licenseService.RevokeLicense(id, param.Reason)
 	if err != nil {
-		logger.Errorf("failed to revoke license: %v", err)
+		logger.Errorw("failed to revoke license", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "撤销许可失败"})
 		return
 	}
