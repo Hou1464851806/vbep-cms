@@ -7,7 +7,7 @@ port = 8080
 token_expired_duration = 60
 
 [web]
-url = "http://localhost:5173" # 配置部署环境的域名
+url = "http://localhost:80" # 配置部署环境的域名
 
 [logger]
 console_level = "info"

@@ -55,7 +55,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - server-log:/app/logs
+      - ./logs/backend:/app/logs
       - backend-uploads:/app/uploads
       - ./secrets/root_initial_password.txt:/app/secrets/root_initial_password.txt
       - ./config.toml:/app/config.toml # 用宿主机上的配置覆盖容器内的，方便修改配置
@@ -87,7 +87,7 @@ services:
       DB_PASSWORD_FILE: /run/secrets/db_password
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
     volumes:
-      - worker-log:/app/logs
+      - ./logs/worker:/app/logs
       - ./config.toml:/app/config.toml # 与 backend 共用宿主机配置，worker 通过 APP_MODE 区分运行模式
     depends_on:
       postgres:
@@ -111,9 +111,9 @@ services:
     container_name: vbep-cms-frontend
     restart: always
     ports:
-      - "8888:80"
+      - "80:80"
     volumes:
-      - nginx-log:/var/log/nginx
+      - ./logs/nginx:/var/log/nginx
     depends_on:
       backend:
         condition: service_healthy
@@ -121,10 +121,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  server-log:
   backend-uploads:
-  worker-log:
-  nginx-log:
 
 secrets:
   db_user:

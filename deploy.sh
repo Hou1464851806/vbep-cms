@@ -128,6 +128,10 @@ fi
 # ==========================================
 # 3. 编排并启动服务
 # ==========================================
+echo "[*] 准备宿主机日志目录..."
+mkdir -p logs/backend logs/worker logs/nginx
+echo "[OK] 日志目录已准备: logs/"
+
 echo "[*] 启动 Docker Compose 服务..."
 $COMPOSE_CMD up -d
 
