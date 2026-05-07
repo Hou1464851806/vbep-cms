@@ -38,7 +38,9 @@ func NewDB() *gorm.DB {
 	}
 
 	// 3. 统一建立连接
-	db, err := gorm.Open(dialector, &gorm.Config{})
+	db, err := gorm.Open(dialector, &gorm.Config{
+		Logger: logger.NewGormLogger(),
+	})
 	if err != nil {
 		logger.Fatalf("Failed to connect to database: %v", err)
 	}

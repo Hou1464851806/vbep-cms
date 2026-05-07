@@ -6,6 +6,8 @@ import (
 	"go.uber.org/zap/zapcore"
 	"os"
 	"server/config"
+	"server/logger"
+	"time"
 )
 
 const (
@@ -14,13 +16,13 @@ const (
 )
 
 func NewLogger() (*zap.Logger, *zap.SugaredLogger) {
-
 	cores := make([]zapcore.Core, 0)
 
 	cores = append(cores, newFileZapCore())
 	cores = append(cores, newConsoleZapCore())
 
-	log := zap.New(zapcore.NewTee(cores...), zap.AddCallerSkip(1))
+	log := zap.New(zapcore.NewTee(cores...))
+	log = log.With(zap.String("service", resolveServiceName()))
 	return log, log.Sugar()
 }
 
@@ -36,8 +38,10 @@ func newFileZapCore() zapcore.Core {
 		panic(fmt.Sprintf("open log file error: %v\n", err))
 	}
 
-	c := zapcore.NewCore(zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()), zapcore.AddSync(f), zapcore.DebugLevel)
-	return c
+	return logger.NewStructuredCore(
+		zapcore.NewCore(zapcore.NewJSONEncoder(getFileEncoderConfig()), zapcore.AddSync(f), zapcore.DebugLevel),
+		logger.OutputModeJSON,
+	)
 }
 
 func resolveLogFileName() string {
@@ -63,18 +67,53 @@ func newConsoleZapCore() zapcore.Core {
 	var c zapcore.Core
 	switch mode {
 	case ModeDebug:
-		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.DebugLevel)
+		c = logger.NewStructuredCore(
+			zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.DebugLevel),
+			logger.OutputModeConsole,
+		)
 	case ModeInfo:
-		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+		c = logger.NewStructuredCore(
+			zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel),
+			logger.OutputModeConsole,
+		)
 	default:
-		c = zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel)
+		c = logger.NewStructuredCore(
+			zapcore.NewCore(getConsoleEncoder(), zapcore.AddSync(os.Stdout), zapcore.InfoLevel),
+			logger.OutputModeConsole,
+		)
 	}
 	return c
 }
 
+func getFileEncoderConfig() zapcore.EncoderConfig {
+	config := zap.NewProductionEncoderConfig()
+	config.TimeKey = "timestamp"
+	config.CallerKey = "caller"
+	config.FunctionKey = ""
+	config.EncodeTime = zapcore.TimeEncoderOfLayout(time.RFC3339Nano)
+	config.EncodeCaller = func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(caller.File)
+	}
+	return config
+}
+
 func getConsoleEncoder() zapcore.Encoder {
 	config := zap.NewProductionEncoderConfig()
+	config.TimeKey = "timestamp"
+	config.CallerKey = "caller"
+	config.FunctionKey = ""
 	config.EncodeTime = zapcore.TimeEncoderOfLayout("2006-01-02 15:04:05Z07:00")
 	config.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	config.EncodeCaller = func(caller zapcore.EntryCaller, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(caller.File)
+	}
 	return zapcore.NewConsoleEncoder(config)
+}
+
+func resolveServiceName() string {
+	mode := config.AppModeApi
+	if m := os.Getenv("APP_MODE"); m != "" {
+		mode = m
+	}
+	return mode
 }

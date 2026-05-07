@@ -1,11 +1,14 @@
 package initialize
 
 import (
+	"context"
 	"github.com/hibiken/asynq"
 	"server/global"
 	"server/internal/mail"
 	"server/internal/tasks"
 	"server/logger"
+
+	"go.uber.org/zap"
 )
 
 func Asynq() *asynq.Client {
@@ -35,6 +38,12 @@ func StartAsynqWorkerServer() {
 				"default":  3,
 			},
 			Logger: logger.NewAsynqZapLogger(),
+			ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
+				logger.Task(ctx, task, "asynq.error_handler").Error(
+					"task execution failed",
+					zap.Error(err),
+				)
+			}),
 		},
 	)
 	mux := asynq.NewServeMux()

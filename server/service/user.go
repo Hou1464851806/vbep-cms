@@ -356,7 +356,7 @@ func (s *UserService) GetUserFiles(userID string, page int, pageSize int) ([]mod
 	db := global.DB.WithContext(ctx).Model(&model.File{}).Where("creator_id = ?", userID)
 	// 2. 先执行 Count 操作获取总数，用于分页
 	if err := db.Count(&total).Error; err != nil {
-		logger.Errorf("Failed to count files for user %s: %w", userID, err)
+		logger.Errorf("Failed to count files for user %s: %v", userID, err)
 		return nil, 0, fmt.Errorf("database error while counting files")
 	}
 	// 如果总数为0，没必要继续查询，直接返回
@@ -366,7 +366,7 @@ func (s *UserService) GetUserFiles(userID string, page int, pageSize int) ([]mod
 	// 3. 再执行 Find 操作，带上分页和排序
 	offset := (page - 1) * pageSize
 	if err := db.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&files).Error; err != nil {
-		logger.Errorf("Failed to find files for user %s: %w", userID, err)
+		logger.Errorf("Failed to find files for user %s: %v", userID, err)
 		return nil, 0, fmt.Errorf("database error while finding files")
 	}
 	// 4. 返回查询到的文件列表、总数和nil错误

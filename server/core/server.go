@@ -1,9 +1,11 @@
 package core
 
 import (
-	"log"
 	"server/global"
 	"server/initialize"
+	"server/logger"
+
+	"go.uber.org/zap"
 )
 
 func RunServer() {
@@ -11,6 +13,6 @@ func RunServer() {
 
 	r := initialize.NewRouter()
 	if err := r.Run(serverCfg.Addr()); err != nil {
-		log.Panicf("Run server error: %v\n", err)
+		logger.Fatal("run server failed", zap.Error(err), zap.String("addr", serverCfg.Addr()))
 	}
 }
