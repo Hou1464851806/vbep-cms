@@ -27,7 +27,7 @@ func main() {
 func initializeServer() {
 	global.LOG, global.SLOG = initialize.NewLogger()
 	global.VP = initialize.NewViper()
-	global.DB = initialize.NewDB()
+	global.DB = initialize.NewDB(global.CFG.AppMode != config.AppModeWorker)
 	if global.CFG.AppMode != config.AppModeWorker {
 		if err := initialize.EnsureBootstrapSuperAdmin(); err != nil {
 			logger.Fatalf("Failed to bootstrap super admin: %v", err)

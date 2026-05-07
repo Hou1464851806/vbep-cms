@@ -11,16 +11,20 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewDB() *gorm.DB {
+const postgresMigrationLockKey int64 = 741220891971734033
+
+func NewDB(runMigrations bool) *gorm.DB {
 	dbCfg := global.CFG.Database
 
 	var dialector gorm.Dialector
 	var logMsg string
+	dbType := "postgres"
 
 	// 2. 根据配置中的 DBType 判断使用哪个数据库
 	// 注意：这里假设你在 config.toml 里配置了 db_type = "sqlite" 或 "postgres"
 	switch dbCfg.DBType {
 	case "sqlite":
+		dbType = "sqlite"
 		// 假如未配置路径，给一个默认值
 		dbPath := dbCfg.DBPath
 		if dbPath == "" {
@@ -48,15 +52,33 @@ func NewDB() *gorm.DB {
 	logger.Successf(logMsg)
 
 	// 4. 自动迁移
-	err = autoMigrate(db)
-	if err != nil {
-		//logger.Errorf("Failed to migrate schema: %v", err)
-		logger.Fatalf("Failed to migrate schema: %v", err)
+	if runMigrations {
+		err = migrateSchema(db, dbType)
+		if err != nil {
+			//logger.Errorf("Failed to migrate schema: %v", err)
+			logger.Fatalf("Failed to migrate schema: %v", err)
+		}
+
+		logger.Successf("Auto migrate schema")
+	} else {
+		logger.Infof("Skip auto migrate schema")
 	}
 
-	logger.Successf("Auto migrate schema")
-
 	return db
+}
+
+func migrateSchema(db *gorm.DB, dbType string) error {
+	if dbType != "postgres" {
+		return autoMigrate(db)
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", postgresMigrationLockKey).Error; err != nil {
+			return fmt.Errorf("failed to acquire migration lock: %w", err)
+		}
+
+		return autoMigrate(tx)
+	})
 }
 
 func autoMigrate(db *gorm.DB) error {
