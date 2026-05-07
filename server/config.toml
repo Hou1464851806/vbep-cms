@@ -9,6 +9,22 @@ token_expired_duration = 30
 [web]
 url = "http://localhost:5173"
 
+[logger]
+console_level = "info"
+file_level = "debug"
+
+[logger.file]
+max_size = 100 # MB
+max_backups = 10
+max_age = 30 # days
+compress = true
+
+[logger.gorm]
+level = "warn"
+trace = false
+slow_threshold_ms = 200
+ignore_record_not_found = true
+
 [database]
 db_type = "sqlite"
 # sqlite

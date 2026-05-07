@@ -4,25 +4,51 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"server/config"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 	gormlogger "gorm.io/gorm/logger"
 )
 
-const slowQueryThreshold = 200 * time.Millisecond
+const defaultSlowQueryThreshold = 200 * time.Millisecond
 
 type gormZapLogger struct {
-	level gormlogger.LogLevel
+	level                gormlogger.LogLevel
+	trace                bool
+	slowThreshold        time.Duration
+	ignoreRecordNotFound bool
 }
 
 func NewGormLogger() gormlogger.Interface {
-	level := gormlogger.Warn
-	if os.Getenv("LOGGER_MODE") == "debug" {
-		level = gormlogger.Info
+	return NewGormLoggerWithConfig(config.LoggerGormConfig{})
+}
+
+func NewGormLoggerWithConfig(cfg config.LoggerGormConfig) gormlogger.Interface {
+	slowThreshold := defaultSlowQueryThreshold
+	if cfg.SlowThresholdMS > 0 {
+		slowThreshold = time.Duration(cfg.SlowThresholdMS) * time.Millisecond
 	}
-	return &gormZapLogger{level: level}
+	return &gormZapLogger{
+		level:                parseGormLogLevel(cfg.Level),
+		trace:                cfg.Trace,
+		slowThreshold:        slowThreshold,
+		ignoreRecordNotFound: cfg.IgnoreRecordNotFound,
+	}
+}
+
+func parseGormLogLevel(level string) gormlogger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "silent":
+		return gormlogger.Silent
+	case "error":
+		return gormlogger.Error
+	case "info":
+		return gormlogger.Info
+	default:
+		return gormlogger.Warn
+	}
 }
 
 func (l *gormZapLogger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
@@ -68,11 +94,11 @@ func (l *gormZapLogger) Trace(ctx context.Context, begin time.Time, fc func() (s
 	}
 
 	switch {
-	case err != nil && l.level >= gormlogger.Error && (!errors.Is(err, gormlogger.ErrRecordNotFound)):
+	case err != nil && l.level >= gormlogger.Error && (!errors.Is(err, gormlogger.ErrRecordNotFound) || !l.ignoreRecordNotFound):
 		Gorm().Error("gorm query failed", append(fields, zap.Error(err))...)
-	case elapsed > slowQueryThreshold && l.level >= gormlogger.Warn:
-		Gorm().Warn("gorm slow query", append(fields, zap.Duration("slow_threshold", slowQueryThreshold))...)
-	case l.level >= gormlogger.Info:
+	case l.slowThreshold > 0 && elapsed > l.slowThreshold && l.level >= gormlogger.Warn:
+		Gorm().Warn("gorm slow query", append(fields, zap.Duration("slow_threshold", l.slowThreshold))...)
+	case l.trace && l.level >= gormlogger.Info:
 		Gorm().Debug("gorm query completed", fields...)
 	}
 }

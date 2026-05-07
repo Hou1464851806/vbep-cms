@@ -45,7 +45,9 @@ services:
     container_name: vbep-cms-backend
     restart: always
     environment:
-      WEB_URL: http://localhost:8888
+#      WEB_URL: http://localhost:8888
+#      LOGGER_CONSOLE_LEVEL: debug
+#      LOGGER_FILE_LEVEL: debug
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
       ROOT_EMAIL_FILE: /run/secrets/root_email
@@ -80,7 +82,7 @@ services:
     restart: always
     environment:
       APP_MODE: worker
-      WEB_URL: http://localhost:8888
+#      WEB_URL: http://localhost:8888
       DB_USER_FILE: /run/secrets/db_user
       DB_PASSWORD_FILE: /run/secrets/db_password
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
