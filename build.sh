@@ -130,6 +130,13 @@ for file in "deploy.sh" "compose.yaml"; do
     fi
 done
 
+if [ -f "$BACKEND_DIR/config.production.toml" ]; then
+    cp "$BACKEND_DIR/config.production.toml" "$BUILD_DIR/config.toml"
+    echo "[OK] 已生成可编辑配置 config.toml"
+else
+    echo "[!] 警告: 未找到 $BACKEND_DIR/config.production.toml，无法生成 config.toml"
+fi
+
 # 给出的 deploy.sh 增加执行权限
 chmod +x "$BUILD_DIR/deploy.sh"
 
