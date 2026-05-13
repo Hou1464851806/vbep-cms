@@ -113,18 +113,25 @@ func shortHandlerName(name string) string {
 }
 
 func runtimeCaller(skip int) string {
-	pc, file, line, ok := runtime.Caller(skip)
-	if !ok {
-		return sourceApp
+	for depth := skip; depth < skip+8; depth++ {
+		pc, file, line, ok := runtime.Caller(depth)
+		if !ok {
+			break
+		}
+		fn := runtime.FuncForPC(pc)
+		if fn == nil {
+			return fmt.Sprintf("%s:%d", filepath.Base(file), line)
+		}
+		name := fn.Name()
+		name = strings.TrimSuffix(name, "-fm")
+		parts := strings.Split(name, "/")
+		shortName := parts[len(parts)-1]
+		if strings.HasPrefix(shortName, "logger.") {
+			continue
+		}
+		return shortName
 	}
-	fn := runtime.FuncForPC(pc)
-	if fn == nil {
-		return fmt.Sprintf("%s:%d", filepath.Base(file), line)
-	}
-	name := fn.Name()
-	name = strings.TrimSuffix(name, "-fm")
-	parts := strings.Split(name, "/")
-	return parts[len(parts)-1]
+	return sourceApp
 }
 
 func appFields(fields []zap.Field, skip int) []zap.Field {
