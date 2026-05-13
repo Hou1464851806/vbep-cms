@@ -1,0 +1,68 @@
+app_name = "vbep-cms"
+app_mode = "api"
+
+[server]
+ip = "0.0.0.0"
+port = 8080
+token_expired_duration = 30
+
+[web]
+url = "http://localhost:5173"
+
+[logger]
+console_level = "info"
+file_level = "debug"
+
+[logger.file]
+max_size = 100 # MB
+max_backups = 10
+max_age = 30 # days
+compress = true
+
+[logger.gorm]
+level = "warn"
+trace = false
+slow_threshold_ms = 200
+ignore_record_not_found = true
+
+[database]
+db_type = "sqlite"
+# sqlite
+db_path = "./main.sqlite3"
+# postgres
+host = "127.0.0.1"
+port = 5432
+user = "nonbeing"
+password = "nonbeing114514"
+db_name = "vbep_cms"
+ssl_mode = "disable"
+time_zone = "Asia/Shanghai"
+
+[redis]
+addr = "127.0.0.1:6379"
+password = ""
+db = 0
+
+[file]
+upload_limit_application = 3
+upload_limit_dataset = 2048
+upload_limit_download = 512
+
+[cron]
+interval = 24
+offset = 3
+
+[email]
+# driver: [smtp api mock]
+driver = "mock"
+from = "vbepdata@muc.edu.cn"
+
+[email.smtp]
+host = "smtp.qiye.163.com" # 配置发件所用的smtp服务器
+port = 465 # 465 使用 SSL 端口
+user = "vbepdata@muc.edu.cn" # 登录smtp服务器的账号
+password = "" # 登录smtp服务器的授权码（需在客户端设置中生成）
+
+[email.api]
+url = ""
+key = ""

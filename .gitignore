@@ -34,3 +34,10 @@ coverage
 
 # Vitest
 __screenshots__/
+
+# Database
+*.db
+*.sqlite3
+
+pic
+server/uploads/

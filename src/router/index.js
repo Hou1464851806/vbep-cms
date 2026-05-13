@@ -1,5 +1,17 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import {createRouter, createWebHistory, RouterView} from 'vue-router'
 import LoginView from '@/views/LoginView.vue'
+import RegisterView from '@/views/RegisterView.vue'
+import HomeView from '@/views/home/HomeView.vue'
+import DataSetView from '@/views/home/DataSetView.vue'
+import ApplicationView from '@/views/home/ApplicationView.vue'
+import UserView from '@/views/home/UserView.vue'
+import SettingsView from '@/views/home/SettingsView.vue'
+import DownloadCenterView from '@/views/home/DownloadCenterView.vue'
+import StatisticView from '@/views/home/StatisticView.vue'
+import SendView from "@/views/reset/SendView.vue";
+import ConfirmView from "@/views/reset/ConfirmView.vue";
+
+import { readAuthToken } from '@/request/axios.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -10,7 +22,89 @@ const router = createRouter({
       component: LoginView,
       alias: '/login',
     },
+    {
+      path: '/register',
+      name: 'register',
+      component: RegisterView,
+    },
+    {
+      path: '/reset',
+      name: 'reset',
+      component: RouterView,
+      redirect: '/reset/send',
+      children: [
+        {
+          path: 'send',
+          name: 'send',
+          component: SendView,
+        },
+        {
+          path: 'confirm',
+          name: 'confirm',
+          component: ConfirmView,
+        }
+      ]
+    },
+    {
+      path: '/home', // 所有登录后的页面都将基于这个根路径
+      name: 'home',
+      component: HomeView,
+      redirect: '/home/datasets', // 访问根路径时，默认重定向到数据集列表
+      meta: { requiresAuth: true }, // 这个布局下的所有页面都需要登录
+      children: [
+        {
+          path: 'datasets',
+          name: 'dataset-list',
+          component: DataSetView,
+        },
+        {
+          path: 'applications',
+          name: 'application-list',
+          component: ApplicationView,
+        },
+        {
+          path: 'licenses',
+          name: 'license-list',
+          component: () => import('@/views/home/LicenseView.vue'),
+        },
+        {
+          path: 'downloads',
+          name: 'download-center',
+          component: DownloadCenterView,
+        },
+        {
+          path: 'statistics',
+          name: 'statistic-view',
+          component: StatisticView,
+        },
+        {
+          path: 'users',
+          name: 'user-list',
+          component: UserView,
+        },
+        {
+          path: 'settings',
+          name: 'settings-view',
+          component: SettingsView,
+        },
+      ],
+    },
   ],
+})
+
+router.beforeEach((to, from, next) => {
+  const token = readAuthToken()
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+    if (requiresAuth && !token) {
+      next({
+        path: '/login',
+        query: {redirect: to.fullPath}
+      })
+    } else if (to.path === '/login' && token) {
+      next('/home')
+    } else {
+      next()
+    }
 })
 
 export default router
