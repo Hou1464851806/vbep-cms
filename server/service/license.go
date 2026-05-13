@@ -1,6 +1,8 @@
 package service
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"fmt"
 	"server/global"
@@ -127,7 +129,7 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 	}
 
 	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count licenses: %w", err)
+		return nil, 0, apperr.New(err, "failed to count licenses")
 	}
 
 	orderClause := "licenses.created_at DESC"
@@ -154,7 +156,7 @@ func (s *LicenseService) ListLicenses(q LicenseListQuery) ([]model.LicenseListIt
 		Find(&licenses).Error
 
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to query licenses: %w", err)
+		return nil, 0, apperr.New(err, "failed to query licenses")
 	}
 
 	result := make([]model.LicenseListItem, len(licenses))
@@ -175,7 +177,7 @@ func (s *LicenseService) RevokeLicense(id string, reason string) error {
 		})
 
 	if res.Error != nil {
-		return fmt.Errorf("failed to revoke license: %w", res.Error)
+		return apperr.New(res.Error, "failed to revoke license")
 	}
 	if res.RowsAffected == 0 {
 		return fmt.Errorf("license not found")

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynq"

@@ -119,11 +119,11 @@ func resolveLogFileName() string {
 	var name string
 	switch mode {
 	case config.AppModeWorker:
-		name = "worker.log"
+		name = "worker"
 	default:
-		name = "server.log"
+		name = "server"
 	}
-	return name
+	return fmt.Sprintf("%s-%s.log", name, time.Now().Format("2006-01-02"))
 }
 
 func newConsoleZapCore(loggerCfg config.LoggerConfig) zapcore.Core {
@@ -145,7 +145,7 @@ func getFileEncoderConfig() zapcore.EncoderConfig {
 	return config
 }
 
-func getConsoleEncoder() zapcore.Encoder {
+func getJSONEncoder() zapcore.Encoder {
 	config := zap.NewProductionEncoderConfig()
 	config.TimeKey = "timestamp"
 	config.CallerKey = "caller"

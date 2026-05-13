@@ -21,7 +21,7 @@ func (s *ApiSender) Send(msg Message) error {
 		"key":     s.Key,
 	})
 	if err != nil {
-		logger.Errorf("failed to marshal api mail payload to=%s subject=%s: %v", msg.To, msg.Subject, err)
+		logger.Errorw("failed to marshal api mail payload", "to", msg.To, "subject", msg.Subject, "error", err)
 		return err
 	}
 	_, err = http.Post(s.Url, "application/json", bytes.NewBuffer(payload))

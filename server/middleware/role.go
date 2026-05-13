@@ -24,7 +24,7 @@ func AuthRole(minRole model.UserRole) gin.HandlerFunc {
 		var user model.User
 		// 注意：这里需要处理查不到用户的情况
 		if err := global.DB.First(&user, "id = ?", userID).Error; err != nil {
-			logger.Errorf("failed to load user %v in AuthRole middleware: %v", userID, err)
+			logger.Errorw("failed to load user in AuthRole middleware", "user_id", userID, "error", err)
 			ctx.JSON(http.StatusUnauthorized, gin.H{"message": "当前用户不存在"})
 			ctx.Abort()
 			return

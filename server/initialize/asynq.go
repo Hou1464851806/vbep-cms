@@ -22,7 +22,7 @@ func Asynq() *asynq.Client {
 func StartAsynqWorkerServer() {
 	sender, err := mail.NewEmailSender()
 	if err != nil {
-		logger.Fatalf("Failed to create email sender: %v", err)
+		logger.Fatalw("Failed to create email sender", "error", err)
 	}
 	handler := &tasks.EmailTaskHandler{Sender: sender}
 
@@ -49,6 +49,6 @@ func StartAsynqWorkerServer() {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(tasks.TypeEmailDelivery, handler.ProcessTask)
 	if err := srv.Run(mux); err != nil {
-		logger.Fatalf("Failed to start asynq worker server: %v", err)
+		logger.Fatalw("Failed to start asynq worker server", "error", err)
 	}
 }

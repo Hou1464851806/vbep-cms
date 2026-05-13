@@ -30,7 +30,7 @@ func initializeServer() {
 	global.DB = initialize.NewDB(global.CFG.AppMode != config.AppModeWorker)
 	if global.CFG.AppMode != config.AppModeWorker {
 		if err := initialize.EnsureBootstrapSuperAdmin(); err != nil {
-			logger.Fatalf("Failed to bootstrap super admin: %v", err)
+			logger.Fatalw("Failed to bootstrap super admin", "error", err)
 		}
 	}
 	global.REDIS = initialize.Redis()
@@ -41,7 +41,7 @@ func initializeCron() {
 	// 使用 UTC+8 (北京时间)
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		logger.Warnf("failed to load timezone Asia/Shanghai, fallback to UTC+8: %v", err)
+		logger.Warnw("failed to load timezone Asia/Shanghai, fallback to UTC+8", "error", err)
 		loc = time.FixedZone("UTC+8", 8*3600)
 	}
 	c := cron.New(cron.WithLocation(loc))
@@ -64,13 +64,13 @@ func initializeCron() {
 	// 添加定时任务
 	_, err = c.AddFunc(fmt.Sprintf("0 %d/%d * * *", startHour, interval), func() {
 		if err := statsService.GenerateStats(); err != nil {
-			logger.Errorf("Failed to generate statistics: %v", err)
+			logger.Errorw("Failed to generate statistics", "error", err)
 		}
 	})
 	if err != nil {
-		logger.Errorf("Failed to add cron job: %v", err)
+		logger.Errorw("Failed to add cron job", "error", err)
 	} else {
-		logger.Successf("Statistics cron job created: interval_hours=%d", interval)
+		logger.Infow("[Success] Statistics cron job created", "interval_hours", interval)
 	}
 	c.Start()
 

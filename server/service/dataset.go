@@ -1,6 +1,8 @@
 package service
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"errors"
 	"fmt"
@@ -24,7 +26,7 @@ func (s *DatasetService) CreateDataset(dataset *model.Dataset) error {
 	ctx := context.Background()
 	err := gorm.G[model.Dataset](global.DB).Create(ctx, dataset)
 	if err != nil {
-		return fmt.Errorf("failed to create new dataset: %w", err)
+		return apperr.New(err, "failed to create new dataset")
 	}
 
 	return nil
@@ -93,19 +95,19 @@ func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetList
 		if t, err := time.ParseInLocation("2006-01-02", q.DateStart, loc); err == nil {
 			baseQuery = baseQuery.Where("datasets.created_at >= ?", t)
 		} else {
-			logger.Errorf("Failed to parse DateStart. Value: '%s', Error: %v", q.DateStart, err)
+			logger.Errorw("Failed to parse DateStart. Value: ', Error", "datestart", q.DateStart, "error", err)
 		}
 	}
 	if q.DateEnd != "" {
 		if t, err := time.ParseInLocation("2006-01-02", q.DateEnd, loc); err == nil {
 			baseQuery = baseQuery.Where("datasets.created_at < ?", t.AddDate(0, 0, 1))
 		} else {
-			logger.Errorf("Failed to parse DateEnd. Value: '%s', Error: %v", q.DateEnd, err)
+			logger.Errorw("Failed to parse DateEnd. Value: ', Error", "dateend", q.DateEnd, "error", err)
 		}
 	}
 	// ── 计数 ──
 	if err := baseQuery.Session(&gorm.Session{}).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to count records: %w", err)
+		return nil, 0, apperr.New(err, "failed to count records")
 	}
 
 	selectQuery := `
@@ -146,7 +148,7 @@ func (s *DatasetService) GetAllDatasets(q DatasetListQuery) ([]model.DatasetList
 		Limit(q.PageSize).
 		Scan(&results).Error
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get dataset list: %w", err)
+		return nil, 0, apperr.New(err, "failed to get dataset list")
 	}
 
 	return results, total, nil
@@ -167,7 +169,7 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, false, gorm.ErrRecordNotFound
 		}
-		return nil, false, fmt.Errorf("failed to query dataset: %w", err)
+		return nil, false, apperr.New(err, "failed to query dataset")
 	}
 
 	// 2. 权限判定
@@ -185,7 +187,7 @@ func (s *DatasetService) GetDatasetDetail(id string, userID string, role model.U
 		Count(&count).Error
 
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to verify permission: %w", err)
+		return nil, false, apperr.New(err, "failed to verify permission")
 	}
 
 	// 关键修改：不再报错，而是通过布尔值告知是否有权
@@ -203,7 +205,7 @@ func (s *DatasetService) UpdateDataset(id string, title, description string) (*m
 
 	res := global.DB.WithContext(ctx).Model(&model.Dataset{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {
-		return nil, fmt.Errorf("failed to update dataset: %w", res.Error)
+		return nil, apperr.New(res.Error, "failed to update dataset")
 	}
 	if res.RowsAffected == 0 {
 		return nil, fmt.Errorf("dataset not found")
@@ -216,7 +218,7 @@ func (s *DatasetService) UpdateDataset(id string, title, description string) (*m
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, err
 		}
-		return nil, fmt.Errorf("failed to query updated dataset: %w", err)
+		return nil, apperr.New(err, "failed to query updated dataset")
 	}
 
 	return &updated, nil
@@ -227,7 +229,7 @@ func (s *DatasetService) DeleteDataset(id string) error {
 
 	err := global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := NewFileService().DeleteFilesByDataset(id); err != nil {
-			return fmt.Errorf("failed to delete files under dataset %s: %w", id, err)
+			return apperr.New(err, "failed to delete files under dataset", "dataset_id", id)
 		}
 
 		if err := tx.Model(&model.License{}).
@@ -236,12 +238,12 @@ func (s *DatasetService) DeleteDataset(id string) error {
 				"status":        model.LicenseRevoked,
 				"revoke_reason": "对应数据集已被移除",
 			}).Error; err != nil {
-			return fmt.Errorf("failed to revoke licenses: %w", err)
+			return apperr.New(err, "failed to revoke licenses")
 		}
 
 		res := tx.Where("id = ?", id).Delete(&model.Dataset{})
 		if res.Error != nil {
-			return fmt.Errorf("failed to delete dataset: %w", res.Error)
+			return apperr.New(res.Error, "failed to delete dataset")
 		}
 		if res.RowsAffected == 0 {
 			return fmt.Errorf("dataset not found")
@@ -262,7 +264,7 @@ func (s *DatasetService) GetDatasetStatistics(datasetID string) (*model.DatasetS
 	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
 		Where("dataset_id = ?", datasetID).
 		Count(&stats.TotalApplications).Error; err != nil {
-		return nil, fmt.Errorf("failed to count applications: %w", err)
+		return nil, apperr.New(err, "failed to count applications")
 	}
 
 	// 2. 申请提交（Audit）总次数
@@ -271,14 +273,14 @@ func (s *DatasetService) GetDatasetStatistics(datasetID string) (*model.DatasetS
 		Joins("JOIN applications ON audits.application_id = applications.id").
 		Where("applications.dataset_id = ?", datasetID).
 		Count(&stats.TotalAudits).Error; err != nil {
-		return nil, fmt.Errorf("failed to count audits: %w", err)
+		return nil, apperr.New(err, "failed to count audits")
 	}
 
 	// 3. 数据集申请通过总量
 	if err := global.DB.WithContext(ctx).Model(&model.Application{}).
 		Where("dataset_id = ? AND status = ?", datasetID, model.APPROVED).
 		Count(&stats.ApprovedCount).Error; err != nil {
-		return nil, fmt.Errorf("failed to count approved applications: %w", err)
+		return nil, apperr.New(err, "failed to count approved applications")
 	}
 
 	// 4. 通过率

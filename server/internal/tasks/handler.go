@@ -1,9 +1,11 @@
 package tasks
 
 import (
+	"server/pkg/apperr"
+
 	"context"
 	"encoding/json"
-	"fmt"
+
 	"github.com/hibiken/asynq"
 	"server/internal/mail"
 	"server/logger"

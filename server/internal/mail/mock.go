@@ -9,7 +9,7 @@ type MockSender struct{}
 
 func (s *MockSender) Send(msg Message) error {
 	fmt.Printf("\n========================================\n")
-	logger.Debugf("[MOCK MAIL] Sending to: %s, Subject: %s, Body: %s", msg.To, msg.Subject, msg.Body)
+	logger.Debugw("[MOCK MAIL] Sending to, Subject, Body", "to", msg.To, "subject", msg.Subject, "body", msg.Body)
 	fmt.Printf("========================================\n\n")
 	return nil
 }

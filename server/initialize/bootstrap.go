@@ -1,6 +1,8 @@
 package initialize
 
 import (
+	"server/pkg/apperr"
+
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,10 +32,10 @@ const (
 func EnsureBootstrapSuperAdmin() error {
 	var superAdminCount int64
 	if err := global.DB.Model(&model.User{}).Where("role = ?", model.SuperAdmin).Count(&superAdminCount).Error; err != nil {
-		return fmt.Errorf("failed to count super admins: %w", err)
+		return apperr.New(err, "failed to count super admins")
 	}
 	if superAdminCount > 0 {
-		logger.Infof("Bootstrap super admin skipped: existing SuperAdmin found")
+		logger.Infow("Bootstrap super admin skipped: existing SuperAdmin found")
 		return nil
 	}
 
@@ -50,11 +52,11 @@ func EnsureBootstrapSuperAdmin() error {
 
 	password, err := generateBootstrapPassword(bootstrapRootPasswordLength)
 	if err != nil {
-		return fmt.Errorf("failed to generate bootstrap super admin password: %w", err)
+		return apperr.New(err, "failed to generate bootstrap super admin password")
 	}
 	passwordHash, err := utils.PasswordToHash(hashPasswordForClientProtocol(password))
 	if err != nil {
-		return fmt.Errorf("failed to hash bootstrap super admin password: %w", err)
+		return apperr.New(err, "failed to hash bootstrap super admin password")
 	}
 
 	rootUser := model.User{
@@ -68,21 +70,21 @@ func EnsureBootstrapSuperAdmin() error {
 		if errors.Is(err, gorm.ErrDuplicatedKey) || isUniqueConstraintError(err) {
 			return fmt.Errorf("bootstrap super admin failed: root email %q is already occupied", email)
 		}
-		return fmt.Errorf("failed to create bootstrap super admin: %w", err)
+		return apperr.New(err, "failed to create bootstrap super admin")
 	}
 
 	if err := os.WriteFile(passwordPath, []byte(password), 0600); err != nil {
 		rollbackErr := global.DB.Unscoped().Delete(&model.User{}, "id = ?", rootUser.ID).Error
 		if rollbackErr != nil {
-			logger.Errorf("failed to rollback bootstrap super admin %s after password file write error: %v", rootUser.ID, rollbackErr)
+			logger.Errorw("failed to rollback bootstrap super admin after password file write error", "user_id", rootUser.ID, "error", rollbackErr)
 		}
-		return fmt.Errorf("failed to persist bootstrap super admin password file %q: %w", passwordPath, err)
+		return apperr.New(err, "failed to persist bootstrap super admin password file", "passwordpath", passwordPath)
 	}
 
 	if passwordFileHadContent {
-		logger.Warnf("Bootstrap password file %s contained stale content and was overwritten because no SuperAdmin existed in database", passwordPath)
+		logger.Warnw("Bootstrap password file contained stale content and was overwritten because no SuperAdmin existed in database", "passwordpath", passwordPath)
 	}
-	logger.Warnf("Bootstrap super admin created: email=%s initial_password_file=%s", email, passwordPath)
+	logger.Warnw("Bootstrap super admin created", "email", email, "initial_password_file", passwordPath)
 	return nil
 }
 
@@ -90,7 +92,7 @@ func readBootstrapRootEmail() (string, error) {
 	emailPath := getEnvOrDefault(bootstrapRootEmailEnv, defaultRootEmailFilePath)
 	content, err := os.ReadFile(emailPath)
 	if err != nil {
-		return "", fmt.Errorf("bootstrap super admin requires root email file %q: %w", emailPath, err)
+		return "", apperr.New(err, "bootstrap super admin requires root email file", "email", emailPath)
 	}
 
 	email := strings.TrimSpace(string(content))
@@ -110,16 +112,16 @@ func prepareBootstrapPasswordOutputPath(passwordPath string) (bool, error) {
 
 		content, readErr := os.ReadFile(passwordPath)
 		if readErr != nil {
-			return false, fmt.Errorf("failed to read bootstrap password file %q: %w", passwordPath, readErr)
+			return false, apperr.New(readErr, "failed to read bootstrap password file", "passwordpath", passwordPath)
 		}
 		hadContent = strings.TrimSpace(string(content)) != ""
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("failed to inspect bootstrap password file %q: %w", passwordPath, err)
+		return false, apperr.New(err, "failed to inspect bootstrap password file", "passwordpath", passwordPath)
 	}
 
 	dir := filepath.Dir(passwordPath)
 	if stat, statErr := os.Stat(dir); statErr != nil {
-		return false, fmt.Errorf("bootstrap password directory %q is unavailable: %w", dir, statErr)
+		return false, apperr.New(statErr, "bootstrap password directory is unavailable", "dir", dir)
 	} else if !stat.IsDir() {
 		return false, fmt.Errorf("bootstrap password directory %q is not a directory", dir)
 	}

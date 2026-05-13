@@ -71,7 +71,7 @@ func (a *DatasetApi) GetAll(ctx *gin.Context) {
 	}
 	datasets, total, err := a.service.GetAllDatasets(query)
 	if err != nil {
-		logger.Errorf("failed to get all datasets: %v", err)
+		logger.Errorw("failed to get all datasets", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "获取数据集列表失败",
 		})
@@ -100,7 +100,7 @@ func (a *DatasetApi) GetOne(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
-		logger.Errorf("failed to get dataset detail %s: %v", id, err)
+		logger.Errorw("failed to get dataset detail", "dataset_id", id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "获取数据集详情失败"})
 		return
 	}
@@ -148,7 +148,7 @@ type UpdateDatasetParam struct {
 func (a *DatasetApi) New(ctx *gin.Context) {
 	var p NewDatasetParam
 	if err := ctx.ShouldBind(&p); err != nil {
-		logger.Errorf("failed to parse request param: %v", err)
+		logger.Errorw("failed to parse request param", "error", err)
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"message": "请求参数错误",
 		})
@@ -174,7 +174,7 @@ func (a *DatasetApi) New(ctx *gin.Context) {
 	}
 	err := a.service.CreateDataset(newDataset)
 	if err != nil {
-		logger.Errorf("%v", err)
+		logger.Errorw("", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "创建数据集失败",
 		})
@@ -211,7 +211,7 @@ func (a *DatasetApi) Update(ctx *gin.Context) {
 			})
 			return
 		}
-		logger.Errorf("failed to update dataset %s: %v", id, err)
+		logger.Errorw("failed to update dataset", "dataset_id", id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "更新数据集失败",
 		})
@@ -239,7 +239,7 @@ func (a *DatasetApi) Delete(ctx *gin.Context) {
 			})
 			return
 		}
-		logger.Errorf("failed to delete dataset %s: %v", id, err)
+		logger.Errorw("failed to delete dataset", "dataset_id", id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{
 			"message": "删除数据集失败",
 		})
@@ -258,7 +258,7 @@ func (a *DatasetApi) GetStatistics(ctx *gin.Context) {
 
 	stats, err := a.service.GetDatasetStatistics(id)
 	if err != nil {
-		logger.Errorf("failed to get statistics for dataset %s: %v", id, err)
+		logger.Errorw("failed to get statistics for dataset", "dataset_id", id, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "获取统计数据失败"})
 		return
 	}

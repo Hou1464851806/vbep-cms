@@ -19,9 +19,9 @@ func Redis() *redis.Client {
 	// Ping 测试连接
 	pong, err := client.Ping(context.Background()).Result()
 	if err != nil {
-		logger.Fatalf("redis connect ping failed, err: %v", err)
+		logger.Fatalw("redis connect ping failed, err", "error", err)
 	}
 
-	logger.Successf("redis connect ping response: %s", pong)
+	logger.Infow("[Success] redis connect ping response", "response", pong)
 	return client
 }

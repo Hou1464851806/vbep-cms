@@ -65,7 +65,7 @@ func (a *FileApi) ListByDataset(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
-		logger.Errorf("failed to list files for dataset %s: %v", datasetID, err)
+		logger.Errorw("failed to list files for dataset", "file_id", datasetID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
@@ -111,7 +111,7 @@ func (a *FileApi) UploadToDataset(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "数据集不存在"})
 			return
 		}
-		logger.Errorf("failed to upload file for dataset %s: %v", datasetID, err)
+		logger.Errorw("failed to upload file for dataset", "file_id", datasetID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
@@ -155,7 +155,7 @@ func (a *FileApi) DownloadByDataset(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to get file %s for dataset %s: %v", fileID, datasetID, err)
+		logger.Errorw("failed to get file for dataset", "file_id", fileID, "file_id", datasetID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载失败"})
 		return
 	}
@@ -183,7 +183,7 @@ func (a *FileApi) DeleteFromDataset(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to delete file %s for dataset %s: %v", fileID, datasetID, err)
+		logger.Errorw("failed to delete file for dataset", "file_id", fileID, "file_id", datasetID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
@@ -220,7 +220,7 @@ func (a *FileApi) ListByApplication(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		}
-		logger.Errorf("failed to list files for application %s: %v", applicationID, err)
+		logger.Errorw("failed to list files for application", "file_id", applicationID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
@@ -270,7 +270,7 @@ func (a *FileApi) UploadToApplication(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return
 		}
-		logger.Errorf("failed to upload file for application %s: %v", applicationID, err)
+		logger.Errorw("failed to upload file for application", "file_id", applicationID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
@@ -308,7 +308,7 @@ func (a *FileApi) DownloadByApplication(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to get file %s for application %s: %v", fileID, applicationID, err)
+		logger.Errorw("failed to get file for application", "file_id", fileID, "file_id", applicationID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载文件失败"})
 		return
 	}
@@ -352,7 +352,7 @@ func (a *FileApi) DeleteFromApplication(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to delete file %s for application %s: %v", fileID, applicationID, err)
+		logger.Errorw("failed to delete file for application", "file_id", fileID, "file_id", applicationID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
@@ -386,7 +386,7 @@ func (a *FileApi) ListPublic(ctx *gin.Context) {
 	}
 	files, total, err := a.service.GetPublicFilesPaginated(query)
 	if err != nil {
-		logger.Errorf("failed to list public files: %v", err)
+		logger.Errorw("failed to list public files", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载文件列表失败"})
 		return
 	}
@@ -415,7 +415,7 @@ func (a *FileApi) ListPublicTemplates(ctx *gin.Context) {
 
 	files, description, err := a.service.GetPublicTemplateFiles()
 	if err != nil {
-		logger.Errorf("failed to list public template files: %v", err)
+		logger.Errorw("failed to list public template files", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载模版文件失败"})
 		return
 	}
@@ -455,7 +455,7 @@ func (a *FileApi) UploadPublic(ctx *gin.Context) {
 
 	file, err := a.service.CreatePublicFile(user.ID, fileHeader)
 	if err != nil {
-		logger.Errorf("failed to upload public file: %v", err)
+		logger.Errorw("failed to upload public file", "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "保存文件失败"})
 		return
 	}
@@ -486,7 +486,7 @@ func (a *FileApi) DownloadPublic(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to get public file %s: %v", fileID, err)
+		logger.Errorw("failed to get public file", "file_id", fileID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "下载失败"})
 		return
 	}
@@ -523,7 +523,7 @@ func (a *FileApi) DeletePublic(ctx *gin.Context) {
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "文件不存在"})
 			return
 		}
-		logger.Errorf("failed to delete public file %s: %v", fileID, err)
+		logger.Errorw("failed to delete public file", "file_id", fileID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "删除文件失败"})
 		return
 	}
@@ -538,7 +538,7 @@ func (a *FileApi) loadApplication(ctx *gin.Context, applicationID string) (*mode
 			ctx.JSON(http.StatusNotFound, gin.H{"message": "申请不存在"})
 			return nil, false
 		}
-		logger.Errorf("failed to get application %s: %v", applicationID, err)
+		logger.Errorw("failed to get application", "application_id", applicationID, "error", err)
 		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "加载申请失败"})
 		return nil, false
 	}
@@ -568,7 +568,7 @@ func (a *FileApi) checkDatasetDownloadPermission(datasetID string, userID string
 		Count(&count).Error
 
 	if err != nil {
-		logger.Errorf("failed to check permission: %v", err)
+		logger.Errorw("failed to check permission", "error", err)
 		return false
 	}
 

@@ -31,7 +31,7 @@ func NewDB(runMigrations bool) *gorm.DB {
 			dbPath = "database.db"
 		}
 		dialector = sqlite.Open(dbPath)
-		logMsg = fmt.Sprintf("Connect to Postgres %s on %s", dbCfg.DBName, dbCfg.DBPath)
+		logMsg = fmt.Sprintf("Connect to SQLite %s on %s", dbCfg.DBName, dbCfg.DBPath)
 
 	case "postgres", "pgsql":
 		fallthrough
@@ -46,10 +46,10 @@ func NewDB(runMigrations bool) *gorm.DB {
 		Logger: logger.NewGormLoggerWithConfig(global.CFG.Logger.Gorm),
 	})
 	if err != nil {
-		logger.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalw("Failed to connect to database", "error", err)
 	}
 
-	logger.Successf(logMsg)
+	logger.Infow("[Success] " + logMsg)
 
 	// 4. 自动迁移
 	if runMigrations {
