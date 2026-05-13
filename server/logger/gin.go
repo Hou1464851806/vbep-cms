@@ -14,6 +14,10 @@ func GinAccessLogger() gin.HandlerFunc {
 		start := time.Now()
 		c.Next()
 
+		if shouldSkipAccessLog(c) {
+			return
+		}
+
 		fields := append(WithHTTPContext(c),
 			zap.Int("status", c.Writer.Status()),
 			zap.Float64("latency_ms", float64(time.Since(start).Nanoseconds())/1e6),
@@ -37,6 +41,10 @@ func GinAccessLogger() gin.HandlerFunc {
 			Gin().Info(msg, fields...)
 		}
 	}
+}
+
+func shouldSkipAccessLog(c *gin.Context) bool {
+	return c.FullPath() == "/api/v1/ping" && c.Writer.Status() < http.StatusBadRequest && len(c.Errors) == 0
 }
 
 func GinRecovery() gin.HandlerFunc {
