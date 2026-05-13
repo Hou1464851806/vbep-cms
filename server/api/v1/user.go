@@ -417,12 +417,12 @@ func (u *UserApi) SendResetPassword(ctx *gin.Context) {
 		return
 	}
 
-	if !u.isValidLink(req.FrontendUrl) {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"message": "非法的地址",
-		})
-		return
-	}
+	//if !u.isValidLink(req.FrontendUrl) {
+	//	ctx.JSON(http.StatusBadRequest, gin.H{
+	//		"message": "非法的地址",
+	//	})
+	//	return
+	//}
 
 	err := u.service.SendResetPassword(req.Email, req.FrontendUrl)
 	if err != nil {
